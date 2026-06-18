@@ -23,7 +23,7 @@ const handleContactSubmit = async (e) => {
   e.preventDefault();
 
   try {
-    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com", {
+    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com/api/contact", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
