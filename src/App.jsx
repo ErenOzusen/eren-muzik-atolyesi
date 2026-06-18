@@ -23,7 +23,7 @@ const handleContactSubmit = async (e) => {
   e.preventDefault();
 
   try {
-    const response = await fetch("http://localhost:5000/api/contact", {
+    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -50,7 +50,7 @@ const handleContactSubmit = async (e) => {
 
 const fetchSubmissions = async () => {
   try {
-    const response = await fetch("http://localhost:5000/api/submissions");
+    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com/api/submissions");
     const data = await response.json();
 
     setSubmissions(data);
@@ -66,7 +66,7 @@ const handleDeleteSubmission = async (index) => {
 
   try {
     const response = await fetch(
-      `http://localhost:5000/api/submissions/${index}`,
+      `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${index}`,
       {
         method: "DELETE",
       }
