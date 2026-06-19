@@ -4,19 +4,38 @@ import "./App.css";
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
-  const isAdminPage = window.location.pathname === "/admin";
 
   const [contactForm, setContactForm] = useState({
-  name: "",
-  phone: "",
-  lesson: "",
-  message: "",
-});
+    name: "",
+    phone: "",
+    lesson: "",
+    message: "",
+  });
 
-const [submissions, setSubmissions] = useState([]);
-const [adminPassword, setAdminPassword] = useState("");
-const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-const [adminToken, setAdminToken] = useState("");
+  const [submissions, setSubmissions] = useState([]);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminToken, setAdminToken] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const isAdminPage = window.location.pathname === "/admin";
+
+  const filteredSubmissions = submissions.filter((item) => {
+    const search = searchTerm.toLowerCase();
+
+    const name = item.name || "";
+    const phone = item.phone || "";
+    const lesson = item.lesson || "";
+    const message = item.message || "";
+
+    return (
+      name.toLowerCase().includes(search) ||
+      phone.toLowerCase().includes(search) ||
+      lesson.toLowerCase().includes(search) ||
+      message.toLowerCase().includes(search)
+    );
+  });
+
 
 
 
@@ -63,7 +82,14 @@ const fetchSubmissions = async (token = adminToken) => {
     const data = await response.json();
 
     if (response.ok) {
-      setSubmissions(data);
+      const sortedData = data
+  .map((item, index) => ({
+    ...item,
+    originalIndex: index,
+  }))
+  .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+setSubmissions(sortedData);
     } else {
       alert(data.message || "Başvurular alınamadı");
     }
@@ -202,11 +228,15 @@ const handleAdminLogin = async (e) => {
 if (isAdminPage) {
   return (
     <div className="admin-page">
-      <div className="admin-panel">
-        <h1>Admin Panel</h1>
-        <p>Eren Müzik Atölyesi başvuruları</p>
+      {!isAdminLoggedIn ? (
+        <div className="admin-login-card">
+          <p className="admin-eyebrow">Yönetim Paneli</p>
+          <h1>Admin Girişi</h1>
+          <p className="admin-login-text">
+            Eren Müzik Atölyesi başvurularını görüntülemek ve yönetmek için
+            şifrenizi girin.
+          </p>
 
-        {!isAdminLoggedIn ? (
           <form onSubmit={handleAdminLogin} className="admin-login-form">
             <input
               type="password"
@@ -217,48 +247,88 @@ if (isAdminPage) {
 
             <button type="submit">Giriş Yap</button>
           </form>
-        ) : (
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-  <tr>
-    <th>Ad Soyad</th>
-    <th>Telefon</th>
-    <th>Ders</th>
-    <th>Mesaj</th>
-    <th>Tarih</th>
-  </tr>
-</thead>
+        </div>
+      ) : (
+        <div className="admin-dashboard">
+          <div className="admin-dashboard-header">
+            <div>
+              <p className="admin-eyebrow">Başvuru Yönetimi</p>
+              <h1>Gelen Başvurular</h1>
+              <p className="admin-login-text">
+                Form üzerinden gelen öğrenci başvurularını buradan takip
+                edebilirsin.
+              </p>
+            </div>
 
-              <tbody>
-                {submissions.length === 0 ? (
-                  <tr>
-                    <td colSpan="6">Henüz başvuru yok.</td>
-                  </tr>
-                ) : (
-                  submissions.map((item, index) => (
-                    <tr key={index}>
-  <td>{item.name}</td>
-  <td>{item.phone}</td>
-  <td>{item.lesson}</td>
-  <td>{item.message}</td>
-  <td>{new Date(item.date).toLocaleString("tr-TR")}</td>
-  <td>
-    <button
-      className="delete-button"
-      onClick={() => handleDeleteSubmission(index)}
-    >
-      Sil
-    </button>
-  </td>
-</tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <div className="admin-stat-card">
+              <span>Toplam Başvuru</span>
+              <strong>{submissions.length}</strong>
+            </div>
           </div>
-        )}
-      </div>
+
+          <div className="admin-search-box">
+  <input
+    type="text"
+    placeholder="İsim, telefon, ders veya mesaj ara..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+  />
+</div>
+
+       {submissions.length === 0 ? (
+  <div className="admin-empty">
+    Henüz başvuru bulunmuyor.
+  </div>
+) : filteredSubmissions.length === 0 ? (
+  <div className="admin-empty">
+    Aramanla eşleşen başvuru bulunamadı.
+  </div>
+) : (
+  <div className="admin-table-wrapper">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Ad Soyad</th>
+                    <th>Telefon</th>
+                    <th>Ders</th>
+                    <th>Mesaj</th>
+                    <th>Tarih</th>
+                    <th>İşlem</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredSubmissions.map((item) => (
+                     <tr key={item.originalIndex}>
+                      <td>{item.name}</td>
+                      <td>{item.phone}</td>
+                      <td>{item.lesson}</td>
+                      <td>{item.message}</td>
+                      <td>
+  {new Date(item.date).toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}
+</td>
+                      <td>
+                        <button
+                          className="admin-delete-button"
+                          onClick={() => handleDeleteSubmission(item.originalIndex)}
+                        >
+                          Sil
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
