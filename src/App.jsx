@@ -131,6 +131,8 @@ if (data.success) {
 const handleAdminLogin = async (e) => {
   e.preventDefault();
 
+
+
   try {
     const response = await fetch(
       "https://eren-muzik-atolyesi-backend.onrender.com/api/admin/login",
@@ -158,6 +160,14 @@ const handleAdminLogin = async (e) => {
     console.error("Admin giriş hatası:", error);
     alert("Admin girişi sırasında bir hata oluştu");
   }
+};
+
+  const handleAdminLogout = () => {
+  setIsAdminLoggedIn(false);
+  setAdminToken("");
+  setAdminPassword("");
+  setSearchTerm("");
+  setSubmissions([]);
 };
 
   useEffect(() => {
@@ -250,21 +260,30 @@ if (isAdminPage) {
         </div>
       ) : (
         <div className="admin-dashboard">
-          <div className="admin-dashboard-header">
-            <div>
-              <p className="admin-eyebrow">Başvuru Yönetimi</p>
-              <h1>Gelen Başvurular</h1>
-              <p className="admin-login-text">
-                Form üzerinden gelen öğrenci başvurularını buradan takip
-                edebilirsin.
-              </p>
-            </div>
+      <div className="admin-dashboard-header">
+  <div>
+    <p className="admin-eyebrow">Başvuru Yönetimi</p>
+    <h1>Gelen Başvurular</h1>
+    <p>
+      Form üzerinden gelen öğrenci başvurularını buradan takip edebilirsin.
+    </p>
+  </div>
 
-            <div className="admin-stat-card">
-              <span>Toplam Başvuru</span>
-              <strong>{submissions.length}</strong>
-            </div>
-          </div>
+  <div className="admin-header-actions">
+    <div className="admin-stat-card">
+      <span>Toplam Başvuru</span>
+      <strong>{submissions.length}</strong>
+    </div>
+
+    <button
+      type="button"
+      className="admin-logout-button"
+      onClick={handleAdminLogout}
+    >
+      Çıkış Yap
+    </button>
+  </div>
+</div>
 
           <div className="admin-search-box">
   <input
