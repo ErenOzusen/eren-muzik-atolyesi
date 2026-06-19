@@ -47,6 +47,24 @@ app.post("/api/contact", (req, res) => {
   });
 });
 
+app.post("/api/admin/login", (req, res) => {
+  const { password } = req.body;
+
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "eren123";
+
+  if (password === ADMIN_PASSWORD) {
+    return res.json({
+      success: true,
+      message: "Admin girişi başarılı",
+    });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: "Şifre hatalı",
+  });
+});
+
 app.get("/api/submissions", (req, res) => {
   let submissions = [];
 

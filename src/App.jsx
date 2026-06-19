@@ -85,14 +85,34 @@ const handleDeleteSubmission = async (index) => {
   }
 };
 
-const handleAdminLogin = (e) => {
+const handleAdminLogin = async (e) => {
   e.preventDefault();
 
-  if (adminPassword === "eren123") {
-    setIsAdminLoggedIn(true);
-    fetchSubmissions();
-  } else {
-    alert("Şifre yanlış kral");
+  try {
+    const response = await fetch(
+      "https://eren-muzik-atolyesi-backend.onrender.com/api/admin/login",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          password: adminPassword,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (data.success) {
+      setIsAdminLoggedIn(true);
+      fetchSubmissions();
+    } else {
+      alert("Şifre yanlış kral");
+    }
+  } catch (error) {
+    console.error("Admin giriş hatası:", error);
+    alert("Admin girişi sırasında bir hata oluştu");
   }
 };
 
