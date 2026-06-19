@@ -16,6 +16,7 @@ function App() {
 const [submissions, setSubmissions] = useState([]);
 const [adminPassword, setAdminPassword] = useState("");
 const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+const [adminToken, setAdminToken] = useState("");
 
 
 
@@ -48,14 +49,27 @@ const handleContactSubmit = async (e) => {
   }
 };
 
-const fetchSubmissions = async () => {
+const fetchSubmissions = async (token = adminToken) => {
   try {
-    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com/api/submissions");
+    const response = await fetch(
+      "https://eren-muzik-atolyesi-backend.onrender.com/api/submissions",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
     const data = await response.json();
 
-    setSubmissions(data);
+    if (response.ok) {
+      setSubmissions(data);
+    } else {
+      alert(data.message || "Başvurular alınamadı");
+    }
   } catch (error) {
     console.error("Başvurular alınamadı:", error);
+    alert("Başvurular alınırken bir hata oluştu");
   }
 };
 
@@ -65,12 +79,15 @@ const handleDeleteSubmission = async (index) => {
   if (!confirmDelete) return;
 
   try {
-    const response = await fetch(
-      `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${index}`,
-      {
-        method: "DELETE",
-      }
-    );
+const response = await fetch(
+  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${index}`,
+  {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${adminToken}`,
+    },
+  }
+);
 
     const data = await response.json();
 
@@ -105,9 +122,10 @@ const handleAdminLogin = async (e) => {
     const data = await response.json();
 
     if (data.success) {
-      setIsAdminLoggedIn(true);
-      fetchSubmissions();
-    } else {
+  setAdminToken(data.token);
+  setIsAdminLoggedIn(true);
+  fetchSubmissions(data.token);
+} else {
       alert("Şifre yanlış kral");
     }
   } catch (error) {

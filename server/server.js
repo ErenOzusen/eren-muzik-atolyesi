@@ -51,11 +51,13 @@ app.post("/api/admin/login", (req, res) => {
   const { password } = req.body;
 
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "eren123";
+  const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "eren-admin-token";
 
   if (password === ADMIN_PASSWORD) {
     return res.json({
       success: true,
       message: "Admin girişi başarılı",
+      token: ADMIN_TOKEN,
     });
   }
 
@@ -65,7 +67,22 @@ app.post("/api/admin/login", (req, res) => {
   });
 });
 
-app.get("/api/submissions", (req, res) => {
+const checkAdminToken = (req, res, next) => {
+  const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "eren-admin-token";
+
+  const token = req.headers.authorization;
+
+  if (token === `Bearer ${ADMIN_TOKEN}`) {
+    next();
+  } else {
+    return res.status(403).json({
+      success: false,
+      message: "Yetkisiz erişim",
+    });
+  }
+};
+
+app.get("/api/submissions", checkAdminToken, (req, res) => {
   let submissions = [];
 
   if (fs.existsSync(submissionsFilePath)) {
@@ -79,7 +96,7 @@ app.get("/api/submissions", (req, res) => {
   res.json(submissions);
 });
 
-app.delete("/api/submissions/:index", (req, res) => {
+app.delete("/api/submissions/:index", checkAdminToken, (req, res) => {
   const index = Number(req.params.index);
 
   if (!fs.existsSync(submissionsFilePath)) {
