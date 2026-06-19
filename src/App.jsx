@@ -91,11 +91,11 @@ const response = await fetch(
 
     const data = await response.json();
 
-    if (data.success) {
-      fetchSubmissions();
-    } else {
-      alert(data.message);
-    }
+if (data.success) {
+  fetchSubmissions(adminToken);
+} else {
+  alert(data.message);
+}
   } catch (error) {
     console.error("Başvuru silinemedi:", error);
     alert("Başvuru silinirken hata oluştu");
@@ -133,11 +133,6 @@ const handleAdminLogin = async (e) => {
     alert("Admin girişi sırasında bir hata oluştu");
   }
 };
-
-useEffect(() => {
-  fetchSubmissions();
-}, []);
-
 
   useEffect(() => {
   const revealElements = document.querySelectorAll(".reveal");
