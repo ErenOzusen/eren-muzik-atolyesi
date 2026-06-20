@@ -1,16 +1,50 @@
-# React + Vite
+# Eren Müzik Atölyesi
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Gitar, piyano, bas gitar ve müzik teorisi dersleri için hazırlanmış modern özel ders web sitesi.
 
-Currently, two official plugins are available:
+## Canlı Site
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Frontend: https://eren-muzik-atolyesi.vercel.app  
+Admin Panel: https://eren-muzik-atolyesi.vercel.app/admin  
+Backend: https://eren-muzik-atolyesi-backend.onrender.com
 
-## React Compiler
+## Teknolojiler
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React
+- Vite
+- JavaScript
+- CSS
+- Node.js
+- Express
+- Vercel
+- Render
 
-## Expanding the ESLint configuration
+## Özellikler
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Modern responsive tasarım
+- Mobil hamburger menü
+- WhatsApp hazır mesaj CTA sistemi
+- Ders ve paket kartları
+- Başvuru formu
+- Render backend ile başvuru kaydı
+- Güvenli admin login sistemi
+- Token korumalı başvuru listeleme
+- Token korumalı başvuru silme
+- Admin arama / filtreleme
+- Admin logout sistemi
+- Vercel SPA route rewrite desteği
+
+## Admin Panel
+
+Admin panel adresi:
+
+https://eren-muzik-atolyesi.vercel.app/admin
+
+Admin panel üzerinden gelen başvurular görüntülenebilir, aranabilir, filtrelenebilir ve silinebilir.
+
+## Deploy
+
+Frontend Vercel üzerinde yayındadır.  
+Backend Render üzerinde çalışmaktadır.
+
+GitHub main branch’e yapılan push sonrası Vercel otomatik deploy alır.
