@@ -2317,3 +2317,114 @@ margin-top: 10px;
     width: 100%;
   }
 }
+
+/* Process Section */
+.process-section {
+  padding: 100px 8%;
+  background:
+    radial-gradient(circle at top left, rgba(58, 139, 87, 0.12), transparent 32%),
+    linear-gradient(135deg, #f8fbf8 0%, #eef6ef 100%);
+}
+
+.process-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 26px;
+  margin-top: 48px;
+}
+
+.process-card {
+  position: relative;
+  padding: 34px 30px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(47, 111, 73, 0.14);
+  box-shadow: 0 22px 55px rgba(20, 50, 32, 0.08);
+  overflow: hidden;
+  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+}
+
+.process-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(47, 111, 73, 0.12), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.process-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(47, 111, 73, 0.28);
+  box-shadow: 0 28px 70px rgba(20, 50, 32, 0.13);
+}
+
+.process-card:hover::before {
+  opacity: 1;
+}
+
+.process-number {
+  position: relative;
+  z-index: 1;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, #2f6f49, #5fa878);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  box-shadow: 0 14px 28px rgba(47, 111, 73, 0.22);
+}
+
+.process-card h3 {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 14px;
+  color: #173320;
+  font-size: 1.25rem;
+}
+
+.process-card p {
+  position: relative;
+  z-index: 1;
+  color: #5d6f62;
+  line-height: 1.7;
+  font-size: 0.98rem;
+}
+
+/* Process Responsive */
+@media (max-width: 900px) {
+  .process-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .process-section {
+    padding: 80px 6%;
+  }
+}
+
+.process-section .section-header {
+  text-align: center;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.process-section .section-badge {
+  color: #4c8f63;
+  font-weight: 700;
+}
+
+.process-section .section-header h2 {
+  color: #173320;
+  font-size: 2.4rem;
+  margin: 12px 0 14px;
+}
+
+.process-section .section-header p {
+  color: #657568;
+  font-size: 1.03rem;
+  line-height: 1.7;
+}

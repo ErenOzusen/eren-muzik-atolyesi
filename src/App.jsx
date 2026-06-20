@@ -614,6 +614,45 @@ if (isAdminPage) {
   </div>
 </section>
 
+<section id="surec" className="process-section reveal">
+  <div className="section-header">
+    <span className="section-badge">Ders Süreci</span>
+    <h2>Ders Süreci Nasıl İşliyor?</h2>
+    <p>
+      Her öğrenci için hedefe, seviyeye ve müzik zevkine göre ilerleyen
+      kişisel bir ders planı oluşturulur.
+    </p>
+  </div>
+
+  <div className="process-grid">
+    <div className="process-card">
+      <div className="process-number">01</div>
+      <h3>Tanışma ve Hedef Belirleme</h3>
+      <p>
+        Öğrencinin seviyesi, müzik zevki ve hedefleri birlikte değerlendirilir.
+      </p>
+    </div>
+
+    <div className="process-card">
+      <div className="process-number">02</div>
+      <h3>Kişiye Özel Ders Planı</h3>
+      <p>
+        Gitar, piyano veya müzik teorisi dersleri öğrencinin hızına göre
+        planlanır.
+      </p>
+    </div>
+
+    <div className="process-card">
+      <div className="process-number">03</div>
+      <h3>Düzenli Takip ve Gelişim</h3>
+      <p>
+        Her derste ilerleme takip edilir, pratik önerileriyle gelişim
+        desteklenir.
+      </p>
+    </div>
+  </div>
+</section>
+
 <section id="yorumlar" className="testimonials reveal">
   <div className="section-header">
     <span className="section-badge">Öğrenci Yorumları</span>
