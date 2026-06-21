@@ -83,6 +83,14 @@ const handleContactSubmit = async (e) => {
       lesson: "",
       message: "",
     });
+
+    setTimeout(() => {
+  setFormStatus({
+    type: "",
+    message: "",
+  });
+}, 6000);
+
   } catch (error) {
     console.error("Form gönderilirken hata oluştu:", error);
 
