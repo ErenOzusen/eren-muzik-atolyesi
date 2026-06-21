@@ -12,6 +12,13 @@ function App() {
     message: "",
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+const [formStatus, setFormStatus] = useState({
+  type: "",
+  message: "",
+});
+
+
   const [submissions, setSubmissions] = useState([]);
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -42,6 +49,14 @@ function App() {
 const handleContactSubmit = async (e) => {
   e.preventDefault();
 
+  if (isSubmitting) return;
+
+  setIsSubmitting(true);
+  setFormStatus({
+    type: "",
+    message: "",
+  });
+
   try {
     const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com/api/contact", {
       method: "POST",
@@ -53,18 +68,30 @@ const handleContactSubmit = async (e) => {
 
     const data = await response.json();
 
-    if (data.success) {
-      alert("Başvurunuz başarıyla gönderildi.");
-      setContactForm({
-        name: "",
-        phone: "",
-        lesson: "",
-        message: "",
-      });
+    if (!response.ok || !data.success) {
+      throw new Error("Başvuru gönderilemedi");
     }
+
+    setFormStatus({
+      type: "success",
+      message: "Başvurunuz başarıyla alındı. En kısa sürede sizinle iletişime geçeceğiz.",
+    });
+
+    setContactForm({
+      name: "",
+      phone: "",
+      lesson: "",
+      message: "",
+    });
   } catch (error) {
     console.error("Form gönderilirken hata oluştu:", error);
-    alert("Bir hata oluştu. Lütfen tekrar deneyin.");
+
+    setFormStatus({
+      type: "error",
+      message: "Başvuru gönderilirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    });
+  } finally {
+    setIsSubmitting(false);
   }
 };
 
@@ -822,7 +849,19 @@ if (isAdminPage) {
     required
   />
 
-  <button type="submit">Başvuru Gönder</button>
+{formStatus.message && (
+  <p className={`form-status ${formStatus.type}`}>
+    {formStatus.message}
+  </p>
+)}
+
+<button
+  type="submit"
+  disabled={isSubmitting}
+>
+  {isSubmitting ? "Gönderiliyor..." : "Başvuru Gönder"}
+</button>
+
 </form>
 </section>
 
