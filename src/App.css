@@ -2518,3 +2518,27 @@ margin-top: 10px;
   background: rgba(239, 68, 68, 0.16) !important;
   border: 1px solid rgba(239, 68, 68, 0.4) !important;
 }
+
+.success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.form-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+}

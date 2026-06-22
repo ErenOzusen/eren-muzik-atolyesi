@@ -858,11 +858,13 @@ if (isAdminPage) {
   />
 
 {formStatus.message && (
-  <p className={`form-status ${formStatus.type}`}>
+  <p className={`form-message ${formStatus.type}`}>
+    {formStatus.type === "success" && (
+      <span className="success-icon">✓</span>
+    )}
     {formStatus.message}
   </p>
 )}
-
 <button
   type="submit"
   disabled={isSubmitting}
