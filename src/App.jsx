@@ -54,6 +54,7 @@ const [formStatus, setFormStatus] = useState({
   const [adminToken, setAdminToken] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lessonFilter, setLessonFilter] = useState("");
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
 
   const isAdminPage = window.location.pathname === "/admin";
 
@@ -198,6 +199,9 @@ const response = await fetch(
     const data = await response.json();
 
 if (data.success) {
+  if (selectedSubmission?.originalIndex === index) {
+    setSelectedSubmission(null);
+  }
   fetchSubmissions(adminToken);
 } else {
   alert(data.message);
@@ -248,6 +252,7 @@ const handleAdminLogin = async (e) => {
   setAdminPassword("");
   setSearchTerm("");
   setLessonFilter("");
+  setSelectedSubmission(null);
   setSubmissions([]);
 };
 
@@ -315,6 +320,22 @@ const handleAdminLogin = async (e) => {
     window.removeEventListener("scroll", handleScroll);
   };
 }, []);
+
+  useEffect(() => {
+    if (!selectedSubmission) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setSelectedSubmission(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [selectedSubmission]);
 
 if (isAdminPage) {
   return (
@@ -424,7 +445,7 @@ if (isAdminPage) {
                       <td>{item.name}</td>
                       <td>{item.phone}</td>
                       <td>{item.lesson}</td>
-                      <td>{item.message}</td>
+                      <td className="admin-message-cell">{item.message}</td>
                       <td>
   {new Date(item.date).toLocaleString("tr-TR", {
     day: "2-digit",
@@ -436,6 +457,14 @@ if (isAdminPage) {
 </td>
                       <td>
                         <div className="admin-row-actions">
+                          <button
+                            type="button"
+                            className="admin-detail-button"
+                            aria-label={`${item.name || "Başvuru"} detaylarını görüntüle`}
+                            onClick={() => setSelectedSubmission(item)}
+                          >
+                            Detay Gör
+                          </button>
                           {whatsappLink ? (
                             <a
                               href={whatsappLink}
@@ -468,6 +497,80 @@ if (isAdminPage) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {selectedSubmission && (
+            <div
+              className="admin-modal-overlay"
+              onClick={() => setSelectedSubmission(null)}
+            >
+              <div
+                className="admin-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="admin-modal-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="admin-modal-header">
+                  <div>
+                    <p className="admin-eyebrow">Başvuru Detayı</p>
+                    <h2 id="admin-modal-title">
+                      {selectedSubmission.name || "İsimsiz Başvuru"}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    className="admin-modal-close"
+                    aria-label="Başvuru detayını kapat"
+                    onClick={() => setSelectedSubmission(null)}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="admin-modal-body">
+                  <div className="admin-modal-field">
+                    <span className="admin-modal-label">Ad Soyad</span>
+                    <p>{selectedSubmission.name || "—"}</p>
+                  </div>
+
+                  <div className="admin-modal-field">
+                    <span className="admin-modal-label">Telefon</span>
+                    <p>{selectedSubmission.phone || "—"}</p>
+                  </div>
+
+                  <div className="admin-modal-field">
+                    <span className="admin-modal-label">Ders</span>
+                    <p>{selectedSubmission.lesson || "—"}</p>
+                  </div>
+
+                  <div className="admin-modal-field">
+                    <span className="admin-modal-label">Tarih</span>
+                    <p>
+                      {selectedSubmission.date
+                        ? new Date(selectedSubmission.date).toLocaleString(
+                            "tr-TR",
+                            {
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )
+                        : "—"}
+                    </p>
+                  </div>
+
+                  <div className="admin-modal-field admin-modal-field-full">
+                    <span className="admin-modal-label">Mesaj</span>
+                    <p className="admin-modal-message">
+                      {selectedSubmission.message || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
