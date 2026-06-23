@@ -24,11 +24,27 @@ const [formStatus, setFormStatus] = useState({
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminToken, setAdminToken] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [lessonFilter, setLessonFilter] = useState("");
 
   const isAdminPage = window.location.pathname === "/admin";
 
+  const lessonFilterOptions = [
+    ...new Set([
+      "Gitar",
+      "Piyano",
+      "Bas Gitar",
+      "Müzik Teorisi",
+      ...submissions.map((item) => item.lesson).filter(Boolean),
+    ]),
+  ];
+
   const filteredSubmissions = submissions.filter((item) => {
+    if (lessonFilter && item.lesson !== lessonFilter) {
+      return false;
+    }
+
     const search = searchTerm.toLowerCase();
+    if (!search) return true;
 
     const name = item.name || "";
     const phone = item.phone || "";
@@ -202,6 +218,7 @@ const handleAdminLogin = async (e) => {
   setAdminToken("");
   setAdminPassword("");
   setSearchTerm("");
+  setLessonFilter("");
   setSubmissions([]);
 };
 
@@ -320,13 +337,31 @@ if (isAdminPage) {
   </div>
 </div>
 
-          <div className="admin-search-box">
-  <input
-    type="text"
-    placeholder="İsim, telefon, ders veya mesaj ara..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-  />
+          <div className="admin-filters">
+  <div className="admin-search-box">
+    <input
+      type="text"
+      placeholder="İsim, telefon, ders veya mesaj ara..."
+      value={searchTerm}
+      onChange={(e) => setSearchTerm(e.target.value)}
+    />
+  </div>
+
+  <div className="admin-lesson-filter">
+    <label htmlFor="lesson-filter">Ders türü</label>
+    <select
+      id="lesson-filter"
+      value={lessonFilter}
+      onChange={(e) => setLessonFilter(e.target.value)}
+    >
+      <option value="">Tüm dersler</option>
+      {lessonFilterOptions.map((lesson) => (
+        <option key={lesson} value={lesson}>
+          {lesson}
+        </option>
+      ))}
+    </select>
+  </div>
 </div>
 
        {submissions.length === 0 ? (
@@ -335,7 +370,7 @@ if (isAdminPage) {
   </div>
 ) : filteredSubmissions.length === 0 ? (
   <div className="admin-empty">
-    Aramanla eşleşen başvuru bulunamadı.
+    Seçilen ders veya arama kriterine uygun başvuru bulunamadı.
   </div>
 ) : (
   <div className="admin-table-wrapper">

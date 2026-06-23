@@ -2252,9 +2252,18 @@ margin-top: 10px;
   line-height: 1.5;
 }
 
-.admin-search-box {
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
   margin: 28px 0 22px;
   width: 100%;
+}
+
+.admin-search-box {
+  flex: 1 1 280px;
+  min-width: 0;
 }
 
 .admin-search-box input {
@@ -2276,6 +2285,40 @@ margin-top: 10px;
 }
 
 .admin-search-box input:focus {
+  border-color: rgba(45, 212, 191, 0.85);
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.12),
+    0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.admin-lesson-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 1 220px;
+}
+
+.admin-lesson-filter label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.admin-lesson-filter select {
+  width: 100%;
+  padding: 15px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-lesson-filter select:focus {
+  outline: none;
   border-color: rgba(45, 212, 191, 0.85);
   box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.12),
     0 18px 40px rgba(0, 0, 0, 0.28);
