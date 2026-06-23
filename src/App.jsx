@@ -1,6 +1,35 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+const WHATSAPP_PREFILL_MESSAGE =
+  "Merhaba, Eren Müzik Atölyesi'ne yaptığınız başvuru için size ulaşıyorum.";
+
+function normalizePhoneForWhatsApp(phone) {
+  if (!phone || typeof phone !== "string") return null;
+
+  let digits = phone.replace(/[\s\-().]/g, "").replace(/^\+/, "");
+
+  if (!digits || !/^\d+$/.test(digits)) return null;
+
+  if (digits.startsWith("0")) {
+    digits = "90" + digits.slice(1);
+  } else if (digits.length === 10 && digits.startsWith("5")) {
+    digits = "90" + digits;
+  }
+
+  if (digits.length < 10 || digits.length > 15) return null;
+
+  return digits;
+}
+
+function buildWhatsAppLink(phone) {
+  const normalizedPhone = normalizePhoneForWhatsApp(phone);
+  if (!normalizedPhone) return null;
+
+  const text = encodeURIComponent(WHATSAPP_PREFILL_MESSAGE);
+  return `https://wa.me/${normalizedPhone}?text=${text}`;
+}
+
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
@@ -387,7 +416,10 @@ if (isAdminPage) {
                 </thead>
 
                 <tbody>
-                  {filteredSubmissions.map((item) => (
+                  {filteredSubmissions.map((item) => {
+                    const whatsappLink = buildWhatsAppLink(item.phone);
+
+                    return (
                      <tr key={item.originalIndex}>
                       <td>{item.name}</td>
                       <td>{item.phone}</td>
@@ -403,15 +435,37 @@ if (isAdminPage) {
   })}
 </td>
                       <td>
-                        <button
-                          className="admin-delete-button"
-                          onClick={() => handleDeleteSubmission(item.originalIndex)}
-                        >
-                          Sil
-                        </button>
+                        <div className="admin-row-actions">
+                          {whatsappLink ? (
+                            <a
+                              href={whatsappLink}
+                              className="admin-whatsapp-button"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              WhatsApp
+                            </a>
+                          ) : (
+                            <span
+                              className="admin-whatsapp-button disabled"
+                              title="Geçerli telefon numarası yok"
+                            >
+                              WhatsApp
+                            </span>
+                          )}
+                          <button
+                            className="admin-delete-button"
+                            onClick={() =>
+                              handleDeleteSubmission(item.originalIndex)
+                            }
+                          >
+                            Sil
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
