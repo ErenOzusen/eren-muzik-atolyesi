@@ -30,6 +30,10 @@ function buildWhatsAppLink(phone) {
   return `https://wa.me/${normalizedPhone}?text=${text}`;
 }
 
+function getSubmissionDate(submission) {
+  return submission?.date || submission?.createdAt || null;
+}
+
 function normalizeLessonName(lesson) {
   return (lesson || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -224,14 +228,7 @@ const fetchSubmissions = async (token = adminToken) => {
     const data = await response.json();
 
     if (response.ok) {
-      const sortedData = data
-  .map((item, index) => ({
-    ...item,
-    originalIndex: index,
-  }))
-  .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-setSubmissions(sortedData);
+      setSubmissions(Array.isArray(data) ? data : []);
     } else {
       alert(data.message || "Başvurular alınamadı");
     }
@@ -241,14 +238,14 @@ setSubmissions(sortedData);
   }
 };
 
-const handleDeleteSubmission = async (index) => {
+const handleDeleteSubmission = async (id) => {
   const confirmDelete = window.confirm("Bu başvuruyu silmek istiyor musun?");
 
   if (!confirmDelete) return;
 
   try {
 const response = await fetch(
-  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${index}`,
+  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${id}`,
   {
     method: "DELETE",
     headers: {
@@ -260,7 +257,7 @@ const response = await fetch(
     const data = await response.json();
 
 if (data.success) {
-  if (selectedSubmission?.originalIndex === index) {
+  if (selectedSubmission?._id === id) {
     setSelectedSubmission(null);
   }
   fetchSubmissions(adminToken);
@@ -515,7 +512,7 @@ if (isAdminPage) {
                     const whatsappLink = buildWhatsAppLink(item.phone);
 
                     return (
-                     <tr key={item.originalIndex}>
+                     <tr key={item._id}>
                       <td data-label="Ad Soyad">{item.name}</td>
                       <td data-label="Telefon">{item.phone}</td>
                       <td data-label="Ders">{item.lesson}</td>
@@ -523,13 +520,15 @@ if (isAdminPage) {
                         {item.message}
                       </td>
                       <td data-label="Tarih">
-  {new Date(item.date).toLocaleString("tr-TR", {
+  {getSubmissionDate(item)
+    ? new Date(getSubmissionDate(item)).toLocaleString("tr-TR", {
     day: "2-digit",
     month: "long",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  })}
+  })
+    : "—"}
 </td>
                       <td className="admin-actions-cell" data-label="İşlem">
                         <div className="admin-row-actions">
@@ -560,9 +559,7 @@ if (isAdminPage) {
                           )}
                           <button
                             className="admin-delete-button"
-                            onClick={() =>
-                              handleDeleteSubmission(item.originalIndex)
-                            }
+                            onClick={() => handleDeleteSubmission(item._id)}
                           >
                             Sil
                           </button>
@@ -626,8 +623,8 @@ if (isAdminPage) {
               <div className="admin-modal-field">
                 <span className="admin-modal-label">Tarih</span>
                 <p>
-                  {selectedSubmission.date
-                    ? new Date(selectedSubmission.date).toLocaleString(
+                  {getSubmissionDate(selectedSubmission)
+                    ? new Date(getSubmissionDate(selectedSubmission)).toLocaleString(
                         "tr-TR",
                         {
                           day: "2-digit",

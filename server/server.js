@@ -1,50 +1,101 @@
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
+const mongoose = require("mongoose");
+const Submission = require("./models/Submission");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-const submissionsFilePath = path.join(__dirname, "submissions.json");
+let isDbConnected = false;
+
+function formatSubmission(submission) {
+  const createdAt = submission.createdAt;
+
+  return {
+    _id: submission._id.toString(),
+    name: submission.name,
+    phone: submission.phone,
+    lesson: submission.lesson,
+    message: submission.message,
+    createdAt,
+    date: createdAt ? new Date(createdAt).toISOString() : null,
+  };
+}
+
+async function connectMongo() {
+  const mongoUri = process.env.MONGODB_URI;
+
+  if (!mongoUri) {
+    console.warn(
+      "MONGODB_URI tanımlı değil. Başvurular veritabanına kaydedilemez."
+    );
+    return;
+  }
+
+  try {
+    await mongoose.connect(mongoUri);
+    isDbConnected = true;
+    console.log("MongoDB bağlantısı başarılı");
+  } catch (error) {
+    console.error("MongoDB bağlantı hatası:", error.message);
+  }
+}
+
+function ensureDbConnection(res) {
+  if (isDbConnected) {
+    return true;
+  }
+
+  res.status(503).json({
+    success: false,
+    message: "Veritabanı bağlantısı kurulamadı",
+  });
+
+  return false;
+}
 
 app.get("/", (req, res) => {
   res.send("Backend çalışıyor kral");
 });
 
-app.post("/api/contact", (req, res) => {
-  const newSubmission = {
-    ...req.body,
-    date: new Date().toISOString(),
-  };
-
-  console.log("Yeni başvuru geldi:");
-  console.log(newSubmission);
-
-  let submissions = [];
-
-  if (fs.existsSync(submissionsFilePath)) {
-    const fileData = fs.readFileSync(submissionsFilePath, "utf-8");
-
-    if (fileData) {
-      submissions = JSON.parse(fileData);
-    }
+app.post("/api/contact", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
   }
 
-  submissions.push(newSubmission);
+  const { name, phone, lesson, message } = req.body;
 
-  fs.writeFileSync(
-    submissionsFilePath,
-    JSON.stringify(submissions, null, 2),
-    "utf-8"
-  );
+  if (!name?.trim() || !phone?.trim() || !lesson?.trim() || !message?.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Tüm alanları doldurmanız gerekiyor",
+    });
+  }
 
-  res.json({
-    success: true,
-    message: "Başvuru başarıyla kaydedildi",
-  });
+  try {
+    const submission = await Submission.create({
+      name: name.trim(),
+      phone: phone.trim(),
+      lesson: lesson.trim(),
+      message: message.trim(),
+    });
+
+    console.log("Yeni başvuru kaydedildi:", formatSubmission(submission));
+
+    res.json({
+      success: true,
+      message: "Başvuru başarıyla kaydedildi",
+    });
+  } catch (error) {
+    console.error("Başvuru kaydedilemedi:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Başvuru kaydedilirken bir hata oluştu",
+    });
+  }
 });
 
 app.post("/api/admin/login", (req, res) => {
@@ -82,55 +133,69 @@ const checkAdminToken = (req, res, next) => {
   }
 };
 
-app.get("/api/submissions", checkAdminToken, (req, res) => {
-  let submissions = [];
-
-  if (fs.existsSync(submissionsFilePath)) {
-    const fileData = fs.readFileSync(submissionsFilePath, "utf-8");
-
-    if (fileData) {
-      submissions = JSON.parse(fileData);
-    }
+app.get("/api/submissions", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
   }
 
-  res.json(submissions);
+  try {
+    const submissions = await Submission.find()
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(submissions.map((submission) => formatSubmission(submission)));
+  } catch (error) {
+    console.error("Başvurular alınamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Başvurular alınırken bir hata oluştu",
+    });
+  }
 });
 
-app.delete("/api/submissions/:index", checkAdminToken, (req, res) => {
-  const index = Number(req.params.index);
+app.delete("/api/submissions/:id", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
 
-  if (!fs.existsSync(submissionsFilePath)) {
-    return res.json({
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
       success: false,
-      message: "Kayıt dosyası bulunamadı",
+      message: "Geçersiz kayıt id",
     });
   }
 
-  const fileData = fs.readFileSync(submissionsFilePath, "utf-8");
-  const submissions = JSON.parse(fileData);
+  try {
+    const deletedSubmission = await Submission.findByIdAndDelete(id);
 
-  if (index < 0 || index >= submissions.length) {
-    return res.json({
+    if (!deletedSubmission) {
+      return res.status(404).json({
+        success: false,
+        message: "Başvuru bulunamadı",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Başvuru silindi",
+    });
+  } catch (error) {
+    console.error("Başvuru silinemedi:", error.message);
+
+    res.status(500).json({
       success: false,
-      message: "Geçersiz kayıt",
+      message: "Başvuru silinirken bir hata oluştu",
     });
   }
-
-  submissions.splice(index, 1);
-
-  fs.writeFileSync(
-    submissionsFilePath,
-    JSON.stringify(submissions, null, 2)
-  );
-
-  res.json({
-    success: true,
-    message: "Başvuru silindi",
-  });
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Backend ${PORT} portunda çalışıyor`);
+connectMongo().finally(() => {
+  app.listen(PORT, () => {
+    console.log(`Backend ${PORT} portunda çalışıyor`);
+  });
 });
