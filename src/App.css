@@ -2165,6 +2165,30 @@ margin-top: 10px;
   line-height: 1;
 }
 
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.admin-stats-grid .admin-stat-card {
+  min-width: 0;
+}
+
+.admin-stats-grid .admin-stat-card strong {
+  font-size: 34px;
+}
+
+.admin-stat-card-total {
+  background: rgba(20, 184, 166, 0.16);
+  border-color: rgba(94, 234, 212, 0.34);
+}
+
+.admin-stat-card-total strong {
+  font-size: 42px;
+}
+
 .admin-table-wrapper {
   overflow-x: auto;
   border-radius: 20px;
@@ -2270,20 +2294,111 @@ margin-top: 10px;
 @media (max-width: 768px) {
   .admin-page {
     padding: 100px 14px 40px;
+    overflow-x: hidden;
   }
 
   .admin-login-card,
   .admin-dashboard {
     padding: 24px;
     border-radius: 22px;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .admin-dashboard-header {
     flex-direction: column;
   }
 
+  .admin-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-stat-card {
     width: 100%;
+  }
+
+  .admin-table-wrapper {
+    overflow-x: visible;
+    border: none;
+    background: transparent;
+  }
+
+  .admin-table {
+    min-width: 0;
+    background: transparent;
+  }
+
+  .admin-table thead {
+    display: none;
+  }
+
+  .admin-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .admin-table tr {
+    display: block;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 20px;
+    background: rgba(2, 6, 23, 0.58);
+    padding: 4px 16px 16px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+  }
+
+  .admin-table tr:hover td {
+    background: transparent;
+  }
+
+  .admin-table td {
+    display: block;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .admin-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(94, 234, 212, 0.82);
+  }
+
+  .admin-table td.admin-message-cell {
+    max-width: none;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.5;
+    max-height: 4.6em;
+    overflow: hidden;
+  }
+
+  .admin-table td.admin-actions-cell {
+    border-bottom: none;
+    padding-top: 14px;
+    padding-bottom: 0;
+  }
+
+  .admin-table td.admin-actions-cell::before {
+    margin-bottom: 10px;
+  }
+
+  .admin-row-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .admin-detail-button,
+  .admin-whatsapp-button,
+  .admin-delete-button {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -2318,18 +2433,19 @@ margin-top: 10px;
 .admin-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   background: rgba(2, 6, 23, 0.78);
   backdrop-filter: blur(6px);
+  overscroll-behavior: contain;
 }
 
 .admin-modal {
   width: min(560px, 100%);
-  max-height: min(88vh, 720px);
+  max-height: min(calc(100dvh - 40px), 720px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2380,6 +2496,8 @@ margin-top: 10px;
   gap: 18px;
   padding: 22px 24px 26px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .admin-modal-field {
@@ -2417,25 +2535,20 @@ margin-top: 10px;
 
 @media (max-width: 768px) {
   .admin-modal-overlay {
-    padding: 14px;
-    align-items: flex-end;
+    padding: 16px;
+    align-items: center;
+    justify-content: center;
   }
 
   .admin-modal {
-    max-height: 92vh;
-    border-radius: 22px 22px 18px 18px;
+    width: min(560px, 100%);
+    max-height: calc(100dvh - 32px);
+    border-radius: 22px;
   }
 
   .admin-modal-body {
     grid-template-columns: 1fr;
     padding: 18px 18px 22px;
-  }
-
-  .admin-detail-button,
-  .admin-whatsapp-button,
-  .admin-delete-button {
-    width: 100%;
-    justify-content: center;
   }
 }
 

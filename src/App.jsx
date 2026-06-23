@@ -30,6 +30,57 @@ function buildWhatsAppLink(phone) {
   return `https://wa.me/${normalizedPhone}?text=${text}`;
 }
 
+function normalizeLessonName(lesson) {
+  return (lesson || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getLessonStatCategory(lesson) {
+  const normalized = normalizeLessonName(lesson);
+  if (!normalized) return null;
+
+  if (normalized.includes("bas") && normalized.includes("gitar")) {
+    return "Bas Gitar";
+  }
+
+  if (normalized.includes("piyano")) {
+    return "Piyano";
+  }
+
+  if (
+    normalized.includes("müzik teorisi") ||
+    normalized.includes("muzik teorisi")
+  ) {
+    return "Müzik Teorisi";
+  }
+
+  if (normalized.includes("gitar")) {
+    return "Gitar";
+  }
+
+  return null;
+}
+
+function computeSubmissionStats(submissions) {
+  const stats = {
+    total: submissions.length,
+    gitar: 0,
+    piyano: 0,
+    basGitar: 0,
+    muzikTeorisi: 0,
+  };
+
+  submissions.forEach((item) => {
+    const category = getLessonStatCategory(item.lesson);
+
+    if (category === "Gitar") stats.gitar += 1;
+    else if (category === "Piyano") stats.piyano += 1;
+    else if (category === "Bas Gitar") stats.basGitar += 1;
+    else if (category === "Müzik Teorisi") stats.muzikTeorisi += 1;
+  });
+
+  return stats;
+}
+
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
@@ -88,6 +139,16 @@ const [formStatus, setFormStatus] = useState({
       message.toLowerCase().includes(search)
     );
   });
+
+  const submissionStats = computeSubmissionStats(submissions);
+
+  const statCards = [
+    { label: "Toplam Başvuru", value: submissionStats.total, variant: "total" },
+    { label: "Gitar", value: submissionStats.gitar },
+    { label: "Piyano", value: submissionStats.piyano },
+    { label: "Bas Gitar", value: submissionStats.basGitar },
+    { label: "Müzik Teorisi", value: submissionStats.muzikTeorisi },
+  ];
 
 
 
@@ -330,10 +391,14 @@ const handleAdminLogin = async (e) => {
       }
     };
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     window.addEventListener("keydown", handleEscape);
 
     return () => {
       window.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previousOverflow;
     };
   }, [selectedSubmission]);
 
@@ -372,11 +437,6 @@ if (isAdminPage) {
   </div>
 
   <div className="admin-header-actions">
-    <div className="admin-stat-card">
-      <span>Toplam Başvuru</span>
-      <strong>{submissions.length}</strong>
-    </div>
-
     <button
       type="button"
       className="admin-logout-button"
@@ -386,6 +446,20 @@ if (isAdminPage) {
     </button>
   </div>
 </div>
+
+          <div className="admin-stats-grid">
+            {statCards.map((card) => (
+              <div
+                key={card.label}
+                className={`admin-stat-card${
+                  card.variant === "total" ? " admin-stat-card-total" : ""
+                }`}
+              >
+                <span>{card.label}</span>
+                <strong>{card.value}</strong>
+              </div>
+            ))}
+          </div>
 
           <div className="admin-filters">
   <div className="admin-search-box">
@@ -442,11 +516,13 @@ if (isAdminPage) {
 
                     return (
                      <tr key={item.originalIndex}>
-                      <td>{item.name}</td>
-                      <td>{item.phone}</td>
-                      <td>{item.lesson}</td>
-                      <td className="admin-message-cell">{item.message}</td>
-                      <td>
+                      <td data-label="Ad Soyad">{item.name}</td>
+                      <td data-label="Telefon">{item.phone}</td>
+                      <td data-label="Ders">{item.lesson}</td>
+                      <td className="admin-message-cell" data-label="Mesaj">
+                        {item.message}
+                      </td>
+                      <td data-label="Tarih">
   {new Date(item.date).toLocaleString("tr-TR", {
     day: "2-digit",
     month: "long",
@@ -455,7 +531,7 @@ if (isAdminPage) {
     minute: "2-digit",
   })}
 </td>
-                      <td>
+                      <td className="admin-actions-cell" data-label="İşlem">
                         <div className="admin-row-actions">
                           <button
                             type="button"
@@ -499,80 +575,80 @@ if (isAdminPage) {
               </table>
             </div>
           )}
+        </div>
+      )}
 
-          {selectedSubmission && (
-            <div
-              className="admin-modal-overlay"
-              onClick={() => setSelectedSubmission(null)}
-            >
-              <div
-                className="admin-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="admin-modal-title"
-                onClick={(event) => event.stopPropagation()}
+      {selectedSubmission && (
+        <div
+          className="admin-modal-overlay"
+          onClick={() => setSelectedSubmission(null)}
+        >
+          <div
+            className="admin-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="admin-modal-header">
+              <div>
+                <p className="admin-eyebrow">Başvuru Detayı</p>
+                <h2 id="admin-modal-title">
+                  {selectedSubmission.name || "İsimsiz Başvuru"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                aria-label="Başvuru detayını kapat"
+                onClick={() => setSelectedSubmission(null)}
               >
-                <div className="admin-modal-header">
-                  <div>
-                    <p className="admin-eyebrow">Başvuru Detayı</p>
-                    <h2 id="admin-modal-title">
-                      {selectedSubmission.name || "İsimsiz Başvuru"}
-                    </h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="admin-modal-close"
-                    aria-label="Başvuru detayını kapat"
-                    onClick={() => setSelectedSubmission(null)}
-                  >
-                    ×
-                  </button>
-                </div>
+                ×
+              </button>
+            </div>
 
-                <div className="admin-modal-body">
-                  <div className="admin-modal-field">
-                    <span className="admin-modal-label">Ad Soyad</span>
-                    <p>{selectedSubmission.name || "—"}</p>
-                  </div>
+            <div className="admin-modal-body">
+              <div className="admin-modal-field">
+                <span className="admin-modal-label">Ad Soyad</span>
+                <p>{selectedSubmission.name || "—"}</p>
+              </div>
 
-                  <div className="admin-modal-field">
-                    <span className="admin-modal-label">Telefon</span>
-                    <p>{selectedSubmission.phone || "—"}</p>
-                  </div>
+              <div className="admin-modal-field">
+                <span className="admin-modal-label">Telefon</span>
+                <p>{selectedSubmission.phone || "—"}</p>
+              </div>
 
-                  <div className="admin-modal-field">
-                    <span className="admin-modal-label">Ders</span>
-                    <p>{selectedSubmission.lesson || "—"}</p>
-                  </div>
+              <div className="admin-modal-field">
+                <span className="admin-modal-label">Ders</span>
+                <p>{selectedSubmission.lesson || "—"}</p>
+              </div>
 
-                  <div className="admin-modal-field">
-                    <span className="admin-modal-label">Tarih</span>
-                    <p>
-                      {selectedSubmission.date
-                        ? new Date(selectedSubmission.date).toLocaleString(
-                            "tr-TR",
-                            {
-                              day: "2-digit",
-                              month: "long",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )
-                        : "—"}
-                    </p>
-                  </div>
+              <div className="admin-modal-field">
+                <span className="admin-modal-label">Tarih</span>
+                <p>
+                  {selectedSubmission.date
+                    ? new Date(selectedSubmission.date).toLocaleString(
+                        "tr-TR",
+                        {
+                          day: "2-digit",
+                          month: "long",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }
+                      )
+                    : "—"}
+                </p>
+              </div>
 
-                  <div className="admin-modal-field admin-modal-field-full">
-                    <span className="admin-modal-label">Mesaj</span>
-                    <p className="admin-modal-message">
-                      {selectedSubmission.message || "—"}
-                    </p>
-                  </div>
-                </div>
+              <div className="admin-modal-field admin-modal-field-full">
+                <span className="admin-modal-label">Mesaj</span>
+                <p className="admin-modal-message">
+                  {selectedSubmission.message || "—"}
+                </p>
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
