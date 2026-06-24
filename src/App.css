@@ -2885,3 +2885,22 @@ margin-top: 10px;
   text-align: left;
   width: 100%;
 }
+
+.admin-status-select {
+  width: 100%;
+  min-width: 140px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.9rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+.admin-status-select:focus {
+  border-color: rgba(120, 79, 43, 0.55);
+  box-shadow: 0 0 0 3px rgba(120, 79, 43, 0.12);
+}

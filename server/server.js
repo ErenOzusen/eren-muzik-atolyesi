@@ -19,6 +19,7 @@ function formatSubmission(submission) {
     phone: submission.phone,
     lesson: submission.lesson,
     message: submission.message,
+    status: submission.status || "Yeni",
     createdAt,
     date: createdAt ? new Date(createdAt).toISOString() : null,
   };
@@ -133,6 +134,14 @@ const checkAdminToken = (req, res, next) => {
   }
 };
 
+const VALID_SUBMISSION_STATUSES = [
+  "Yeni",
+  "Arandı",
+  "Beklemede",
+  "Derse başladı",
+  "İptal",
+];
+
 app.get("/api/submissions", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
@@ -150,6 +159,57 @@ app.get("/api/submissions", checkAdminToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Başvurular alınırken bir hata oluştu",
+    });
+  }
+});
+
+app.patch("/api/submissions/:id/status", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz kayıt id",
+    });
+  }
+
+  if (!VALID_SUBMISSION_STATUSES.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz başvuru durumu",
+    });
+  }
+
+  try {
+    const updatedSubmission = await Submission.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!updatedSubmission) {
+      return res.status(404).json({
+        success: false,
+        message: "Başvuru bulunamadı",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Başvuru durumu güncellendi",
+      submission: formatSubmission(updatedSubmission),
+    });
+  } catch (error) {
+    console.error("Başvuru durumu güncellenemedi:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Başvuru durumu güncellenirken bir hata oluştu",
     });
   }
 });

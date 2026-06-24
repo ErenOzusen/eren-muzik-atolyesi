@@ -22,6 +22,11 @@ const submissionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    status: {
+      type: String,
+      enum: ["Yeni", "Arandı", "Beklemede", "Derse başladı", "İptal"],
+      default: "Yeni",
+    },
   },
   {
     timestamps: {

@@ -238,6 +238,41 @@ const fetchSubmissions = async (token = adminToken) => {
   }
 };
 
+const handleStatusChange = async (id, newStatus) => {
+  if (!adminToken) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/submissions/${id}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ status: newStatus }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.message || "Başvuru durumu güncellenemedi");
+      return;
+    }
+
+    setSubmissions((prevSubmissions) =>
+      prevSubmissions.map((submission) =>
+        submission._id === id
+          ? { ...submission, status: data.submission?.status || newStatus }
+          : submission
+      )
+    );
+  } catch (error) {
+    console.error("Durum güncelleme hatası:", error);
+    alert("Başvuru durumu güncellenirken bir hata oluştu");
+  }
+};
+
 const handleDeleteSubmission = async (id) => {
   const confirmDelete = window.confirm("Bu başvuruyu silmek istiyor musun?");
 
@@ -498,12 +533,13 @@ if (isAdminPage) {
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Ad Soyad</th>
-                    <th>Telefon</th>
-                    <th>Ders</th>
-                    <th>Mesaj</th>
-                    <th>Tarih</th>
-                    <th>İşlem</th>
+                  <th>Ad Soyad</th>
+<th>Telefon</th>
+<th>Ders</th>
+<th>Mesaj</th>
+<th>Tarih</th>
+<th>Durum</th>
+<th>İşlem</th>
                   </tr>
                 </thead>
 
@@ -520,6 +556,7 @@ if (isAdminPage) {
                         {item.message}
                       </td>
                       <td data-label="Tarih">
+
   {getSubmissionDate(item)
     ? new Date(getSubmissionDate(item)).toLocaleString("tr-TR", {
     day: "2-digit",
@@ -529,6 +566,22 @@ if (isAdminPage) {
     minute: "2-digit",
   })
     : "—"}
+</td>
+
+<td>
+  <select
+    className="admin-status-select"
+    value={item.status || "Yeni"}
+    onChange={(event) =>
+      handleStatusChange(item._id, event.target.value)
+    }
+  >
+    <option value="Yeni">Yeni</option>
+    <option value="Arandı">Arandı</option>
+    <option value="Beklemede">Beklemede</option>
+    <option value="Derse başladı">Derse başladı</option>
+    <option value="İptal">İptal</option>
+  </select>
 </td>
                       <td className="admin-actions-cell" data-label="İşlem">
                         <div className="admin-row-actions">
