@@ -244,7 +244,9 @@ const handleStatusChange = async (id, newStatus) => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/submissions/${id}/status`, {
+    const response = await fetch(
+  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${id}/status`,
+  {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
