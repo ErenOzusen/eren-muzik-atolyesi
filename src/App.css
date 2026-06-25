@@ -2887,20 +2887,67 @@ margin-top: 10px;
 }
 
 .admin-status-select {
-  width: 100%;
-  min-width: 140px;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+   width: 150px;
+  min-width: 150px;
+  padding: 10px 34px 10px 12px;
   border-radius: 12px;
-  background: #ffffff;
-  color: #1f2937;
+  border: 1px solid rgba(79, 255, 230, 0.45);
+  background:
+    linear-gradient(45deg, transparent 50%, #64fff0 50%),
+    linear-gradient(135deg, #64fff0 50%, transparent 50%),
+    linear-gradient(135deg, rgba(8, 18, 36, 0.98), rgba(16, 32, 58, 0.98));
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%,
+    0 0;
+  background-size:
+    6px 6px,
+    6px 6px,
+    100% 100%;
+  background-repeat: no-repeat;
+  color: #eafdfb;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   outline: none;
   cursor: pointer;
+  box-shadow:
+    0 0 0 1px rgba(79, 255, 230, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.25);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.admin-status-select:hover {
+  border-color: rgba(79, 255, 230, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(79, 255, 230, 0.18),
+    0 12px 28px rgba(0, 0, 0, 0.32);
 }
 
 .admin-status-select:focus {
-  border-color: rgba(120, 79, 43, 0.55);
-  box-shadow: 0 0 0 3px rgba(120, 79, 43, 0.12);
+  border-color: #64fff0;
+  box-shadow:
+    0 0 0 3px rgba(79, 255, 230, 0.18),
+    0 12px 28px rgba(0, 0, 0, 0.32);
+}
+
+.admin-status-select option {
+  background: #0f1b2f;
+  color: #eafdfb;
+  font-weight: 600;
+}
+
+.admin-status-select option:checked {
+  background: #123b55;
+  color: #64fff0;
+}
+
+.admin-status-select option:hover {
+  background: #123b55;
+  color: #64fff0;
 }
