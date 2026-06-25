@@ -896,56 +896,94 @@ if (isAdminPage) {
 </section>
 
       <section id="dersler" className="lessons reveal">
+  <span className="section-badge">Dersler</span>
   <h2>Derslerimiz</h2>
+
+  <p className="section-description">
+    Gitar, piyano ve bas gitar dersleri; öğrencinin yaşı, seviyesi, müzik zevki
+    ve hedeflerine göre kişiye özel olarak planlanır. Dersler yüz yüze veya
+    online olarak yapılabilir.
+  </p>
 
   <div className="lesson-list">
     <div className="lesson-card">
       <div className="lesson-icon">🎸</div>
       <h3>Gitar Dersi</h3>
-      <p>Başlangıç ve orta seviye gitar eğitimi.</p>
 
-<a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Bilgi Al
-</a>
+      <p>
+        Gitar dersleri, yeni başlayan öğrencilerden kendini geliştirmek isteyenlere
+        kadar her seviyeye uygun şekilde planlanır. Temel duruş, ritim, akorlar,
+        pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım işlenir.
+      </p>
+
+      <p>
+        Öğrencinin ilgisine göre pop, rock, Türkçe şarkılar veya temel klasik gitar
+        çalışmalarıyla ilerlenebilir. Amaç, öğrencinin sevdiği şarkıları çalarken
+        sağlam bir müzikal temel kazanmasıdır.
+      </p>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Gitar Dersi İçin Bilgi Al
+      </a>
     </div>
-    
 
     <div className="lesson-card">
       <div className="lesson-icon">🎹</div>
       <h3>Piyano Dersi</h3>
-      <p>Temel piyano teknikleri, nota okuma ve repertuvar çalışmaları.</p>
+
+      <p>
+        Piyano derslerinde öğrencinin yaşına ve seviyesine uygun bir başlangıç
+        yapılır. Nota okuma, ritim, sağ-sol el koordinasyonu, temel teknik çalışmalar
+        ve basit parçalarla müzikal gelişim desteklenir.
+      </p>
+
+      <p>
+        Çocuklar için sabırlı ve anlaşılır bir eğitim süreci uygulanırken,
+        yetişkin öğrenciler için hedefe yönelik düzenli bir program hazırlanır.
+        Amaç hem teknik gelişim hem de müzik sevgisini artırmaktır.
+      </p>
 
       <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Bilgi Al
-</a>
+        href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Piyano Dersi İçin Bilgi Al
+      </a>
     </div>
-
 
     <div className="lesson-card">
       <div className="lesson-icon">🎸</div>
       <h3>Bas Gitar Dersi</h3>
-      <p>Ritim, groove, temel teknikler ve şarkı eşlik çalışmaları.</p>
 
-    <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Bilgi Al
-</a>
+      <p>
+        Bas gitar dersleri, ritim duygusunu geliştirmek ve müziğin temel yapısını
+        daha iyi anlamak isteyen öğrenciler için uygundur. Temel teknikler,
+        parmak kullanımı, ritim çalışmaları, bas yürüyüşleri ve şarkı eşlikleri
+        üzerinde durulur.
+      </p>
+
+      <p>
+        Öğrencinin seviyesine göre pop, rock, funk ve farklı tarzlarda çalışmalar
+        yapılabilir. Amaç, öğrencinin grup içinde bas gitarın görevini anlayarak
+        müziğe sağlam şekilde eşlik edebilmesidir.
+      </p>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Bas Gitar Dersi İçin Bilgi Al
+      </a>
     </div>
-  
   </div>
 </section>
 
