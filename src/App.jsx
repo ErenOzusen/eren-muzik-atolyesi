@@ -1183,49 +1183,97 @@ if (isAdminPage) {
 </section>
 
 <section id="sss" className="faq reveal">
+  <span className="section-badge">SSS</span>
   <h2>Sık Sorulan Sorular</h2>
+
+  <p className="section-description">
+    Derslere başlamadan önce aklınıza takılabilecek temel soruları burada bulabilirsiniz.
+    Daha detaylı bilgi almak isterseniz WhatsApp üzerinden iletişime geçebilirsiniz.
+  </p>
 
   <div className="faq-list">
     <div className="faq-item">
       <h3>Dersler kimler için uygundur?</h3>
       <p>
-        Dersler başlangıç seviyesinden ileri seviyeye kadar her yaş grubuna uygun şekilde planlanır.
+        Dersler çocuklar, gençler ve yetişkinler için uygundur. Gitar, piyano, bas gitar
+        veya temel müzik eğitimi almak isteyen öğrenciler için seviye ve hedefe göre
+        kişiye özel bir ders planı hazırlanır.
+      </p>
+    </div>
+
+    <div className="faq-item">
+      <h3>Hiç müzik bilgim yok, yine de başlayabilir miyim?</h3>
+      <p>
+        Evet. Dersler tamamen başlangıç seviyesinden başlayacak şekilde planlanabilir.
+        Nota bilmek, daha önce enstrüman çalmış olmak veya müzik geçmişine sahip olmak
+        zorunlu değildir.
+      </p>
+    </div>
+
+    <div className="faq-item">
+      <h3>Çocuklar kaç yaşından itibaren derse başlayabilir?</h3>
+      <p>
+        Çocuğun ilgisi, dikkat süresi ve fiziksel uygunluğu dikkate alınarak karar verilir.
+        Daha küçük yaş gruplarında dersler oyunlaştırılmış, eğlenceli ve temel müzik sevgisini
+        geliştirmeye yönelik ilerler.
       </p>
     </div>
 
     <div className="faq-item">
       <h3>Dersler birebir mi yapılıyor?</h3>
       <p>
-        Evet, dersler öğrencinin seviyesine ve hedeflerine göre birebir olarak planlanır.
+        Evet, dersler birebir olarak planlanır. Böylece öğrencinin seviyesi, öğrenme hızı,
+        müzik zevki ve hedefleri daha yakından takip edilir.
       </p>
     </div>
 
     <div className="faq-item">
-      <h3>Çocuklar için müzik dersi var mı?</h3>
+      <h3>Dersler online mı, yüz yüze mi?</h3>
       <p>
-        Evet, çocukların yaşına ve ilgisine uygun eğlenceli müzik dersleri yapılır.
+        Dersler ihtiyaca göre yüz yüze veya online olarak yapılabilir. Online derslerde de
+        öğrencinin seviyesi takip edilir, düzenli çalışma planı oluşturulur ve ders süreci
+        adım adım ilerletilir.
       </p>
     </div>
 
     <div className="faq-item">
       <h3>Derse başlamak için enstrümanım olmak zorunda mı?</h3>
       <p>
-        Başlangıç aşamasında süreç birlikte değerlendirilir. Uygun enstrüman seçimi konusunda yönlendirme yapılabilir.
+        Başlangıç aşamasında enstrüman seçimi birlikte değerlendirilebilir. Öğrencinin yaşı,
+        hedefi ve bütçesine göre uygun enstrüman seçimi konusunda yönlendirme yapılabilir.
+      </p>
+    </div>
+
+    <div className="faq-item">
+      <h3>Ne kadar sürede şarkı çalmaya başlayabilirim?</h3>
+      <p>
+        Bu süre öğrencinin yaşı, çalışma düzeni, seçilen enstrüman ve hedeflerine göre değişir.
+        Düzenli çalışmayla başlangıç seviyesindeki öğrenciler kısa sürede basit şarkılar ve
+        temel eşlikler çalmaya başlayabilir.
+      </p>
+    </div>
+
+    <div className="faq-item">
+      <h3>Derslerde hangi tarz müzikler çalışılıyor?</h3>
+      <p>
+        Derslerde öğrencinin ilgisine göre pop, rock, Türkçe şarkılar, temel klasik çalışmalar,
+        ritim egzersizleri, repertuvar çalışmaları ve müzik teorisi konuları işlenebilir.
       </p>
     </div>
   </div>
-  <div className="faq-cta">
-  <p>Aklınıza takılan başka bir soru mu var?</p>
 
-<a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20akl%C4%B1ma%20tak%C4%B1lan%20bir%20soru%20var.%20Bilgi%20alabilir%20miyim%3F"
-  target="_blank"
-  rel="noopener noreferrer"
-  className="whatsapp-button"
->
-  WhatsApp’tan Sor
-</a>
-</div>
+  <div className="faq-cta">
+    <p>Aklınıza takılan başka bir soru mu var?</p>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20akl%C4%B1ma%20tak%C4%B1lan%20bir%20soru%20var.%20Bilgi%20alabilir%20miyim%3F"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="whatsapp-button"
+    >
+      WhatsApp’tan Sor
+    </a>
+  </div>
 </section>
 
 <section id="iletisim" className="contact reveal">

@@ -3041,3 +3041,16 @@ margin-top: 10px;
 .package-card .lesson-button {
   margin-top: auto;
 }
+
+.faq-item p {
+  line-height: 1.75;
+  color: #475569;
+}
+
+.faq-item h3 {
+  line-height: 1.3;
+}
+
+.faq-cta p {
+  line-height: 1.6;
+}
