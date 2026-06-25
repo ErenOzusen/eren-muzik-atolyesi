@@ -800,31 +800,43 @@ if (isAdminPage) {
   </div>
 </nav>
 
-   <section id="hero" className="hero">
+  <section id="hero" className="hero">
   <div className="hero-content">
-    <h1>Eren Müzik Atölyesi</h1>
-    <p>Gitar, piyano ve müzik teorisi dersleriyle müziğe ilk adımı atın.</p>
+    <span className="hero-badge">Ankara’da ve online birebir müzik dersleri</span>
+
+   <h1>
+  Gitar, Piyano ve Bas Gitar Dersleri
+</h1>
+
+    <p>
+      Çocuklar, gençler ve yetişkinler için; öğrencinin yaşı, seviyesi ve
+      hedeflerine göre planlanan birebir müzik dersleriyle müziğe güvenle başlayın.
+    </p>
+
+    <div className="hero-highlights">
+      <span>TRT koro geçmişi</span>
+      <span>Konservatuvar eğitimi</span>
+      <span>10+ yıl öğretmenlik deneyimi</span>
+    </div>
 
     <div className="hero-buttons">
       <a href="#iletisim" className="hero-button">
-        Ders Almak İstiyorum
+        Ücretsiz Ön Görüşme Al
       </a>
 
       <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="whatsapp-button"
->
-  WhatsApp’tan Yaz
-</a>
-
-   
+        href="https://wa.me/905558089585?text=Merhaba%2C%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="whatsapp-button"
+      >
+        WhatsApp’tan Bilgi Al
+      </a>
     </div>
   </div>
 
   <div className="hero-image">
-    <img src="/music-hero.png" alt="Müzik dersi" />
+    <img src="/music-hero.png" alt="Gitar, piyano ve bas gitar özel müzik dersi" />
   </div>
 </section>
 
