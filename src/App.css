@@ -2965,3 +2965,30 @@ margin-top: 10px;
   margin: 0;
   line-height: 1.6;
 }
+
+.about {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 88px 24px;
+  text-align: center;
+}
+
+.about h2 {
+  max-width: 760px;
+  margin: 0 auto 28px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.15;
+  color: #0f172a;
+}
+
+.about p {
+  max-width: 760px;
+  margin: 0 auto 18px;
+  font-size: 1.02rem;
+  line-height: 1.85;
+  color: #475569;
+}
+
+.about .section-badge {
+  margin-bottom: 14px;
+}

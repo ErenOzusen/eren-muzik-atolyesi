@@ -851,15 +851,49 @@ if (isAdminPage) {
     </div>
   </div>
 </section>
+<section id="hakkimda" className="about reveal">
+  <span className="section-badge">Hakkımda</span>
+  <h2>Müziğin İçinden Gelen Bir Eğitim Anlayışı</h2>
 
-            <section id="hakkimda" className="about reveal">
-        <h2>Hakkımda</h2>
-        <p>
-          Ben Eren. Müzik öğretmeniyim. Gitar, piyano ve bas gitar alanlarında
-          birebir özel dersler veriyorum. Derslerimde öğrencinin seviyesine göre
-          adım adım ilerleyen, anlaşılır ve keyifli bir eğitim süreci sunuyorum.
-        </p>
-      </section>
+  <p>
+    Müzikle iç içe bir ailede büyüdüm. Dedem ve amcam TRT sanatçısıydı;
+    ailemde birçok kişi müzikle yakından ilgilendi. Bu nedenle müzik,
+    benim için küçük yaşlardan itibaren hayatın doğal bir parçası oldu.
+  </p>
+
+  <p>
+    Çocukluk dönemimde TRT Çocuk Korosu’nda müzik eğitimime başladım,
+    ardından TRT Gençlik Korosu’nda yer alarak koro disiplini, sahne
+    deneyimi ve Türk sanat müziği repertuvarıyla güçlü bir temel kazandım.
+  </p>
+
+  <p>
+    Müzik eğitimimi konservatuvar süreciyle akademik bir temele taşıdım.
+    Konservatuvarda kontrabas üzerine çalıştım; bunun yanında yan flüt
+    ve saksofon gibi farklı enstrümanlarla da ilgilendim. Sonrasında
+    formasyon eğitimi alarak müzik bilgimi öğretmenlik becerileriyle
+    birleştirdim.
+  </p>
+
+  <p>
+    Yıllar içinde farklı gruplarla sahne aldım, çeşitli sanatçılara eşlik
+    ettim; üniversite şenlikleri, mini konserler, radyo programları ve
+    televizyon canlı yayınlarında müzik yaptım.
+  </p>
+
+  <p>
+    Yaklaşık 10–12 yıllık öğretmenlik deneyimim var. Bugün gitar, piyano,
+    bas gitar ve temel müzik eğitimi alanlarında; 5 yaşından yetişkinlere
+    kadar farklı yaş gruplarına birebir dersler veriyorum.
+  </p>
+
+  <p>
+    Derslerimde her öğrencinin yaşı, seviyesi, müzik zevki ve hedefi
+    benim için önemlidir. Amacım yalnızca enstrüman çalmayı öğretmek değil;
+    öğrencinin müziği sevmesini, özgüven kazanmasını ve düzenli şekilde
+    gelişmesini sağlamaktır.
+  </p>
+</section>
 
       <section id="dersler" className="lessons reveal">
   <h2>Derslerimiz</h2>
