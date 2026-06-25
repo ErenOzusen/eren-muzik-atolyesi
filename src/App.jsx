@@ -988,55 +988,95 @@ if (isAdminPage) {
 </section>
 
             <section id="paketler" className="packages reveal">
+  <span className="section-badge">Paketler</span>
   <h2>Ders Paketleri</h2>
+
+  <p className="section-description">
+    Ders paketleri öğrencinin yaşı, seviyesi, hedefi ve haftalık çalışma düzenine göre
+    kişiye özel olarak planlanır. İlk görüşmede öğrencinin ihtiyacı belirlenir ve en uygun
+    ders süreci birlikte seçilir.
+  </p>
 
   <div className="package-list">
     <div className="package-card">
       <div className="package-icon">🥉</div>
       <h3>Başlangıç Paketi</h3>
-      <p>Gitar, piyano veya bas gitara yeni başlayan öğrenciler için temel eğitim.</p>
-<span className="package-badge">Seviyeye göre planlanır</span>     
 
- <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20Ba%C5%9Flang%C4%B1%C3%A7%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Paket Bilgisi Al
-</a>
+      <p>
+        Gitar, piyano veya bas gitara yeni başlayacak öğrenciler için hazırlanır.
+        Enstrümanı ilk kez tanıyan öğrencilerde temel duruş, ritim, nota bilgisi,
+        basit egzersizler ve kolay şarkılarla güvenli bir başlangıç yapılır.
+      </p>
+
+      <p>
+        Bu paket özellikle müziğe sağlam bir temel atmak, doğru alışkanlıklar kazanmak
+        ve düzenli çalışmaya başlamak isteyen çocuk, genç ve yetişkin öğrenciler için uygundur.
+      </p>
+
+      <span className="package-badge">Yeni başlayanlar için ideal</span>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20Ba%C5%9Flang%C4%B1%C3%A7%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Başlangıç Paketi İçin Bilgi Al
+      </a>
     </div>
 
     <div className="package-card">
       <div className="package-icon">🥈</div>
       <h3>Gelişim Paketi</h3>
-      <p>Temel bilgisi olan öğrenciler için teknik, repertuvar ve müzikal gelişim çalışmaları.</p>
-<span className="package-badge">Birebir özel program</span>     
 
-<a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20Geli%C5%9Fim%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Paket Bilgisi Al
-</a>
+      <p>
+        Daha önce enstrüman çalmış veya temel bilgisi olan öğrenciler için uygundur.
+        Derslerde teknik gelişim, repertuvar çalışmaları, ritim, nota okuma, müzikal ifade
+        ve öğrencinin seviyesine uygun şarkılar üzerinde çalışılır.
+      </p>
+
+      <p>
+        Bu paket, mevcut seviyesini ilerletmek, daha bilinçli çalışmak ve sevdiği parçaları
+        daha doğru teknikle çalmak isteyen öğrenciler için kişiye özel şekilde planlanır.
+      </p>
+
+      <span className="package-badge">Birebir özel gelişim programı</span>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20Geli%C5%9Fim%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Gelişim Paketi İçin Bilgi Al
+      </a>
     </div>
 
     <div className="package-card">
       <div className="package-icon">🥇</div>
       <h3>Çocuklar İçin Müzik</h3>
-      <p>Çocukların yaşına ve ilgisine uygun eğlenceli müzik eğitimi.</p>
-<span className="package-badge">Keyifli ve öğretici dersler</span>     
 
- <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20%C3%87ocuklar%20i%C3%A7in%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="lesson-button"
->
-  Paket Bilgisi Al
-</a>
+      <p>
+        Çocukların yaşına, dikkat süresine ve ilgisine uygun şekilde planlanan eğlenceli
+        ve öğretici bir müzik sürecidir. Derslerde ritim, kulak gelişimi, basit melodiler,
+        enstrüman tanıma ve müzik sevgisi ön planda tutulur.
+      </p>
+
+      <p>
+        Amaç çocuğun müzikle güvenli, keyifli ve sabırlı bir şekilde tanışmasıdır.
+        Dersler çocuğun hızına göre ilerler ve süreç veliyle iletişim içinde takip edilir.
+      </p>
+
+      <span className="package-badge">Çocuklara uygun keyifli dersler</span>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20%C3%87ocuklar%20i%C3%A7in%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        Çocuklar İçin Bilgi Al
+      </a>
     </div>
   </div>
 </section>
