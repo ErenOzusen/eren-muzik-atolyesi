@@ -3169,3 +3169,445 @@ margin-top: 10px;
     max-width: 100%;
   }
 }
+
+/* Mobil premium görünüm iyileştirmeleri */
+@media (max-width: 768px) {
+  html {
+    scroll-padding-top: 110px;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  section {
+    scroll-margin-top: 110px;
+  }
+
+  .navbar {
+    min-height: 92px;
+    padding: 22px 24px;
+  }
+
+  .logo,
+  .navbar-logo {
+    font-size: 1.45rem;
+    line-height: 1.2;
+  }
+
+  .hamburger,
+  .menu-toggle {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+  }
+
+  .hero {
+    padding: 72px 24px 64px;
+    gap: 34px;
+  }
+
+  .hero-content {
+    text-align: center;
+  }
+
+  .hero-badge {
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 0.82rem;
+    padding: 8px 14px;
+  }
+
+  .hero-content h1 {
+    font-size: clamp(2.35rem, 10vw, 3.2rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    margin-bottom: 18px;
+  }
+
+  .hero-content p {
+    font-size: 1rem;
+    line-height: 1.65;
+    margin-bottom: 22px;
+  }
+
+  .hero-highlights {
+    justify-content: center;
+    gap: 9px;
+    margin: 22px 0 28px;
+  }
+
+  .hero-highlights span {
+    font-size: 0.82rem;
+    padding: 8px 12px;
+  }
+
+  .hero-buttons {
+    width: 100%;
+    gap: 14px;
+  }
+
+  .hero-button,
+  .whatsapp-button,
+  .lesson-button {
+    width: 100%;
+    max-width: 340px;
+    min-height: 54px;
+    font-size: 1rem;
+    padding: 14px 20px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .hero-image img {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 24px;
+  }
+
+  .about,
+  .lessons,
+  .packages,
+  .process-section,
+  .testimonials,
+  .faq,
+  .contact {
+    padding: 64px 24px;
+  }
+
+  .about h2,
+  .lessons h2,
+  .packages h2,
+  .process-section h2,
+  .testimonials h2,
+  .faq h2,
+  .contact h2 {
+    font-size: clamp(2rem, 8vw, 2.65rem);
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    margin-bottom: 22px;
+  }
+
+  .section-description,
+  .about p,
+  .lesson-card p,
+  .package-card p,
+  .process-card p,
+  .testimonial-card p,
+  .faq-item p,
+  .contact p {
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  .about p {
+    margin-bottom: 18px;
+  }
+
+  .lesson-list,
+  .package-list,
+  .process-grid,
+  .testimonial-list,
+  .faq-list {
+    gap: 22px;
+  }
+
+  .lesson-card,
+  .package-card,
+  .process-card,
+  .testimonial-card,
+  .faq-item {
+    width: 100%;
+    padding: 32px 24px;
+    border-radius: 26px;
+  }
+
+  .lesson-card h3,
+  .package-card h3,
+  .process-card h3,
+  .faq-item h3 {
+    font-size: 1.55rem;
+    line-height: 1.25;
+    margin-bottom: 16px;
+  }
+
+  .package-badge {
+    font-size: 0.95rem;
+    line-height: 1.3;
+    padding: 10px 16px;
+    margin: 12px auto 22px;
+  }
+
+  .faq-item {
+    text-align: left;
+  }
+
+  .faq-item h3 {
+    padding-right: 42px;
+  }
+
+  .faq-item p {
+    text-align: left;
+  }
+
+  .faq-cta {
+    padding: 28px 20px;
+  }
+
+  .faq-cta p {
+    font-size: 1.15rem;
+    line-height: 1.45;
+    margin-bottom: 18px;
+  }
+
+  .contact {
+    padding-bottom: 72px;
+  }
+
+  .contact-form input,
+  .contact-form select,
+  .contact-form textarea {
+    font-size: 1rem;
+    min-height: 58px;
+    border-radius: 18px;
+  }
+
+  .contact-form textarea {
+    min-height: 150px;
+  }
+
+  .back-to-top,
+  .scroll-top {
+    width: 48px;
+    height: 48px;
+    bottom: 24px;
+    right: 18px;
+    opacity: 0.9;
+  }
+
+  footer {
+    padding: 36px 24px;
+    text-align: center;
+  }
+}
+
+/* MOBIL FINAL OVERRIDE - premium görünüm */
+@media (max-width: 768px) {
+  html {
+    scroll-padding-top: 120px !important;
+  }
+
+  body {
+    overflow-x: hidden !important;
+  }
+
+  section {
+    scroll-margin-top: 120px !important;
+  }
+
+  .hero,
+  .about,
+  .lessons,
+  .packages,
+  .process-section,
+  .testimonials,
+  .faq,
+  .contact {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+
+  .hero {
+    padding-top: 64px !important;
+    padding-bottom: 56px !important;
+    gap: 30px !important;
+  }
+
+  .hero-content {
+    text-align: center !important;
+  }
+
+  .hero-content h1 {
+    font-size: 2.65rem !important;
+    line-height: 1.12 !important;
+    letter-spacing: -0.03em !important;
+    margin-bottom: 18px !important;
+  }
+
+  .hero-content p {
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+    margin-bottom: 20px !important;
+  }
+
+  .hero-highlights {
+    justify-content: center !important;
+    gap: 8px !important;
+    margin: 20px 0 26px !important;
+  }
+
+  .hero-highlights span {
+    font-size: 0.78rem !important;
+    padding: 8px 11px !important;
+  }
+
+  .hero-button,
+  .whatsapp-button,
+  .lesson-button {
+    width: 100% !important;
+    max-width: 330px !important;
+    min-height: 52px !important;
+    font-size: 0.98rem !important;
+    padding: 13px 18px !important;
+    border-radius: 999px !important;
+  }
+
+  .hero-image img {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 24px !important;
+  }
+
+  .about,
+  .lessons,
+  .packages,
+  .process-section,
+  .testimonials,
+  .faq,
+  .contact {
+    padding-top: 58px !important;
+    padding-bottom: 58px !important;
+  }
+
+  .about h2,
+  .lessons h2,
+  .packages h2,
+  .process-section h2,
+  .testimonials h2,
+  .faq h2,
+  .contact h2 {
+    font-size: 2.25rem !important;
+    line-height: 1.14 !important;
+    letter-spacing: -0.025em !important;
+    margin-bottom: 18px !important;
+  }
+
+  .section-description {
+    font-size: 1rem !important;
+    line-height: 1.58 !important;
+    margin-bottom: 34px !important;
+  }
+
+  .about p,
+  .lesson-card p,
+  .package-card p,
+  .process-card p,
+  .testimonial-card p,
+  .faq-item p,
+  .contact p {
+    font-size: 0.98rem !important;
+    line-height: 1.58 !important;
+  }
+
+  .about p {
+    margin-bottom: 16px !important;
+  }
+
+  .lesson-list,
+  .package-list,
+  .process-grid,
+  .testimonial-list,
+  .faq-list {
+    gap: 20px !important;
+  }
+
+  .lesson-card,
+  .package-card,
+  .process-card,
+  .testimonial-card,
+  .faq-item {
+    width: 100% !important;
+    padding: 28px 22px !important;
+    border-radius: 24px !important;
+  }
+
+  .lesson-card h3,
+  .package-card h3,
+  .process-card h3,
+  .faq-item h3 {
+    font-size: 1.45rem !important;
+    line-height: 1.22 !important;
+    margin-bottom: 14px !important;
+  }
+
+  .package-icon,
+  .lesson-icon {
+    margin-bottom: 12px !important;
+  }
+
+  .package-badge {
+    font-size: 0.9rem !important;
+    padding: 10px 15px !important;
+    margin: 10px auto 20px !important;
+  }
+
+  .faq-item {
+    text-align: left !important;
+  }
+
+  .faq-item h3,
+  .faq-item p {
+    text-align: left !important;
+  }
+
+  .faq-item h3 {
+    padding-right: 38px !important;
+  }
+
+  .faq-cta {
+    padding: 26px 18px !important;
+  }
+
+  .faq-cta p {
+    font-size: 1.05rem !important;
+    line-height: 1.45 !important;
+    margin-bottom: 16px !important;
+  }
+
+  .contact-form input,
+  .contact-form select,
+  .contact-form textarea {
+    min-height: 56px !important;
+    font-size: 1rem !important;
+    border-radius: 18px !important;
+  }
+
+  .contact-form textarea {
+    min-height: 140px !important;
+  }
+
+  .back-to-top,
+  .scroll-top {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-content h1 {
+    line-height: 1.16 !important;
+  }
+
+  .hero-highlights {
+    margin-bottom: 22px !important;
+  }
+
+  .section-description {
+    max-width: 92% !important;
+  }
+
+  .lesson-card,
+  .package-card,
+  .faq-item {
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08) !important;
+  }
+}
