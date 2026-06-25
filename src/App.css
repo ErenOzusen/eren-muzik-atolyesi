@@ -2951,3 +2951,17 @@ margin-top: 10px;
   background: #123b55;
   color: #64fff0;
 }
+
+.admin-dashboard-header {
+  gap: 16px;
+}
+
+.admin-dashboard-header h1 {
+  margin: 0 0 10px;
+  line-height: 1.2;
+}
+
+.admin-dashboard-header p {
+  margin: 0;
+  line-height: 1.6;
+}
