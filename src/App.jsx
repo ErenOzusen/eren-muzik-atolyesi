@@ -111,6 +111,13 @@ const [formStatus, setFormStatus] = useState({
   const [lessonFilter, setLessonFilter] = useState("");
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
+  const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+const toggleFaq = (index) => {
+  setOpenFaqIndex((currentIndex) => (currentIndex === index ? null : index));
+};
+
+
   const isAdminPage = window.location.pathname === "/admin";
 
   const lessonFilterOptions = [
@@ -1204,74 +1211,71 @@ if (isAdminPage) {
   </p>
 
   <div className="faq-list">
-    <div className="faq-item">
-      <h3>Dersler kimler için uygundur?</h3>
-      <p>
-        Dersler çocuklar, gençler ve yetişkinler için uygundur. Gitar, piyano, bas gitar
-        veya temel müzik eğitimi almak isteyen öğrenciler için seviye ve hedefe göre
-        kişiye özel bir ders planı hazırlanır.
-      </p>
-    </div>
+    {[
+      {
+        question: "Dersler kimler için uygundur?",
+        answer:
+          "Dersler çocuklar, gençler ve yetişkinler için uygundur. Gitar, piyano, bas gitar veya temel müzik eğitimi almak isteyen öğrenciler için seviye ve hedefe göre kişiye özel bir ders planı hazırlanır.",
+      },
+      {
+        question: "Hiç müzik bilgim yok, yine de başlayabilir miyim?",
+        answer:
+          "Evet. Dersler tamamen başlangıç seviyesinden başlayacak şekilde planlanabilir. Nota bilmek, daha önce enstrüman çalmış olmak veya müzik geçmişine sahip olmak zorunlu değildir.",
+      },
+      {
+        question: "Çocuklar kaç yaşından itibaren derse başlayabilir?",
+        answer:
+          "Çocuğun ilgisi, dikkat süresi ve fiziksel uygunluğu dikkate alınarak karar verilir. Daha küçük yaş gruplarında dersler oyunlaştırılmış, eğlenceli ve temel müzik sevgisini geliştirmeye yönelik ilerler.",
+      },
+      {
+        question: "Dersler birebir mi yapılıyor?",
+        answer:
+          "Evet, dersler birebir olarak planlanır. Böylece öğrencinin seviyesi, öğrenme hızı, müzik zevki ve hedefleri daha yakından takip edilir.",
+      },
+      {
+        question: "Dersler online mı, yüz yüze mi?",
+        answer:
+          "Dersler ihtiyaca göre yüz yüze veya online olarak yapılabilir. Online derslerde de öğrencinin seviyesi takip edilir, düzenli çalışma planı oluşturulur ve ders süreci adım adım ilerletilir.",
+      },
+      {
+        question: "Derse başlamak için enstrümanım olmak zorunda mı?",
+        answer:
+          "Başlangıç aşamasında enstrüman seçimi birlikte değerlendirilebilir. Öğrencinin yaşı, hedefi ve bütçesine göre uygun enstrüman seçimi konusunda yönlendirme yapılabilir.",
+      },
+      {
+        question: "Ne kadar sürede şarkı çalmaya başlayabilirim?",
+        answer:
+          "Bu süre öğrencinin yaşı, çalışma düzeni, seçilen enstrüman ve hedeflerine göre değişir. Düzenli çalışmayla başlangıç seviyesindeki öğrenciler kısa sürede basit şarkılar ve temel eşlikler çalmaya başlayabilir.",
+      },
+      {
+        question: "Derslerde hangi tarz müzikler çalışılıyor?",
+        answer:
+          "Derslerde öğrencinin ilgisine göre pop, rock, Türkçe şarkılar, temel klasik çalışmalar, ritim egzersizleri, repertuvar çalışmaları ve müzik teorisi konuları işlenebilir.",
+      },
+    ].map((faqItem, index) => {
+      const isOpen = openFaqIndex === index;
 
-    <div className="faq-item">
-      <h3>Hiç müzik bilgim yok, yine de başlayabilir miyim?</h3>
-      <p>
-        Evet. Dersler tamamen başlangıç seviyesinden başlayacak şekilde planlanabilir.
-        Nota bilmek, daha önce enstrüman çalmış olmak veya müzik geçmişine sahip olmak
-        zorunlu değildir.
-      </p>
-    </div>
+      return (
+        <div
+          className={`faq-item ${isOpen ? "faq-item-open" : ""}`}
+          key={faqItem.question}
+        >
+          <button
+            type="button"
+            className="faq-question"
+            onClick={() => toggleFaq(index)}
+            aria-expanded={isOpen}
+          >
+            <span>{faqItem.question}</span>
+            <span className="faq-icon">{isOpen ? "−" : "+"}</span>
+          </button>
 
-    <div className="faq-item">
-      <h3>Çocuklar kaç yaşından itibaren derse başlayabilir?</h3>
-      <p>
-        Çocuğun ilgisi, dikkat süresi ve fiziksel uygunluğu dikkate alınarak karar verilir.
-        Daha küçük yaş gruplarında dersler oyunlaştırılmış, eğlenceli ve temel müzik sevgisini
-        geliştirmeye yönelik ilerler.
-      </p>
-    </div>
-
-    <div className="faq-item">
-      <h3>Dersler birebir mi yapılıyor?</h3>
-      <p>
-        Evet, dersler birebir olarak planlanır. Böylece öğrencinin seviyesi, öğrenme hızı,
-        müzik zevki ve hedefleri daha yakından takip edilir.
-      </p>
-    </div>
-
-    <div className="faq-item">
-      <h3>Dersler online mı, yüz yüze mi?</h3>
-      <p>
-        Dersler ihtiyaca göre yüz yüze veya online olarak yapılabilir. Online derslerde de
-        öğrencinin seviyesi takip edilir, düzenli çalışma planı oluşturulur ve ders süreci
-        adım adım ilerletilir.
-      </p>
-    </div>
-
-    <div className="faq-item">
-      <h3>Derse başlamak için enstrümanım olmak zorunda mı?</h3>
-      <p>
-        Başlangıç aşamasında enstrüman seçimi birlikte değerlendirilebilir. Öğrencinin yaşı,
-        hedefi ve bütçesine göre uygun enstrüman seçimi konusunda yönlendirme yapılabilir.
-      </p>
-    </div>
-
-    <div className="faq-item">
-      <h3>Ne kadar sürede şarkı çalmaya başlayabilirim?</h3>
-      <p>
-        Bu süre öğrencinin yaşı, çalışma düzeni, seçilen enstrüman ve hedeflerine göre değişir.
-        Düzenli çalışmayla başlangıç seviyesindeki öğrenciler kısa sürede basit şarkılar ve
-        temel eşlikler çalmaya başlayabilir.
-      </p>
-    </div>
-
-    <div className="faq-item">
-      <h3>Derslerde hangi tarz müzikler çalışılıyor?</h3>
-      <p>
-        Derslerde öğrencinin ilgisine göre pop, rock, Türkçe şarkılar, temel klasik çalışmalar,
-        ritim egzersizleri, repertuvar çalışmaları ve müzik teorisi konuları işlenebilir.
-      </p>
-    </div>
+          <div className="faq-answer">
+            <p>{faqItem.answer}</p>
+          </div>
+        </div>
+      );
+    })}
   </div>
 
   <div className="faq-cta">
