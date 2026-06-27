@@ -1,4 +1,16 @@
 import { useEffect, useState } from "react";
+import {
+  UserRound,
+  Smile,
+  MapPin,
+  Guitar,
+  Piano,
+  AudioWaveform,
+  Star,
+  TrendingUp,
+  MessageCircle,
+  CalendarCheck,
+} from "lucide-react";
 import "./App.css";
 
 const WHATSAPP_PREFILL_MESSAGE =
@@ -826,20 +838,22 @@ if (isAdminPage) {
       <span>10+ yıl öğretmenlik deneyimi</span>
     </div>
 
-    <div className="hero-buttons">
-      <a href="#iletisim" className="hero-button">
-        Ücretsiz Ön Görüşme Al
-      </a>
+  <div className="hero-buttons">
+  <a href="#iletisim" className="hero-button">
+    <CalendarCheck size={18} strokeWidth={2.3} />
+    Ücretsiz Ön Görüşme Al
+  </a>
 
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="whatsapp-button"
-      >
-        WhatsApp’tan Bilgi Al
-      </a>
-    </div>
+  <a
+    href="https://wa.me/905558089585?text=Merhaba%2C%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+    target="_blank"
+    rel="noopener noreferrer"
+    className="whatsapp-button"
+  >
+    <MessageCircle size={18} strokeWidth={2.3} />
+    WhatsApp’tan Bilgi Al
+  </a>
+</div>
   </div>
 
   <div className="hero-image">
@@ -851,24 +865,30 @@ if (isAdminPage) {
   <h2>Neden Eren Müzik Atölyesi?</h2>
 
   <div className="feature-list">
-    <div className="feature-card">
-      <span className="feature-icon">🎵</span>
-      <h3>Birebir Ders</h3>
-      <p>Her öğrencinin seviyesine ve hedefine göre özel ders programı hazırlanır.</p>
-    </div>
-
-    <div className="feature-card">
-      <span className="feature-icon">👶</span>
-      <h3>Çocuklara Uygun</h3>
-      <p>Çocukların yaşına, ilgisine ve öğrenme hızına uygun keyifli müzik eğitimi sunulur.</p>
-    </div>
-
-    <div className="feature-card">
-      <span className="feature-icon">📍</span>
-      <h3>Esnek Ders Seçenekleri</h3>
-      <p>Ankara’da yüz yüze veya ihtiyaca göre online ders seçenekleriyle eğitim alınabilir.</p>
-    </div>
+  <div className="feature-card">
+    <span className="feature-icon">
+      <UserRound strokeWidth={2.2} />
+    </span>
+    <h3>Birebir Ders</h3>
+    <p>Her öğrencinin seviyesine ve hedefine göre özel ders programı hazırlanır.</p>
   </div>
+
+  <div className="feature-card">
+    <span className="feature-icon">
+      <Smile strokeWidth={2.2} />
+    </span>
+    <h3>Çocuklara Uygun</h3>
+    <p>Çocukların yaşına, ilgisine ve öğrenme hızına uygun keyifli müzik eğitimi sunulur.</p>
+  </div>
+
+  <div className="feature-card">
+    <span className="feature-icon">
+      <MapPin strokeWidth={2.2} />
+    </span>
+    <h3>Esnek Ders Seçenekleri</h3>
+    <p>Ankara’da yüz yüze veya ihtiyaca göre online ders seçenekleriyle eğitim alınabilir.</p>
+  </div>
+</div>
 </section>
 <section id="hakkimda" className="about reveal">
   <span className="section-badge">Hakkımda</span>
@@ -925,85 +945,94 @@ if (isAdminPage) {
   </p>
 
   <div className="lesson-list">
-    <div className="lesson-card">
-      <div className="lesson-icon">🎸</div>
-      <h3>Gitar Dersi</h3>
-
-      <p>
-        Gitar dersleri, yeni başlayan öğrencilerden kendini geliştirmek isteyenlere
-        kadar her seviyeye uygun şekilde planlanır. Temel duruş, ritim, akorlar,
-        pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım işlenir.
-      </p>
-
-      <p>
-        Öğrencinin ilgisine göre pop, rock, Türkçe şarkılar veya temel klasik gitar
-        çalışmalarıyla ilerlenebilir. Amaç, öğrencinin sevdiği şarkıları çalarken
-        sağlam bir müzikal temel kazanmasıdır.
-      </p>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Gitar Dersi İçin Bilgi Al
-      </a>
+  <div className="lesson-card">
+    <div className="lesson-icon">
+      <Guitar strokeWidth={2.2} />
     </div>
+    <h3>Gitar Dersi</h3>
 
-    <div className="lesson-card">
-      <div className="lesson-icon">🎹</div>
-      <h3>Piyano Dersi</h3>
+    <p>
+      Gitar dersleri, yeni başlayan öğrencilerden kendini geliştirmek isteyenlere
+      kadar her seviyeye uygun şekilde planlanır. Temel duruş, ritim, akorlar,
+      pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım işlenir.
+    </p>
 
-      <p>
-        Piyano derslerinde öğrencinin yaşına ve seviyesine uygun bir başlangıç
-        yapılır. Nota okuma, ritim, sağ-sol el koordinasyonu, temel teknik çalışmalar
-        ve basit parçalarla müzikal gelişim desteklenir.
-      </p>
+    <p>
+      Öğrencinin ilgisine göre pop, rock, Türkçe şarkılar veya temel klasik gitar
+      çalışmalarıyla ilerlenebilir. Amaç, öğrencinin sevdiği şarkıları çalarken
+      sağlam bir müzikal temel kazanmasıdır.
+    </p>
 
-      <p>
-        Çocuklar için sabırlı ve anlaşılır bir eğitim süreci uygulanırken,
-        yetişkin öğrenciler için hedefe yönelik düzenli bir program hazırlanır.
-        Amaç hem teknik gelişim hem de müzik sevgisini artırmaktır.
-      </p>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Piyano Dersi İçin Bilgi Al
-      </a>
-    </div>
-
-    <div className="lesson-card">
-      <div className="lesson-icon">🎸</div>
-      <h3>Bas Gitar Dersi</h3>
-
-      <p>
-        Bas gitar dersleri, ritim duygusunu geliştirmek ve müziğin temel yapısını
-        daha iyi anlamak isteyen öğrenciler için uygundur. Temel teknikler,
-        parmak kullanımı, ritim çalışmaları, bas yürüyüşleri ve şarkı eşlikleri
-        üzerinde durulur.
-      </p>
-
-      <p>
-        Öğrencinin seviyesine göre pop, rock, funk ve farklı tarzlarda çalışmalar
-        yapılabilir. Amaç, öğrencinin grup içinde bas gitarın görevini anlayarak
-        müziğe sağlam şekilde eşlik edebilmesidir.
-      </p>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Bas Gitar Dersi İçin Bilgi Al
-      </a>
-    </div>
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+     <MessageCircle size={18} strokeWidth={2.3} />
+Gitar Dersi İçin Bilgi Al
+    </a>
   </div>
+
+  <div className="lesson-card">
+    <div className="lesson-icon">
+      <Piano strokeWidth={2.2} />
+    </div>
+    <h3>Piyano Dersi</h3>
+
+    <p>
+      Piyano derslerinde öğrencinin yaşına ve seviyesine uygun bir başlangıç
+      yapılır. Nota okuma, ritim, sağ-sol el koordinasyonu, temel teknik çalışmalar
+      ve basit parçalarla müzikal gelişim desteklenir.
+    </p>
+
+    <p>
+      Çocuklar için sabırlı ve anlaşılır bir eğitim süreci uygulanırken,
+      yetişkin öğrenciler için hedefe yönelik düzenli bir program hazırlanır.
+      Amaç hem teknik gelişim hem de müzik sevgisini artırmaktır.
+    </p>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+Piyano Dersi İçin Bilgi Al
+    </a>
+  </div>
+
+  <div className="lesson-card">
+    <div className="lesson-icon">
+      <AudioWaveform strokeWidth={2.2} />
+    </div>
+    <h3>Bas Gitar Dersi</h3>
+
+    <p>
+      Bas gitar dersleri, ritim duygusunu geliştirmek ve müziğin temel yapısını
+      daha iyi anlamak isteyen öğrenciler için uygundur. Temel teknikler,
+      parmak kullanımı, ritim çalışmaları, bas yürüyüşleri ve şarkı eşlikleri
+      üzerinde durulur.
+    </p>
+
+    <p>
+      Öğrencinin seviyesine göre pop, rock, funk ve farklı tarzlarda çalışmalar
+      yapılabilir. Amaç, öğrencinin grup içinde bas gitarın görevini anlayarak
+      müziğe sağlam şekilde eşlik edebilmesidir.
+    </p>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+Bas Gitar Dersi İçin Bilgi Al
+    </a>
+  </div>
+</div>
 </section>
 
             <section id="paketler" className="packages reveal">
@@ -1017,126 +1046,96 @@ if (isAdminPage) {
   </p>
 
   <div className="package-list">
-    <div className="package-card">
-      <div className="package-icon">🥉</div>
-      <h3>Başlangıç Paketi</h3>
-
-      <p>
-        Gitar, piyano veya bas gitara yeni başlayacak öğrenciler için hazırlanır.
-        Enstrümanı ilk kez tanıyan öğrencilerde temel duruş, ritim, nota bilgisi,
-        basit egzersizler ve kolay şarkılarla güvenli bir başlangıç yapılır.
-      </p>
-
-      <p>
-        Bu paket özellikle müziğe sağlam bir temel atmak, doğru alışkanlıklar kazanmak
-        ve düzenli çalışmaya başlamak isteyen çocuk, genç ve yetişkin öğrenciler için uygundur.
-      </p>
-
-      <span className="package-badge">Yeni başlayanlar için ideal</span>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20Ba%C5%9Flang%C4%B1%C3%A7%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Başlangıç Paketi İçin Bilgi Al
-      </a>
+  <div className="package-card">
+    <div className="package-icon">
+      <Star strokeWidth={2.2} />
     </div>
+    <h3>Başlangıç Paketi</h3>
 
-    <div className="package-card">
-      <div className="package-icon">🥈</div>
-      <h3>Gelişim Paketi</h3>
-
-      <p>
-        Daha önce enstrüman çalmış veya temel bilgisi olan öğrenciler için uygundur.
-        Derslerde teknik gelişim, repertuvar çalışmaları, ritim, nota okuma, müzikal ifade
-        ve öğrencinin seviyesine uygun şarkılar üzerinde çalışılır.
-      </p>
-
-      <p>
-        Bu paket, mevcut seviyesini ilerletmek, daha bilinçli çalışmak ve sevdiği parçaları
-        daha doğru teknikle çalmak isteyen öğrenciler için kişiye özel şekilde planlanır.
-      </p>
-
-      <span className="package-badge">Birebir özel gelişim programı</span>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20Geli%C5%9Fim%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Gelişim Paketi İçin Bilgi Al
-      </a>
-    </div>
-
-    <div className="package-card">
-      <div className="package-icon">🥇</div>
-      <h3>Çocuklar İçin Müzik</h3>
-
-      <p>
-        Çocukların yaşına, dikkat süresine ve ilgisine uygun şekilde planlanan eğlenceli
-        ve öğretici bir müzik sürecidir. Derslerde ritim, kulak gelişimi, basit melodiler,
-        enstrüman tanıma ve müzik sevgisi ön planda tutulur.
-      </p>
-
-      <p>
-        Amaç çocuğun müzikle güvenli, keyifli ve sabırlı bir şekilde tanışmasıdır.
-        Dersler çocuğun hızına göre ilerler ve süreç veliyle iletişim içinde takip edilir.
-      </p>
-
-      <span className="package-badge">Çocuklara uygun keyifli dersler</span>
-
-      <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20%C3%87ocuklar%20i%C3%A7in%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lesson-button"
-      >
-        Çocuklar İçin Bilgi Al
-      </a>
-    </div>
-  </div>
-</section>
-
-<section id="surec" className="process-section reveal">
-  <div className="section-header">
-    <span className="section-badge">Ders Süreci</span>
-    <h2>Ders Süreci Nasıl İşliyor?</h2>
     <p>
-      Her öğrenci için hedefe, seviyeye ve müzik zevkine göre ilerleyen
-      kişisel bir ders planı oluşturulur.
+      Gitar, piyano veya bas gitara yeni başlayacak öğrenciler için hazırlanır.
+      Enstrümanı ilk kez tanıyan öğrencilerde temel duruş, ritim, nota bilgisi,
+      basit egzersizler ve kolay şarkılarla güvenli bir başlangıç yapılır.
     </p>
+
+    <p>
+      Bu paket özellikle müziğe sağlam bir temel atmak, doğru alışkanlıklar kazanmak
+      ve düzenli çalışmaya başlamak isteyen çocuk, genç ve yetişkin öğrenciler için uygundur.
+    </p>
+
+    <span className="package-badge">Yeni başlayanlar için ideal</span>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20Ba%C5%9Flang%C4%B1%C3%A7%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+Başlangıç Paketi İçin Bilgi Al
+    </a>
   </div>
 
-  <div className="process-grid">
-    <div className="process-card">
-      <div className="process-number">01</div>
-      <h3>Tanışma ve Hedef Belirleme</h3>
-      <p>
-        Öğrencinin seviyesi, müzik zevki ve hedefleri birlikte değerlendirilir.
-      </p>
+  <div className="package-card">
+    <div className="package-icon">
+      <TrendingUp strokeWidth={2.2} />
     </div>
+    <h3>Gelişim Paketi</h3>
 
-    <div className="process-card">
-      <div className="process-number">02</div>
-      <h3>Kişiye Özel Ders Planı</h3>
-      <p>
-        Gitar, piyano veya müzik teorisi dersleri öğrencinin hızına göre
-        planlanır.
-      </p>
-    </div>
+    <p>
+      Daha önce enstrüman çalmış veya temel bilgisi olan öğrenciler için uygundur.
+      Derslerde teknik gelişim, repertuvar çalışmaları, ritim, nota okuma, müzikal ifade
+      ve öğrencinin seviyesine uygun şarkılar üzerinde çalışılır.
+    </p>
 
-    <div className="process-card">
-      <div className="process-number">03</div>
-      <h3>Düzenli Takip ve Gelişim</h3>
-      <p>
-        Her derste ilerleme takip edilir, pratik önerileriyle gelişim
-        desteklenir.
-      </p>
-    </div>
+    <p>
+      Bu paket, mevcut seviyesini ilerletmek, daha bilinçli çalışmak ve sevdiği parçaları
+      daha doğru teknikle çalmak isteyen öğrenciler için kişiye özel şekilde planlanır.
+    </p>
+
+    <span className="package-badge">Birebir özel gelişim programı</span>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20Geli%C5%9Fim%20Paketi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+Gelişim Paketi İçin Bilgi Al
+    </a>
   </div>
+
+  <div className="package-card">
+    <div className="package-icon">
+      <Smile strokeWidth={2.2} />
+    </div>
+    <h3>Çocuklar İçin Müzik</h3>
+
+    <p>
+      Çocukların yaşına, dikkat süresine ve ilgisine uygun şekilde planlanan eğlenceli
+      ve öğretici bir müzik sürecidir. Derslerde ritim, kulak gelişimi, basit melodiler,
+      enstrüman tanıma ve müzik sevgisi ön planda tutulur.
+    </p>
+
+    <p>
+      Amaç çocuğun müzikle güvenli, keyifli ve sabırlı bir şekilde tanışmasıdır.
+      Dersler çocuğun hızına göre ilerler ve süreç veliyle iletişim içinde takip edilir.
+    </p>
+
+    <span className="package-badge">Çocuklara uygun keyifli dersler</span>
+
+    <a
+      href="https://wa.me/905558089585?text=Merhaba%2C%20%C3%87ocuklar%20i%C3%A7in%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="lesson-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+Çocuklar İçin Bilgi Al
+    </a>
+  </div>
+</div>
 </section>
 
 <section id="yorumlar" className="testimonials reveal">
@@ -1281,14 +1280,15 @@ if (isAdminPage) {
   <div className="faq-cta">
     <p>Aklınıza takılan başka bir soru mu var?</p>
 
-    <a
-      href="https://wa.me/905558089585?text=Merhaba%2C%20akl%C4%B1ma%20tak%C4%B1lan%20bir%20soru%20var.%20Bilgi%20alabilir%20miyim%3F"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="whatsapp-button"
-    >
-      WhatsApp’tan Sor
-    </a>
+<a
+  href="https://wa.me/905558089585?text=Merhaba%2C%20akl%C4%B1ma%20tak%C4%B1lan%20bir%20soru%20var.%20Bilgi%20alabilir%20miyim%3F"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="whatsapp-button"
+>
+  <MessageCircle size={18} strokeWidth={2.3} />
+  WhatsApp’tan Sor
+</a>
   </div>
 </section>
 
@@ -1305,6 +1305,7 @@ if (isAdminPage) {
   rel="noopener noreferrer"
   className="contact-button"
 >
+  <MessageCircle size={18} strokeWidth={2.3} />
   WhatsApp ile Yaz
 </a>
   </div>
