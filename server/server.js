@@ -1,7 +1,10 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const Submission = require("./models/Submission");
+const nodemailer = require("nodemailer");
 
 const app = express();
 
@@ -61,6 +64,44 @@ app.get("/", (req, res) => {
   res.send("Backend çalışıyor kral");
 });
 
+const sendNewSubmissionEmail = async (submission) => {
+  if (
+    !process.env.EMAIL_USER ||
+    !process.env.EMAIL_PASS ||
+    !process.env.NOTIFICATION_EMAIL
+  ) {
+    console.warn("E-posta bildirimi için gerekli env değişkenleri eksik.");
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  const mailOptions = {
+    from: `"Eren Müzik Atölyesi" <${process.env.EMAIL_USER}>`,
+    to: process.env.NOTIFICATION_EMAIL,
+    subject: "Yeni başvuru geldi 🎵",
+    text: `
+Yeni başvuru geldi 🎵
+
+Ad Soyad: ${submission.name || "-"}
+Telefon: ${submission.phone || "-"}
+Ders: ${submission.lesson || "-"}
+Mesaj: ${submission.message || "-"}
+
+Admin panel:
+https://eren-muzik-atolyesi.vercel.app/admin
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
 app.post("/api/contact", async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
@@ -84,6 +125,13 @@ app.post("/api/contact", async (req, res) => {
     });
 
     console.log("Yeni başvuru kaydedildi:", formatSubmission(submission));
+
+        try {
+      await sendNewSubmissionEmail(submission);
+      console.log("Yeni başvuru e-postası gönderildi.");
+    } catch (emailError) {
+      console.error("Yeni başvuru e-postası gönderilemedi:", emailError.message);
+    }
 
     res.json({
       success: true,
