@@ -72,7 +72,7 @@ const sendNewSubmissionEmail = async (submission) => {
     return;
   }
 
-  await resend.emails.send({
+  const { data, error } = await resend.emails.send({
     from: "Eren Müzik Atölyesi <onboarding@resend.dev>",
     to: process.env.NOTIFICATION_EMAIL,
     subject: "Yeni başvuru geldi 🎵",
@@ -88,6 +88,13 @@ Admin panel:
 https://eren-muzik-atolyesi.vercel.app/admin
     `,
   });
+
+  if (error) {
+    console.error("Resend e-posta hatası:", error);
+    return;
+  }
+
+  console.log("Yeni başvuru e-postası gönderildi. Resend ID:", data?.id);
 };
 
 app.post("/api/contact", async (req, res) => {
@@ -116,7 +123,7 @@ app.post("/api/contact", async (req, res) => {
 
  sendNewSubmissionEmail(submission)
   .then(() => {
-    console.log("Yeni başvuru e-postası gönderildi.");
+    //console.log("Yeni başvuru e-postası gönderildi.");
   })
   .catch((emailError) => {
     console.error("Yeni başvuru e-postası gönderilemedi:", emailError.message);
