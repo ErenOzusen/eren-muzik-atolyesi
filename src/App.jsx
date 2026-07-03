@@ -116,6 +116,20 @@ const [formStatus, setFormStatus] = useState({
 
 
   const [submissions, setSubmissions] = useState([]);
+  const [videos, setVideos] = useState([]);
+  const [adminVideos, setAdminVideos] = useState([]);
+const [videoForm, setVideoForm] = useState({
+  title: "",
+  description: "",
+  videoUrl: "",
+  thumbnailUrl: "",
+  category: "",
+  order: 0,
+  isActive: true,
+});
+const [editingVideoId, setEditingVideoId] = useState(null);
+const [videoFormStatus, setVideoFormStatus] = useState(null);
+const [isVideoSubmitting, setIsVideoSubmitting] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminToken, setAdminToken] = useState("");
@@ -173,7 +187,49 @@ const toggleFaq = (index) => {
     { label: "Müzik Teorisi", value: submissionStats.muzikTeorisi },
   ];
 
+  const getYouTubeEmbedUrl = (url) => {
+  if (!url) return "";
 
+  try {
+    const parsedUrl = new URL(url);
+
+    if (parsedUrl.hostname.includes("youtube.com")) {
+      if (parsedUrl.pathname.startsWith("/shorts/")) {
+        const videoId = parsedUrl.pathname.split("/shorts/")[1]?.split("?")[0];
+        return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
+      }
+
+      const videoId = parsedUrl.searchParams.get("v");
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
+    }
+
+    if (parsedUrl.hostname.includes("youtu.be")) {
+      const videoId = parsedUrl.pathname.replace("/", "").split("?")[0];
+      return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
+    }
+
+    return url;
+  } catch (error) {
+    return "";
+  }
+};
+
+const fetchVideos = async () => {
+  try {
+    const response = await fetch(
+  "http://localhost:5000/api/videos"
+);
+
+    if (!response.ok) {
+      throw new Error("Videolar alınamadı");
+    }
+
+    const data = await response.json();
+    setVideos(data);
+  } catch (error) {
+    console.error("Videolar alınamadı:", error);
+  }
+};
 
 
 const handleContactSubmit = async (e) => {
@@ -255,6 +311,170 @@ const fetchSubmissions = async (token = adminToken) => {
     console.error("Başvurular alınamadı:", error);
     alert("Başvurular alınırken bir hata oluştu");
   }
+};
+
+const fetchAdminVideos = async (token = adminToken) => {
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/admin/videos",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Videolar alınamadı");
+    }
+
+    const data = await response.json();
+    setAdminVideos(Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Admin videoları alınırken hata:", error);
+  }
+};
+
+const handleVideoFormChange = (e) => {
+  const { name, value, type, checked } = e.target;
+
+  setVideoForm((prevForm) => ({
+    ...prevForm,
+    [name]: type === "checkbox" ? checked : value,
+  }));
+};
+
+const resetVideoForm = () => {
+  setVideoForm({
+    title: "",
+    description: "",
+    videoUrl: "",
+    thumbnailUrl: "",
+    category: "",
+    order: "",
+    isActive: true,
+  });
+
+  setEditingVideoId(null);
+  
+};
+
+const handleVideoSubmit = async (e) => {
+  e.preventDefault();
+
+  if (!adminToken) {
+    setVideoFormStatus("Admin oturumu bulunamadı. Lütfen tekrar giriş yap.");
+    return;
+  }
+
+  if (!videoForm.title.trim() || !videoForm.videoUrl.trim()) {
+    setVideoFormStatus("Başlık ve video linki zorunludur.");
+    return;
+  }
+
+  setIsVideoSubmitting(true);
+  setVideoFormStatus("");
+
+  try {
+   const videoPayload = {
+  ...videoForm,
+  order: videoForm.order === "" ? 0 : Number(videoForm.order),
+};
+
+const videoEndpoint = editingVideoId
+  ? `http://localhost:5000/api/admin/videos/${editingVideoId}`
+  : "http://localhost:5000/api/admin/videos";
+
+const response = await fetch(videoEndpoint, {
+  method: editingVideoId ? "PATCH" : "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${adminToken}`,
+  },
+  body: JSON.stringify(videoPayload),
+});
+
+    const data = await response.json();
+
+  if (!response.ok) {
+  setVideoFormStatus(
+    editingVideoId
+      ? "Bu video artık bulunamadı. Form temizlendi, yeniden ekleyebilirsin."
+      : data.message || "Video eklenemedi."
+  );
+
+  if (editingVideoId) {
+    resetVideoForm();
+    fetchAdminVideos();
+  }
+
+  return;
+}
+
+    setVideoFormStatus("Video başarıyla eklendi.");setVideoFormStatus(
+  editingVideoId ? "Video başarıyla güncellendi." : "Video başarıyla eklendi."
+);
+    resetVideoForm();
+    fetchAdminVideos();
+    fetchVideos();
+  } catch (error) {
+    console.error("Video ekleme hatası:", error);
+    setVideoFormStatus("Video eklenirken bir hata oluştu.");
+  } finally {
+    setIsVideoSubmitting(false);
+  }
+};
+
+const handleDeleteVideo = async (id) => {
+  const confirmDelete = window.confirm("Bu videoyu silmek istiyor musun?");
+
+  if (!confirmDelete) return;
+
+  try {
+    const response = await fetch(`http://localhost:5000/api/admin/videos/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.message || "Video silinemedi.");
+      return;
+    }
+
+    setAdminVideos((prevVideos) =>
+  prevVideos.filter((video) => video.id !== id)
+);
+
+if (editingVideoId === id) {
+  resetVideoForm();
+}
+
+fetchAdminVideos();
+fetchVideos();
+  } catch (error) {
+    console.error("Video silme hatası:", error);
+    alert("Video silinirken bir hata oluştu.");
+  }
+};
+
+const handleEditVideo = (video) => {
+  setEditingVideoId(video.id);
+
+  setVideoForm({
+    title: video.title || "",
+    description: video.description || "",
+    videoUrl: video.videoUrl || "",
+    thumbnailUrl: video.thumbnailUrl || "",
+    category: video.category || "",
+    order: video.order || "",
+    isActive: video.isActive,
+  });
+
+  setVideoFormStatus("Video düzenleme modunda.");
 };
 
 const handleStatusChange = async (id, newStatus) => {
@@ -351,6 +571,7 @@ const handleAdminLogin = async (e) => {
   setAdminToken(data.token);
   setIsAdminLoggedIn(true);
   fetchSubmissions(data.token);
+  fetchAdminVideos(data.token);
 } else {
       alert("Şifre yanlış kral");
     }
@@ -371,6 +592,8 @@ const handleAdminLogin = async (e) => {
 };
 
   useEffect(() => {
+     fetchVideos();
+
   const revealElements = document.querySelectorAll(".reveal");
 
   const observer = new IntersectionObserver(
@@ -489,6 +712,8 @@ if (isAdminPage) {
     </p>
   </div>
 
+  
+
   <div className="admin-header-actions">
     <button
       type="button"
@@ -513,6 +738,118 @@ if (isAdminPage) {
               </div>
             ))}
           </div>
+
+    <div className="admin-video-management">
+  <div className="admin-video-header">
+    <div>
+      <p className="admin-eyebrow">Video Galeri</p>
+      <h2>Video Yönetimi</h2>
+      <p>Atölye videolarını buradan ekleyebilir, düzenleyebilir ve silebilirsin.</p>
+    </div>
+  </div>
+
+{videoFormStatus && (
+  <p className="admin-video-status">
+    {videoFormStatus}
+  </p>
+)}
+<form className="admin-video-form" onSubmit={handleVideoSubmit}>    
+  <input
+  type="text"
+  name="title"
+  placeholder="Video başlığı"
+  value={videoForm.title}
+  onChange={handleVideoFormChange}
+/>
+
+    <input
+  type="text"
+  name="videoUrl"
+  placeholder="YouTube / Shorts linki"
+  value={videoForm.videoUrl}
+  onChange={handleVideoFormChange}
+/>
+
+ <input
+  type="text"
+  name="category"
+  placeholder="Kategori örn: Gitar, Piyano, Performans"
+  value={videoForm.category}
+  onChange={handleVideoFormChange}
+/>
+
+    <input
+  type="number"
+  name="order"
+  placeholder="Sıra"
+  value={videoForm.order}
+  onChange={handleVideoFormChange}
+/>
+<input
+  type="text"
+  name="thumbnailUrl"
+  placeholder="Thumbnail linki opsiyonel"
+  value={videoForm.thumbnailUrl}
+  onChange={handleVideoFormChange}
+/>
+
+    <textarea
+  name="description"
+  placeholder="Açıklama"
+  value={videoForm.description}
+  onChange={handleVideoFormChange}
+/>
+
+    <label className="admin-video-checkbox">
+     <input
+  type="checkbox"
+  name="isActive"
+  checked={videoForm.isActive}
+  onChange={handleVideoFormChange}
+/>
+      Aktif olarak yayında göster
+    </label>
+
+    <button type="submit" disabled={isVideoSubmitting}>
+  {isVideoSubmitting ? "Kaydediliyor..." : "Video Kaydet"}
+</button>
+  </form>
+    <div className="admin-video-list">
+    <h3>Eklenen Videolar</h3>
+
+    {adminVideos.length === 0 ? (
+      <p className="admin-empty-text">Henüz video eklenmedi.</p>
+    ) : (
+      adminVideos.map((video) => (
+        <div key={video.id} className="admin-video-item">
+  <div>
+    <strong>{video.title}</strong>
+    <p>{video.category || "Kategori yok"}</p>
+    <small>{video.isActive ? "Aktif" : "Pasif"}</small>
+  </div>
+<button
+  type="button"
+  className="admin-video-edit-button"
+  onClick={() => handleEditVideo(video)}
+>
+  Düzenle
+</button>
+  <button
+    type="button"
+    className="admin-video-delete-button"
+    onClick={() => handleDeleteVideo(video.id)}
+  >
+    Sil
+  </button>
+</div>
+      ))
+    )}
+  </div>
+</div>
+
+          
+
+          
 
           <div className="admin-filters">
   <div className="admin-search-box">
@@ -1137,6 +1474,52 @@ Gelişim Paketi İçin Bilgi Al
   </div>
 </div>
 </section>
+
+{videos.length > 0 && (
+  <section id="videolar" className="videos-section">
+    <div className="section-header">
+      <span className="section-badge">Atölyeden Kısa Videolar</span>
+      <h2>Derslerden ve Performanslardan Kısa Anlar</h2>
+      <p>
+        Eren Müzik Atölyesi&apos;nde derslerden, öğrenci çalışmalarından ve
+        enstrüman performanslarından kısa videolar.
+      </p>
+    </div>
+
+    <div className="videos-grid">
+      {videos.map((video) => {
+        const embedUrl = getYouTubeEmbedUrl(video.videoUrl);
+
+        return (
+          <article className="video-card" key={video.id}>
+            <div className="video-frame">
+              {embedUrl ? (
+                <iframe
+                  src={embedUrl}
+                  title={video.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                ></iframe>
+              ) : (
+                <div className="video-placeholder">
+                  Video şu anda gösterilemiyor.
+                </div>
+              )}
+            </div>
+
+            <div className="video-content">
+              {video.category && (
+                <span className="video-category">{video.category}</span>
+              )}
+              <h3>{video.title}</h3>
+              {video.description && <p>{video.description}</p>}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  </section>
+)}
 
 <section id="yorumlar" className="testimonials reveal">
   <div className="section-header">
