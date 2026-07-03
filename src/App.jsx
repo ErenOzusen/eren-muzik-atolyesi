@@ -596,6 +596,7 @@ if (data.success) {
 };
 
   const handleAdminLogout = () => {
+    localStorage.removeItem("adminToken");
   setIsAdminLoggedIn(false);
   setAdminToken("");
   setAdminPassword("");
