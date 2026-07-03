@@ -136,7 +136,9 @@ const [editingVideoId, setEditingVideoId] = useState(null);
 const [videoFormStatus, setVideoFormStatus] = useState(null);
 const [isVideoSubmitting, setIsVideoSubmitting] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
+  Boolean(localStorage.getItem("adminToken"))
+);
   const [adminToken, setAdminToken] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [lessonFilter, setLessonFilter] = useState("");
@@ -334,6 +336,17 @@ const fetchAdminVideos = async (token = adminToken) => {
     console.error("Admin videoları alınırken hata:", error);
   }
 };
+
+useEffect(() => {
+  const savedToken = localStorage.getItem("adminToken");
+
+  if (savedToken) {
+    setAdminToken(savedToken);
+    setIsAdminLoggedIn(true);
+    fetchSubmissions(savedToken);
+    fetchAdminVideos(savedToken);
+  }
+}, []);
 
 const handleVideoFormChange = (e) => {
   const { name, value, type, checked } = e.target;
@@ -567,7 +580,8 @@ const handleAdminLogin = async (e) => {
 
     const data = await response.json();
 
-    if (data.success) {
+if (data.success) {
+  localStorage.setItem("adminToken", data.token);
   setAdminToken(data.token);
   setIsAdminLoggedIn(true);
   fetchSubmissions(data.token);
