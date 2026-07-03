@@ -4095,3 +4095,47 @@ margin-top: 10px;
     grid-column: span 1;
   }
 }
+
+.admin-video-edit-button,
+.admin-video-delete-button {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.admin-video-edit-button {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.25);
+}
+
+.admin-video-delete-button {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.25);
+}
+
+.admin-video-edit-button:hover,
+.admin-video-delete-button:hover {
+  transform: translateY(-2px);
+  opacity: 0.95;
+}
+
+.admin-video-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-video-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

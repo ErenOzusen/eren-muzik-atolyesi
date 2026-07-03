@@ -827,13 +827,14 @@ if (isAdminPage) {
     <p>{video.category || "Kategori yok"}</p>
     <small>{video.isActive ? "Aktif" : "Pasif"}</small>
   </div>
-<button
-  type="button"
-  className="admin-video-edit-button"
-  onClick={() => handleEditVideo(video)}
->
-  Düzenle
-</button>
+<div className="admin-video-actions">
+  <button
+    type="button"
+    className="admin-video-edit-button"
+    onClick={() => handleEditVideo(video)}
+  >
+    Düzenle
+  </button>
   <button
     type="button"
     className="admin-video-delete-button"
@@ -841,6 +842,7 @@ if (isAdminPage) {
   >
     Sil
   </button>
+</div>
 </div>
       ))
     )}
