@@ -13,6 +13,11 @@ import {
 } from "lucide-react";
 import "./App.css";
 
+const API_BASE_URL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000"
+    : "https://eren-muzik-atolyesi-backend.onrender.com";
+
 const WHATSAPP_PREFILL_MESSAGE =
   "Merhaba, Eren Müzik Atölyesi'ne yaptığınız başvuru için size ulaşıyorum.";
 
@@ -216,9 +221,7 @@ const toggleFaq = (index) => {
 
 const fetchVideos = async () => {
   try {
-    const response = await fetch(
-  "http://localhost:5000/api/videos"
-);
+const response = await fetch(`${API_BASE_URL}/api/videos`);
 
     if (!response.ok) {
       throw new Error("Videolar alınamadı");
@@ -315,14 +318,11 @@ const fetchSubmissions = async (token = adminToken) => {
 
 const fetchAdminVideos = async (token = adminToken) => {
   try {
-    const response = await fetch(
-      "http://localhost:5000/api/admin/videos",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+ const response = await fetch(`${API_BASE_URL}/api/admin/videos`, {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
 
     if (!response.ok) {
       throw new Error("Videolar alınamadı");
@@ -382,8 +382,8 @@ const handleVideoSubmit = async (e) => {
 };
 
 const videoEndpoint = editingVideoId
-  ? `http://localhost:5000/api/admin/videos/${editingVideoId}`
-  : "http://localhost:5000/api/admin/videos";
+  ? `${API_BASE_URL}/api/admin/videos/${editingVideoId}`
+  : `${API_BASE_URL}/api/admin/videos`;
 
 const response = await fetch(videoEndpoint, {
   method: editingVideoId ? "PATCH" : "POST",
@@ -431,7 +431,7 @@ const handleDeleteVideo = async (id) => {
   if (!confirmDelete) return;
 
   try {
-    const response = await fetch(`http://localhost:5000/api/admin/videos/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/videos/${id}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${adminToken}`,
