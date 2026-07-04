@@ -101,10 +101,36 @@ function computeSubmissionStats(submissions) {
 
   return stats;
 }
+const getYoutubeVideoId = (url = "") => {
+  const patterns = [
+    /youtube\.com\/watch\?v=([^&?/]+)/,
+    /youtube\.com\/shorts\/([^&?/]+)/,
+    /youtube\.com\/embed\/([^&?/]+)/,
+    /youtu\.be\/([^&?/]+)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  return "";
+};
+
+const getYoutubeThumbnail = (url = "") => {
+  const videoId = getYoutubeVideoId(url);
+  return videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : "";
+};
+
+const getYoutubeEmbedUrl = (url = "") => {
+  const videoId = getYoutubeVideoId(url);
+  return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
+};
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("hero");
+ const [playingVideoId, setPlayingVideoId] = useState(null);
 
   const [contactForm, setContactForm] = useState({
     name: "",
@@ -1504,36 +1530,55 @@ Gelişim Paketi İçin Bilgi Al
     </div>
 
     <div className="videos-grid">
-      {videos.map((video) => {
-        const embedUrl = getYouTubeEmbedUrl(video.videoUrl);
+{videos.map((video) => (
+  <article className="video-card" key={video.id}>
+    {playingVideoId === video.id ? (
+  <div className="video-player">
+    <iframe
+      src={`${getYoutubeEmbedUrl(video.videoUrl)}?autoplay=1`}
+      title={video.title}
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    ></iframe>
+  </div>
+) : (
+  <button
+    type="button"
+    className="video-thumbnail"
+    onClick={() => setPlayingVideoId(video.id)}
+    aria-label={`${video.title} videosunu oynat`}
+  >
+    <img
+      src={video.thumbnailUrl || getYoutubeThumbnail(video.videoUrl)}
+      alt={video.title}
+    />
+    <div className="video-thumbnail-overlay"></div>
+    <div className="video-play-button">▶</div>
+    <span className="video-watch-label">Videoyu oynat</span>
+  </button>
+)}
 
-        return (
-          <article className="video-card" key={video.id}>
-            <div className="video-frame">
-              {embedUrl ? (
-                <iframe
-                  src={embedUrl}
-                  title={video.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                ></iframe>
-              ) : (
-                <div className="video-placeholder">
-                  Video şu anda gösterilemiyor.
-                </div>
-              )}
-            </div>
+    <div className="video-card-content">
+      {video.category && (
+        <span className="video-category-badge">{video.category}</span>
+      )}
 
-            <div className="video-content">
-              {video.category && (
-                <span className="video-category">{video.category}</span>
-              )}
-              <h3>{video.title}</h3>
-              {video.description && <p>{video.description}</p>}
-            </div>
-          </article>
-        );
-      })}
+      <h3>{video.title}</h3>
+
+      {video.description && <p>{video.description}</p>}
+
+     <button
+  type="button"
+  className="video-link-button"
+  onClick={() =>
+    setPlayingVideoId(playingVideoId === video.id ? null : video.id)
+  }
+>
+  {playingVideoId === video.id ? "Önizlemeye Dön" : "Videoyu Oynat"}
+</button>
+    </div>
+  </article>
+))}
     </div>
   </section>
 )}
