@@ -1760,7 +1760,22 @@ Gelişim Paketi İçin Bilgi Al
   WhatsApp ile Yaz
 </a>
   </div>
+<div className="contact-form-intro">
+  <span className="contact-form-badge">Hızlı başvuru</span>
 
+  <h3>Sana uygun dersi birlikte belirleyelim</h3>
+
+  <p>
+    Hangi enstrümanla ilgilendiğini ve seviyeni yazman yeterli.
+    Eren Müzik Atölyesi en kısa sürede sana dönüş yapar.
+  </p>
+
+  <div className="contact-trust-list">
+    <span>WhatsApp veya telefonla dönüş</span>
+    <span>Seviye ve hedefe göre yönlendirme</span>
+    <span>Çocuklar ve yetişkinler için birebir ders</span>
+  </div>
+</div>
   <form className="contact-form" onSubmit={handleContactSubmit}>
   <input
     type="text"

@@ -4704,3 +4704,100 @@ margin-top: 10px;
     transform: scale(0.98);
   }
 }
+
+/* ILETISIM FORM INTRO */
+.contact-form-intro {
+  max-width: 760px;
+  margin: 42px auto 24px;
+  padding: 24px 28px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(20, 47, 58, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+}
+
+.contact-form-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.16);
+  color: #7ee6a8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.contact-form-intro h3 {
+  margin: 0 0 10px;
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.contact-form-intro p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.contact-trust-list {
+  display: grid;
+  gap: 9px;
+  margin: 18px auto 0;
+  width: fit-content;
+  text-align: left;
+}
+
+.contact-trust-list span {
+  position: relative;
+  display: block;
+  padding-left: 24px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.contact-trust-list span::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #1f7a4a;
+  font-weight: 900;
+}
+
+@media (max-width: 768px) {
+  .contact-form-intro {
+    padding: 16px 14px;
+    border-radius: 20px;
+    margin: 42px auto 16px;
+  }
+
+  .contact-form-badge {
+    margin-bottom: 10px;
+    padding: 6px 11px;
+    font-size: 11.5px;
+  }
+
+  .contact-form-intro h3 {
+    font-size: 19px;
+    margin-bottom: 8px;
+  }
+
+  .contact-form-intro p {
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .contact-trust-list {
+    gap: 7px;
+    margin-top: 13px;
+  }
+
+  .contact-trust-list span {
+    font-size: 13px;
+  }
+}
