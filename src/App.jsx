@@ -1331,17 +1331,16 @@ if (isAdminPage) {
     </div>
     <h3>Gitar Dersi</h3>
 
-    <p>
-      Gitar dersleri, yeni başlayan öğrencilerden kendini geliştirmek isteyenlere
-      kadar her seviyeye uygun şekilde planlanır. Temel duruş, ritim, akorlar,
-      pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım işlenir.
-    </p>
+<p>
+  Gitar dersleri; yeni başlayanlar, temelini güçlendirmek isteyenler ve sevdiği
+  şarkıları doğru teknikle çalmak isteyen öğrenciler için kişiye özel planlanır.
+</p>
 
-    <p>
-      Öğrencinin ilgisine göre pop, rock, Türkçe şarkılar veya temel klasik gitar
-      çalışmalarıyla ilerlenebilir. Amaç, öğrencinin sevdiği şarkıları çalarken
-      sağlam bir müzikal temel kazanmasıdır.
-    </p>
+<p>
+  Derslerde akor, ritim, pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım
+  çalışılır. Öğrencinin müzik zevkine göre pop, rock, Türkçe şarkılar veya klasik
+  gitar çalışmalarıyla ilerlenir.
+</p>
 
     <a
       href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
@@ -1360,17 +1359,15 @@ Gitar Dersi İçin Bilgi Al
     </div>
     <h3>Piyano Dersi</h3>
 
-    <p>
-      Piyano derslerinde öğrencinin yaşına ve seviyesine uygun bir başlangıç
-      yapılır. Nota okuma, ritim, sağ-sol el koordinasyonu, temel teknik çalışmalar
-      ve basit parçalarla müzikal gelişim desteklenir.
-    </p>
+<p>
+  Piyano dersleri; çocuklar, gençler ve yetişkinler için yaşa, seviyeye ve hedefe
+  göre planlanır. Öğrenciye nota okuma, ritim ve temel piyano tekniği adım adım kazandırılır.
+</p>
 
-    <p>
-      Çocuklar için sabırlı ve anlaşılır bir eğitim süreci uygulanırken,
-      yetişkin öğrenciler için hedefe yönelik düzenli bir program hazırlanır.
-      Amaç hem teknik gelişim hem de müzik sevgisini artırmaktır.
-    </p>
+<p>
+  Derslerde sağ-sol el koordinasyonu, basit parçalar, teknik egzersizler ve müzikal ifade
+  çalışılır. Amaç, öğrencinin piyanoyu severek öğrenmesi ve düzenli gelişim göstermesidir.
+</p>
 
     <a
       href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
@@ -1389,18 +1386,16 @@ Piyano Dersi İçin Bilgi Al
     </div>
     <h3>Bas Gitar Dersi</h3>
 
-    <p>
-      Bas gitar dersleri, ritim duygusunu geliştirmek ve müziğin temel yapısını
-      daha iyi anlamak isteyen öğrenciler için uygundur. Temel teknikler,
-      parmak kullanımı, ritim çalışmaları, bas yürüyüşleri ve şarkı eşlikleri
-      üzerinde durulur.
-    </p>
+<p>
+  Bas gitar dersleri; ritim duygusunu geliştirmek, şarkılara sağlam eşlik etmek
+  ve müziğin temel yapısını daha iyi anlamak isteyen öğrenciler için planlanır.
+</p>
 
-    <p>
-      Öğrencinin seviyesine göre pop, rock, funk ve farklı tarzlarda çalışmalar
-      yapılabilir. Amaç, öğrencinin grup içinde bas gitarın görevini anlayarak
-      müziğe sağlam şekilde eşlik edebilmesidir.
-    </p>
+<p>
+  Derslerde parmak tekniği, ritim çalışmaları, bas yürüyüşleri, groove mantığı ve
+  şarkı eşlikleri üzerinde durulur. Öğrencinin seviyesine göre pop, rock, funk ve
+  farklı tarzlarda çalışmalar yapılabilir.
+</p>
 
     <a
       href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."

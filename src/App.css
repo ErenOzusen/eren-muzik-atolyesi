@@ -4323,3 +4323,182 @@ margin-top: 10px;
   display: none;
 }
 }
+
+/* DERS KARTLARI FINAL DENGE */
+.lesson-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.lesson-card p {
+  line-height: 1.65;
+}
+
+.lesson-button {
+  margin-top: auto;
+}
+
+/* MOBILDE DERS KARTLARI YATAY KAYDIRMA */
+@media (max-width: 768px) {
+  .lesson-list {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 18px;
+    padding: 8px 18px 18px;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start;
+  }
+
+  .lesson-card {
+    min-width: 82%;
+    max-width: 82%;
+    scroll-snap-align: center;
+  }
+
+  .lesson-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* MOBIL DERS KARTLARI SLIDER FINAL */
+@media (max-width: 768px) {
+  section#dersler .lesson-list {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 18px !important;
+    padding: 8px 22px 28px !important;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  section#dersler .lesson-card {
+    flex: 0 0 88% !important;
+    width: 88% !important;
+    min-width: 88% !important;
+    max-width: 88% !important;
+    scroll-snap-align: center;
+    padding: 26px 20px !important;
+  }
+
+  section#dersler .lesson-card p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  section#dersler .lesson-button {
+    width: 100%;
+    justify-content: center;
+    margin-top: 18px;
+  }
+
+  section#dersler .lesson-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* MOBIL PAKET KARTLARI SLIDER FINAL */
+@media (max-width: 768px) {
+  section#paketler .package-list {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 18px !important;
+    padding: 8px 22px 28px !important;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  section#paketler .package-card {
+    flex: 0 0 88% !important;
+    width: 88% !important;
+    min-width: 88% !important;
+    max-width: 88% !important;
+    scroll-snap-align: center;
+    padding: 26px 20px !important;
+  }
+
+  section#paketler .package-card p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  section#paketler .lesson-button {
+    width: 100%;
+    justify-content: center;
+    margin-top: 18px;
+  }
+
+  section#paketler .package-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* MOBIL YORUM KARTLARI SLIDER FINAL */
+@media (max-width: 768px) {
+  section#yorumlar .testimonial-list {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 18px !important;
+    padding: 8px 22px 28px !important;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  section#yorumlar .testimonial-card {
+    flex: 0 0 88% !important;
+    width: 88% !important;
+    min-width: 88% !important;
+    max-width: 88% !important;
+    scroll-snap-align: center;
+    padding: 26px 20px !important;
+  }
+
+  section#yorumlar .testimonial-card p {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  section#yorumlar .testimonial-list::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* MOBIL VIDEO KARTLARI SLIDER FINAL */
+@media (max-width: 768px) {
+  section#videolar .videos-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 18px !important;
+    padding: 8px 22px 28px !important;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  section#videolar .video-card {
+    flex: 0 0 88% !important;
+    width: 88% !important;
+    min-width: 88% !important;
+    max-width: 88% !important;
+    scroll-snap-align: center;
+  }
+
+  section#videolar .videos-grid::-webkit-scrollbar {
+    display: none;
+  }
+}
