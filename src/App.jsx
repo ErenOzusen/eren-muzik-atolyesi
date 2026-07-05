@@ -1638,10 +1638,11 @@ if (isAdminPage) {
 
 <section id="yorumlar" className="testimonials reveal">
   <div className="section-header">
-    <span className="section-badge">Öğrenci Yorumları</span>
-    <h2>Öğrenciler Ne Diyor?</h2>
+    <span className="section-badge">Öğrenci Deneyimleri</span>
+    <h2>Ders Sürecinde Neler Kazanılır?</h2>
     <p>
-      Eren Müzik Atölyesi’nde ders alan öğrencilerin deneyimlerinden bazıları.
+      Eren Müzik Atölyesi’nde amaç sadece enstrüman çalmak değil; öğrencinin
+      düzenli gelişmesi, özgüven kazanması ve müziği keyifle sürdürmesidir.
     </p>
   </div>
 
@@ -1649,14 +1650,14 @@ if (isAdminPage) {
     <div className="testimonial-card">
       <div className="quote-icon">“</div>
       <p>
-        Gitar derslerinde kısa sürede çok ilerledim. Dersler hem keyifli
-        hem de çok anlaşılır geçiyor.
+        Gitar derslerinde kısa sürede temel akorları ve ritimleri daha doğru
+        çalmaya başladım. Dersler anlaşılır, motive edici ve seviyeme uygun ilerliyor.
       </p>
       <div className="testimonial-author">
-        <div className="author-avatar">A</div>
+        <div className="author-avatar">G</div>
         <div>
-          <h4>Ali K.</h4>
-          <span>Gitar Öğrencisi</span>
+          <h4>Gitar Öğrencisi</h4>
+          <span>Başlangıç seviyesi</span>
         </div>
       </div>
     </div>
@@ -1664,14 +1665,14 @@ if (isAdminPage) {
     <div className="testimonial-card">
       <div className="quote-icon">“</div>
       <p>
-        Çocuğum derslere severek katılıyor. Müzikle ilgisi arttı ve özgüveni
-        gelişti.
+        Çocuğum derslere severek katılıyor. Derslerde hem müzik sevgisi gelişiyor
+        hem de dikkat, ritim ve özgüven konusunda ilerleme görüyoruz.
       </p>
       <div className="testimonial-author">
-        <div className="author-avatar">Z</div>
+        <div className="author-avatar">V</div>
         <div>
-          <h4>Zeynep A.</h4>
-          <span>Veli Yorumu</span>
+          <h4>Veli Yorumu</h4>
+          <span>Çocuklar için müzik</span>
         </div>
       </div>
     </div>
@@ -1679,23 +1680,27 @@ if (isAdminPage) {
     <div className="testimonial-card">
       <div className="quote-icon">“</div>
       <p>
-        Dersler motive edici ve öğrenci seviyesine göre ilerliyor. Başlamak
-        isteyenlere kesinlikle öneririm.
+        Piyano derslerinde nota okuma, el koordinasyonu ve parça çalışma süreci
+        adım adım ilerliyor. Her derste neye çalışmam gerektiğini net biliyorum.
       </p>
       <div className="testimonial-author">
-        <div className="author-avatar">M</div>
+        <div className="author-avatar">P</div>
         <div>
-          <h4>Mehmet T.</h4>
-          <span>Piyano Öğrencisi</span>
+          <h4>Piyano Öğrencisi</h4>
+          <span>Düzenli gelişim</span>
         </div>
       </div>
     </div>
   </div>
 
-  <p className="testimonial-note">
-    * Yorumlar örnek olarak hazırlanmıştır. Gerçek öğrenci yorumları geldikçe
-    güncellenebilir.
-  </p>
+  <div className="testimonial-trust-box">
+    <span>Güven notu</span>
+    <p>
+      Bu alan öğrenci deneyimini göstermek için hazırlanmıştır. Gerçek öğrenci
+      yorumları, video referanslar ve veli geri bildirimleri geldikçe düzenli olarak
+      güncellenebilir.
+    </p>
+  </div>
 </section>
 
 <section id="sss" className="faq reveal">
