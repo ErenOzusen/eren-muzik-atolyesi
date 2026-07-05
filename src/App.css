@@ -4842,3 +4842,45 @@ margin-top: 10px;
     border-radius: 16px;
   }
 }
+
+@media (max-width: 768px) {
+  .lesson-card {
+    padding: 22px 17px !important;
+  }
+
+  .lesson-card h3 {
+    font-size: 19px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .lesson-card p {
+    font-size: 13.2px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 12px !important;
+  }
+
+  .lesson-highlight {
+    margin-top: 12px !important;
+    padding: 12px 13px !important;
+    font-size: 12.8px !important;
+    line-height: 1.45 !important;
+  }
+
+  .lesson-button {
+    margin-top: 14px !important;
+    padding: 13px 15px !important;
+    font-size: 14px !important;
+  }
+
+  .lesson-icon {
+    width: 52px !important;
+    height: 52px !important;
+    margin-bottom: 13px !important;
+  }
+
+  .lesson-tag {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    margin-bottom: 11px !important;
+  }
+}
