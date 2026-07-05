@@ -4976,3 +4976,127 @@ margin-top: 10px;
     margin-bottom: 12px !important;
   }
 }
+
+.contact-flow {
+  width: min(1050px, 100%);
+  margin: 34px auto 34px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+.contact-flow-step {
+  padding: 22px 18px;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(45, 106, 79, 0.1);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.07);
+  text-align: center;
+}
+
+.contact-flow-step span {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 13px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2d6a4f, #22c55e);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  box-shadow: 0 10px 22px rgba(45, 106, 79, 0.22);
+}
+
+.contact-flow-step h3 {
+  font-size: 16px;
+  color: #111827;
+  margin-bottom: 9px;
+}
+
+.contact-flow-step p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #4b5563;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .contact-flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .contact-flow {
+    grid-template-columns: 1fr;
+    gap: 13px;
+    margin: 26px auto 28px;
+  }
+
+  .contact-flow-step {
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
+
+  .contact-flow-step span {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 11px;
+    font-size: 14px;
+  }
+
+  .contact-flow-step h3 {
+    font-size: 15px;
+    margin-bottom: 7px;
+  }
+
+  .contact-flow-step p {
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .contact textarea {
+    min-height: 118px;
+  }
+}
+
+@media (max-width: 768px) {
+  .contact-flow {
+    gap: 10px !important;
+    margin: 20px auto 24px !important;
+  }
+
+  .contact-flow-step {
+    display: grid !important;
+    grid-template-columns: 34px 1fr;
+    column-gap: 12px;
+    align-items: center;
+    text-align: left !important;
+    padding: 14px 15px !important;
+    border-radius: 18px !important;
+  }
+
+  .contact-flow-step span {
+    width: 30px !important;
+    height: 30px !important;
+    margin: 0 !important;
+    grid-row: span 2;
+    font-size: 13px !important;
+  }
+
+  .contact-flow-step h3 {
+    font-size: 14px !important;
+    margin: 0 0 4px !important;
+  }
+
+  .contact-flow-step p {
+    font-size: 12.8px !important;
+    line-height: 1.42 !important;
+  }
+
+  .contact-form-intro {
+    margin-top: 22px !important;
+  }
+}

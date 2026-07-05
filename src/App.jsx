@@ -1791,98 +1791,130 @@ if (isAdminPage) {
 </section>
 
 <section id="iletisim" className="contact reveal">
-  <h2>İletişim</h2>
+  <span className="section-badge">İletişim</span>
+  <h2>İlk Görüşme ve Başvuru</h2>
+
   <p>
-    Dersler hakkında bilgi almak veya deneme dersi için benimle iletişime geçebilirsiniz.
+    Dersler hakkında bilgi almak, seviyeni paylaşmak veya sana en uygun ders sürecini
+    birlikte belirlemek için formu doldurabilir ya da WhatsApp’tan hemen yazabilirsin.
   </p>
 
   <div className="contact-buttons">
     <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20dersler%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-  target="_blank"
-  rel="noopener noreferrer"
-  className="contact-button"
->
-  <MessageCircle size={18} strokeWidth={2.3} />
-  WhatsApp ile Yaz
-</a>
+      href="https://wa.me/905558089585?text=Merhaba%2C%20dersler%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      target="_blank"
+      rel="noopener noreferrer"
+      className="contact-button"
+    >
+      <MessageCircle size={18} strokeWidth={2.3} />
+      WhatsApp ile Yaz
+    </a>
   </div>
-<div className="contact-form-intro">
-  <span className="contact-form-badge">Hızlı başvuru</span>
 
-  <h3>Sana uygun dersi birlikte belirleyelim</h3>
+  <div className="contact-flow">
+    <div className="contact-flow-step">
+      <span>1</span>
+      <h3>Formu gönder veya WhatsApp’tan yaz</h3>
+      <p>Hangi enstrümanla ilgilendiğini ve seviyeni kısaca paylaşman yeterli.</p>
+    </div>
 
-  <p>
-    Hangi enstrümanla ilgilendiğini ve seviyeni yazman yeterli.
-    Eren Müzik Atölyesi en kısa sürede sana dönüş yapar.
-  </p>
+    <div className="contact-flow-step">
+      <span>2</span>
+      <h3>Seviye ve hedef konuşulur</h3>
+      <p>Yeni başlayan, geliştirmek isteyen veya çocuk öğrenci için ihtiyaç belirlenir.</p>
+    </div>
 
-  <div className="contact-trust-list">
-    <span>WhatsApp veya telefonla dönüş</span>
-    <span>Seviye ve hedefe göre yönlendirme</span>
-    <span>Çocuklar ve yetişkinler için birebir ders</span>
+    <div className="contact-flow-step">
+      <span>3</span>
+      <h3>Uygun ders planı önerilir</h3>
+      <p>Öğrenciye göre ders, paket ve çalışma düzeni birlikte netleştirilir.</p>
+    </div>
+
+    <div className="contact-flow-step">
+      <span>4</span>
+      <h3>İlk ders planlanır</h3>
+      <p>Uygun gün ve saat belirlenerek ders süreci başlatılır.</p>
+    </div>
   </div>
-</div>
+
+  <div className="contact-form-intro">
+    <span className="contact-form-badge">Hızlı başvuru</span>
+
+    <h3>Sana uygun dersi birlikte belirleyelim</h3>
+
+    <p>
+      Hangi enstrümanla ilgilendiğini, seviyeni ve hedefini yazman yeterli.
+      Eren Müzik Atölyesi en kısa sürede sana dönüş yapar.
+    </p>
+
+    <div className="contact-trust-list">
+      <span>WhatsApp veya telefonla dönüş</span>
+      <span>Seviye ve hedefe göre yönlendirme</span>
+      <span>Çocuklar ve yetişkinler için birebir ders</span>
+    </div>
+  </div>
+
   <form className="contact-form" onSubmit={handleContactSubmit}>
-  <input
-    type="text"
-    placeholder="Ad Soyad"
-    value={contactForm.name}
-    onChange={(e) =>
-      setContactForm({ ...contactForm, name: e.target.value })
-    }
-    required
-  />
+    <input
+      type="text"
+      placeholder="Ad Soyad"
+      value={contactForm.name}
+      onChange={(e) =>
+        setContactForm({ ...contactForm, name: e.target.value })
+      }
+      required
+    />
 
-  <input
-    type="tel"
-    placeholder="Telefon"
-    value={contactForm.phone}
-    onChange={(e) =>
-      setContactForm({ ...contactForm, phone: e.target.value })
-    }
-    required
-  />
+    <input
+      type="tel"
+      placeholder="Telefon"
+      value={contactForm.phone}
+      onChange={(e) =>
+        setContactForm({ ...contactForm, phone: e.target.value })
+      }
+      required
+    />
 
-  <select
-    value={contactForm.lesson}
-    onChange={(e) =>
-      setContactForm({ ...contactForm, lesson: e.target.value })
-    }
-    required
-  >
-    <option value="">Ders seçiniz</option>
-    <option value="Gitar">Gitar</option>
-    <option value="Piyano">Piyano</option>
-    <option value="Bas Gitar">Bas Gitar</option>
-    <option value="Müzik Teorisi">Müzik Teorisi</option>
-  </select>
+    <select
+      value={contactForm.lesson}
+      onChange={(e) =>
+        setContactForm({ ...contactForm, lesson: e.target.value })
+      }
+      required
+    >
+      <option value="">Ders seçiniz</option>
+      <option value="Gitar">Gitar</option>
+      <option value="Piyano">Piyano</option>
+      <option value="Bas Gitar">Bas Gitar</option>
+      <option value="Müzik Teorisi">Müzik Teorisi</option>
+      <option value="Çocuklar İçin Müzik">Çocuklar İçin Müzik</option>
+    </select>
 
-  <textarea
-    placeholder="Mesajınız"
-    value={contactForm.message}
-    onChange={(e) =>
-      setContactForm({ ...contactForm, message: e.target.value })
-    }
-    required
-  />
+    <textarea
+      placeholder="Kısaca seviyeni, hedefini veya uygun olduğun günleri yazabilirsin."
+      value={contactForm.message}
+      onChange={(e) =>
+        setContactForm({ ...contactForm, message: e.target.value })
+      }
+      required
+    />
 
-{formStatus.message && (
-  <p className={`form-message ${formStatus.type}`}>
-    {formStatus.type === "success" && (
-      <span className="success-icon">✓</span>
+    {formStatus.message && (
+      <p className={`form-message ${formStatus.type}`}>
+        {formStatus.type === "success" && (
+          <span className="success-icon">✓</span>
+        )}
+        {formStatus.message}
+      </p>
     )}
-    {formStatus.message}
-  </p>
-)}
-<button
-  type="submit"
-  disabled={isSubmitting}
->
-  {isSubmitting ? "Gönderiliyor..." : "Başvuru Gönder"}
-</button>
 
-</form>
+    <button
+      type="submit"
+      disabled={isSubmitting}
+    >
+      {isSubmitting ? "Gönderiliyor..." : "Başvuru Gönder"}
+    </button>
+  </form>
 </section>
       <div className="mobile-bottom-cta">
         <div className="mobile-bottom-cta-text">
