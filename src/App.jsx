@@ -1331,94 +1331,118 @@ if (isAdminPage) {
 
   <p className="section-description">
     Gitar, piyano ve bas gitar dersleri; öğrencinin yaşı, seviyesi, müzik zevki
-    ve hedeflerine göre kişiye özel olarak planlanır. Dersler yüz yüze veya
-    online olarak yapılabilir.
+    ve hedeflerine göre kişiye özel olarak planlanır. İlk derste seviye analizi
+    yapılır, ardından öğrenciye uygun bir çalışma yolu oluşturulur.
   </p>
 
   <div className="lesson-list">
-  <div className="lesson-card">
-    <div className="lesson-icon">
-      <Guitar strokeWidth={2.2} />
+    <div className="lesson-card">
+      <div className="lesson-icon">
+        <Guitar strokeWidth={2.2} />
+      </div>
+
+      <span className="lesson-tag">Yeni başlayanlar için uygun</span>
+      <h3>Gitar Dersi</h3>
+
+      <p>
+        Gitar dersleri; sıfırdan başlamak isteyenler, temelini güçlendirmek isteyenler
+        ve sevdiği şarkıları doğru teknikle çalmak isteyen öğrenciler için kişiye özel
+        planlanır.
+      </p>
+
+      <p>
+        Derslerde akor geçişleri, ritim, pena kullanımı, nota bilgisi ve şarkı eşlikleri
+        adım adım çalışılır. Öğrencinin müzik zevkine göre pop, rock, Türkçe şarkılar
+        veya klasik gitar çalışmalarıyla ilerlenir.
+      </p>
+
+      <div className="lesson-highlight">
+        İlk dersten itibaren doğru tutuş, temel ritim ve sevilen şarkılar üzerinden
+        sağlam bir başlangıç hedeflenir.
+      </div>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        <MessageCircle size={18} strokeWidth={2.3} />
+        Gitar Dersi İçin Bilgi Al
+      </a>
     </div>
-    <h3>Gitar Dersi</h3>
 
-<p>
-  Gitar dersleri; yeni başlayanlar, temelini güçlendirmek isteyenler ve sevdiği
-  şarkıları doğru teknikle çalmak isteyen öğrenciler için kişiye özel planlanır.
-</p>
+    <div className="lesson-card">
+      <div className="lesson-icon">
+        <Piano strokeWidth={2.2} />
+      </div>
 
-<p>
-  Derslerde akor, ritim, pena kullanımı, nota bilgisi ve şarkı eşlikleri adım adım
-  çalışılır. Öğrencinin müzik zevkine göre pop, rock, Türkçe şarkılar veya klasik
-  gitar çalışmalarıyla ilerlenir.
-</p>
+      <span className="lesson-tag">Çocuk, genç ve yetişkinler için</span>
+      <h3>Piyano Dersi</h3>
 
-    <a
-      href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-      target="_blank"
-      rel="noopener noreferrer"
-      className="lesson-button"
-    >
-     <MessageCircle size={18} strokeWidth={2.3} />
-Gitar Dersi İçin Bilgi Al
-    </a>
-  </div>
+      <p>
+        Piyano dersleri; çocuklar, gençler ve yetişkinler için yaşa, seviyeye ve hedefe
+        göre planlanır. Öğrenciye nota okuma, ritim ve temel piyano tekniği düzenli
+        bir sistemle kazandırılır.
+      </p>
 
-  <div className="lesson-card">
-    <div className="lesson-icon">
-      <Piano strokeWidth={2.2} />
+      <p>
+        Derslerde sağ-sol el koordinasyonu, basit parçalar, teknik egzersizler ve
+        müzikal ifade çalışılır. Amaç, öğrencinin piyanoyu severek öğrenmesi ve her
+        hafta ölçülebilir gelişim göstermesidir.
+      </p>
+
+      <div className="lesson-highlight">
+        Nota, ritim ve el koordinasyonu birlikte gelişir; öğrenci kendi seviyesine
+        uygun parçalarla motive şekilde ilerler.
+      </div>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        <MessageCircle size={18} strokeWidth={2.3} />
+        Piyano Dersi İçin Bilgi Al
+      </a>
     </div>
-    <h3>Piyano Dersi</h3>
 
-<p>
-  Piyano dersleri; çocuklar, gençler ve yetişkinler için yaşa, seviyeye ve hedefe
-  göre planlanır. Öğrenciye nota okuma, ritim ve temel piyano tekniği adım adım kazandırılır.
-</p>
+    <div className="lesson-card">
+      <div className="lesson-icon">
+        <AudioWaveform strokeWidth={2.2} />
+      </div>
 
-<p>
-  Derslerde sağ-sol el koordinasyonu, basit parçalar, teknik egzersizler ve müzikal ifade
-  çalışılır. Amaç, öğrencinin piyanoyu severek öğrenmesi ve düzenli gelişim göstermesidir.
-</p>
+      <span className="lesson-tag">Ritim ve groove odaklı</span>
+      <h3>Bas Gitar Dersi</h3>
 
-    <a
-      href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-      target="_blank"
-      rel="noopener noreferrer"
-      className="lesson-button"
-    >
-      <MessageCircle size={18} strokeWidth={2.3} />
-Piyano Dersi İçin Bilgi Al
-    </a>
-  </div>
+      <p>
+        Bas gitar dersleri; ritim duygusunu geliştirmek, şarkılara sağlam eşlik etmek
+        ve müziğin temel yapısını daha iyi anlamak isteyen öğrenciler için planlanır.
+      </p>
 
-  <div className="lesson-card">
-    <div className="lesson-icon">
-      <AudioWaveform strokeWidth={2.2} />
+      <p>
+        Derslerde parmak tekniği, ritim çalışmaları, bas yürüyüşleri, groove mantığı
+        ve şarkı eşlikleri üzerinde durulur. Öğrencinin seviyesine göre pop, rock,
+        funk ve farklı tarzlarda çalışmalar yapılabilir.
+      </p>
+
+      <div className="lesson-highlight">
+        Öğrenci sadece nota basmayı değil, şarkının ritmik temelini hissetmeyi ve
+        güçlü eşlik etmeyi öğrenir.
+      </div>
+
+      <a
+        href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="lesson-button"
+      >
+        <MessageCircle size={18} strokeWidth={2.3} />
+        Bas Gitar Dersi İçin Bilgi Al
+      </a>
     </div>
-    <h3>Bas Gitar Dersi</h3>
-
-<p>
-  Bas gitar dersleri; ritim duygusunu geliştirmek, şarkılara sağlam eşlik etmek
-  ve müziğin temel yapısını daha iyi anlamak isteyen öğrenciler için planlanır.
-</p>
-
-<p>
-  Derslerde parmak tekniği, ritim çalışmaları, bas yürüyüşleri, groove mantığı ve
-  şarkı eşlikleri üzerinde durulur. Öğrencinin seviyesine göre pop, rock, funk ve
-  farklı tarzlarda çalışmalar yapılabilir.
-</p>
-
-    <a
-      href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
-      target="_blank"
-      rel="noopener noreferrer"
-      className="lesson-button"
-    >
-      <MessageCircle size={18} strokeWidth={2.3} />
-Bas Gitar Dersi İçin Bilgi Al
-    </a>
   </div>
-</div>
 </section>
 
             <section id="paketler" className="packages reveal">
