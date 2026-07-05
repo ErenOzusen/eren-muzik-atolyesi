@@ -4502,3 +4502,73 @@ margin-top: 10px;
     display: none;
   }
 }
+
+/* MOBIL DERS KART BOY ESITLEME */
+@media (max-width: 768px) {
+  section#dersler .lesson-card {
+    min-height: 520px !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  section#dersler .lesson-button {
+    margin-top: auto !important;
+  }
+}
+
+/* MOBIL DERS SLIDER BOY VE DIZILIM FINAL */
+@media (max-width: 768px) {
+  section#dersler .lesson-list {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  section#dersler .lesson-card {
+    flex: 0 0 88% !important;
+    width: 88% !important;
+    min-width: 88% !important;
+    max-width: 88% !important;
+    height: 560px !important;
+    min-height: 560px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-sizing: border-box !important;
+  }
+
+  section#dersler .lesson-card p {
+    font-size: 14px !important;
+    line-height: 1.55 !important;
+  }
+
+  section#dersler .lesson-button {
+    margin-top: auto !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
+/* MOBIL SLIDER KART BOY ESITLEME FINAL */
+@media (max-width: 768px) {
+  section#dersler .lesson-list,
+  section#paketler .package-list {
+    align-items: stretch !important;
+  }
+
+  section#dersler .lesson-card,
+  section#paketler .package-card {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 560px !important;
+    box-sizing: border-box !important;
+  }
+
+  section#dersler .lesson-button,
+  section#paketler .lesson-button {
+    margin-top: auto !important;
+  }
+}
