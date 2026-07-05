@@ -4884,3 +4884,95 @@ margin-top: 10px;
     margin-bottom: 11px !important;
   }
 }
+
+.package-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  margin: 6px auto 14px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(212, 163, 115, 0.16);
+  color: #8a5a32;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.package-recommendation {
+  margin-top: 18px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(45, 106, 79, 0.09), rgba(212, 163, 115, 0.16));
+  color: #2f3e35;
+  font-size: 14.5px;
+  line-height: 1.55;
+  font-weight: 650;
+  border: 1px solid rgba(45, 106, 79, 0.12);
+}
+
+.package-card-featured {
+  border: 1px solid rgba(45, 106, 79, 0.22) !important;
+  box-shadow: 0 24px 60px rgba(45, 106, 79, 0.16) !important;
+  background:
+    radial-gradient(circle at top, rgba(45, 106, 79, 0.08), transparent 42%),
+    #ffffff !important;
+}
+
+.package-card-featured .package-label {
+  background: rgba(45, 106, 79, 0.11);
+  color: #2d6a4f;
+}
+
+@media (max-width: 768px) {
+  .package-label {
+    font-size: 12px;
+    padding: 6px 10px;
+    margin-bottom: 11px;
+  }
+
+  .package-recommendation {
+    margin-top: 12px;
+    padding: 12px 13px;
+    font-size: 12.8px;
+    line-height: 1.45;
+    border-radius: 16px;
+  }
+
+  .package-card {
+    padding: 22px 17px !important;
+  }
+
+  .package-card h3 {
+    font-size: 19px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .package-card p {
+    font-size: 13.2px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 12px !important;
+  }
+
+  .package-icon {
+    width: 52px !important;
+    height: 52px !important;
+    margin-bottom: 13px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .package-card {
+    min-height: auto !important;
+    justify-content: flex-start !important;
+  }
+
+  .package-card .lesson-button {
+    margin-top: 16px !important;
+  }
+
+  .package-badge {
+    margin-top: 10px !important;
+    margin-bottom: 12px !important;
+  }
+}
