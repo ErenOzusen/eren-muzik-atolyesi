@@ -1196,6 +1196,17 @@ if (isAdminPage) {
 >
   İletişim
 </a>
+
+<a
+  href="https://wa.me/905558089585?text=Merhaba%2C%20Eren%20M%C3%BCzik%20At%C3%B6lyesi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+  className="mobile-menu-whatsapp"
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={() => setMenuOpen(false)}
+>
+  <span>Ders bilgisi al</span>
+<small>WhatsApp’tan hemen yaz</small>
+</a>
   </div>
 </nav>
 
