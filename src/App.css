@@ -21,7 +21,8 @@ body {
 }
 
 .hero h1 {
-  font-size: 48px;
+  font-size: 42px;
+  line-height: 1.08;
   margin-bottom: 20px;
 }
 
@@ -374,12 +375,10 @@ color: white;}
 }
 
 .hero h1 {
-  font-size: 56px;
-  margin-bottom: 20px;.hero h1 {
-  font-size: 56px;
+  font-size: 44px;
+  line-height: 1.08;
   margin-bottom: 20px;
   color: #facc15;
-}
 }
 
 .hero p {
@@ -4273,4 +4272,54 @@ margin-top: 10px;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+/* HERO DESKTOP FINAL DENGE */
+@media (min-width: 769px) {
+  .hero h1 {
+    font-size: 46px;
+    line-height: 1.08;
+    max-width: 560px;
+  }
+}
+
+/* HERO DESKTOP FINAL DENGE */
+@media (min-width: 769px) {
+  .hero {
+    min-height: auto;
+    padding-top: 55px;
+    padding-bottom: 45px;
+  }
+
+  .hero h1 {
+    font-size: 38px;
+    line-height: 1.08;
+    max-width: 540px;
+    margin-bottom: 16px;
+  }
+
+  .hero p {
+    font-size: 18px;
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  .hero-highlights {
+    margin-bottom: 18px;
+    gap: 10px;
+  }
+
+  .hero-buttons {
+    margin-top: 0;
+    gap: 12px;
+  }
+
+  .hero-image img {
+    max-height: 300px;
+    object-fit: cover;
+  }
+
+  .hero-badge {
+  display: none;
+}
 }

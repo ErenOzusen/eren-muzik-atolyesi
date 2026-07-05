@@ -1201,22 +1201,22 @@ if (isAdminPage) {
 
   <section id="hero" className="hero">
   <div className="hero-content">
-    <span className="hero-badge">Ankara’da ve online birebir müzik dersleri</span>
+    <span className="hero-badge">Ankara’da birebir müzik dersleri</span>
 
-   <h1>
-  Gitar, Piyano ve Bas Gitar Dersleri
+<h1>
+  Gitar, Piyano ve Bas Gitarda Kişiye Özel Dersler
 </h1>
 
-    <p>
-      Çocuklar, gençler ve yetişkinler için; öğrencinin yaşı, seviyesi ve
-      hedeflerine göre planlanan birebir müzik dersleriyle müziğe güvenle başlayın.
-    </p>
+<p>
+  Çocuklar, gençler ve yetişkinler için; seviyeye, hedefe ve öğrenme hızına göre
+  planlanan özel derslerle müziğe güvenle başlayın.
+</p>
 
     <div className="hero-highlights">
-      <span>TRT koro geçmişi</span>
-      <span>Konservatuvar eğitimi</span>
-      <span>10+ yıl öğretmenlik deneyimi</span>
-    </div>
+  <span>Başlangıç ve orta seviye için uygun</span>
+  <span>Deneyimli müzik öğretmeni</span>
+  <span>Ücretsiz ön görüşme</span>
+</div>
 
   <div className="hero-buttons">
   <a href="#iletisim" className="hero-button">
@@ -1231,7 +1231,7 @@ if (isAdminPage) {
     className="whatsapp-button"
   >
     <MessageCircle size={18} strokeWidth={2.3} />
-    WhatsApp’tan Bilgi Al
+    WhatsApp’tan Hızlı Bilgi Al
   </a>
 </div>
   </div>
