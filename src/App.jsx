@@ -1811,7 +1811,22 @@ Gelişim Paketi İçin Bilgi Al
 
 </form>
 </section>
+      <div className="mobile-bottom-cta">
+        <div className="mobile-bottom-cta-text">
+          <span>Ders hakkında bilgi al</span>
+<small>WhatsApp’tan hemen yaz</small>
 
+        </div>
+
+        <a
+          href="https://wa.me/905558089585?text=Merhaba%2C%20Eren%20M%C3%BCzik%20At%C3%B6lyesi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+          className="mobile-bottom-cta-button"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Yaz
+        </a>
+      </div>
       <footer className="footer">
   <p>© 2026 Eren Müzik Atölyesi. Tüm hakları saklıdır.</p>
 
