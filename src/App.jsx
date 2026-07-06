@@ -1571,70 +1571,78 @@ if (isAdminPage) {
   </div>
 </section>
 
-{videos.length > 0 && (
-  <section id="videolar" className="videos-section">
-    <div className="section-header">
-      <span className="section-badge">Atölyeden Kısa Videolar</span>
-      <h2>Derslerden ve Performanslardan Kısa Anlar</h2>
-      <p>
-        Eren Müzik Atölyesi&apos;nde derslerden, öğrenci çalışmalarından ve
-        enstrüman performanslarından kısa videolar.
-      </p>
-    </div>
+<section id="videolar" className="videos-section">
+  <div className="section-header">
+    <span className="section-badge">Atölyeden Gerçek Anlar</span>
 
-    <div className="videos-grid">
-{videos.map((video) => (
-  <article className="video-card" key={video.id}>
-    {playingVideoId === video.id ? (
-  <div className="video-player">
-    <iframe
-      src={`${getYoutubeEmbedUrl(video.videoUrl)}?autoplay=1`}
-      title={video.title}
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      allowFullScreen
-    ></iframe>
+    <h2>Gerçek Ders ve Performans Kesitleri</h2>
+
+    <p>
+      Eren Müzik Atölyesi’nde derslerden, öğrenci çalışmalarından ve kısa
+      performanslardan seçilmiş videolar. Ders ortamını ve öğrencilerin gelişim
+      sürecini yakından görebilirsiniz.
+    </p>
   </div>
-) : (
-  <button
-    type="button"
-    className="video-thumbnail"
-    onClick={() => setPlayingVideoId(video.id)}
-    aria-label={`${video.title} videosunu oynat`}
-  >
-    <img
-      src={video.thumbnailUrl || getYoutubeThumbnail(video.videoUrl)}
-      alt={video.title}
-    />
-    <div className="video-thumbnail-overlay"></div>
-    <div className="video-play-button">▶</div>
-    <span className="video-watch-label">Videoyu oynat</span>
-  </button>
-)}
 
-    <div className="video-card-content">
-      {video.category && (
-        <span className="video-category-badge">{video.category}</span>
-      )}
+  {videos.length === 0 ? (
+    <p className="video-empty-message">
+      Videolar şu anda yüklenemedi. Lütfen daha sonra tekrar kontrol edin.
+    </p>
+  ) : (
+    <div className="videos-grid">
+      {videos.map((video) => (
+        <article className="video-card" key={video.id}>
+          {playingVideoId === video.id ? (
+            <div className="video-player">
+              <iframe
+                src={`${getYoutubeEmbedUrl(video.videoUrl)}?autoplay=1`}
+                title={video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="video-thumbnail"
+              onClick={() => setPlayingVideoId(video.id)}
+              aria-label={`${video.title} videosunu oynat`}
+            >
+              <img
+                src={video.thumbnailUrl || getYoutubeThumbnail(video.videoUrl)}
+                alt={video.title}
+              />
 
-      <h3>{video.title}</h3>
+              <div className="video-thumbnail-overlay"></div>
+              <div className="video-play-button">▶</div>
+              <span className="video-watch-label">Videoyu oynat</span>
+            </button>
+          )}
 
-      {video.description && <p>{video.description}</p>}
+          <div className="video-card-content">
+            {video.category && (
+              <span className="video-category-badge">{video.category}</span>
+            )}
 
-     <button
-  type="button"
-  className="video-link-button"
-  onClick={() =>
-    setPlayingVideoId(playingVideoId === video.id ? null : video.id)
-  }
->
-  {playingVideoId === video.id ? "Önizlemeye Dön" : "Videoyu Oynat"}
-</button>
+            <h3>{video.title}</h3>
+
+            {video.description && <p>{video.description}</p>}
+
+            <button
+              type="button"
+              className="video-link-button"
+              onClick={() =>
+                setPlayingVideoId(playingVideoId === video.id ? null : video.id)
+              }
+            >
+              {playingVideoId === video.id ? "Önizlemeye Dön" : "Videoyu Oynat"}
+            </button>
+          </div>
+        </article>
+      ))}
     </div>
-  </article>
-))}
-    </div>
-  </section>
-)}
+  )}
+</section>
 
 <section id="yorumlar" className="testimonials reveal">
   <div className="section-header">
