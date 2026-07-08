@@ -5302,3 +5302,21 @@ margin-top: 10px;
     max-width: 235px;
   }
 }
+
+/* CONTACT TRUST TEXT */
+.contact-trust-text {
+  max-width: 680px;
+  margin: 10px auto 28px;
+  color: #475569;
+  font-size: 1rem;
+  line-height: 1.7;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .contact-trust-text {
+    font-size: 0.94rem;
+    line-height: 1.6;
+    margin: 8px auto 22px;
+  }
+}

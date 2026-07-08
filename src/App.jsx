@@ -1820,9 +1820,14 @@ if (isAdminPage) {
   <h2>İlk Görüşme ve Başvuru</h2>
 
   <p>
-    Dersler hakkında bilgi almak, seviyeni paylaşmak veya sana en uygun ders sürecini
-    birlikte belirlemek için formu doldurabilir ya da WhatsApp’tan hemen yazabilirsin.
-  </p>
+  Dersler hakkında bilgi almak, seviyeni paylaşmak veya sana en uygun ders sürecini
+  birlikte belirlemek için formu doldurabilir ya da WhatsApp’tan hemen yazabilirsin.
+</p>
+
+<p className="contact-trust-text">
+  Başvurunuzdan sonra en kısa sürede sizinle iletişime geçerek seviyenize,
+  hedefinize ve uygun zamanlarınıza göre ders planını birlikte netleştiriyoruz.
+</p>
 
   <div className="contact-buttons">
     <a
