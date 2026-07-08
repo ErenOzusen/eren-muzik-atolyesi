@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import erenLogo from "./assets/eren-logo-navbar.webp";
+import erenHeroLogo from "./assets/eren-logo-transparent.webp";
 
 const API_BASE_URL =
   window.location.hostname === "localhost"
@@ -1254,9 +1255,13 @@ if (isAdminPage) {
 </div>
   </div>
 
-  <div className="hero-image">
-    <img src="/music-hero.png" alt="Gitar, piyano ve bas gitar özel müzik dersi" />
-  </div>
+  <div className="hero-image hero-logo-card">
+  <img
+    src={erenHeroLogo}
+    alt="Eren Özüşen Müzik Öğretmeni"
+    className="hero-main-logo"
+  />
+</div>
 </section>
 
 <section className="features">

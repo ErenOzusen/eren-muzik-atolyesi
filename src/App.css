@@ -5267,3 +5267,38 @@ margin-top: 10px;
     min-width: auto;
   }
 }
+
+/* HERO LOGO VISUAL */
+.hero-logo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 420px;
+  background: radial-gradient(circle at center, rgba(34, 197, 94, 0.08), transparent 62%);
+  border-radius: 32px;
+  overflow: visible;
+}
+
+.hero-logo-card .hero-main-logo {
+  width: 100%;
+  max-width: 470px;
+  height: auto !important;
+  max-height: none !important;
+  display: block;
+  object-fit: contain !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 30px 46px rgba(0, 0, 0, 0.42));
+}
+
+@media (max-width: 768px) {
+  .hero-logo-card {
+    min-height: auto;
+    margin-top: 8px;
+    background: radial-gradient(circle at center, rgba(34, 197, 94, 0.08), transparent 64%);
+  }
+
+  .hero-logo-card .hero-main-logo {
+    max-width: 235px;
+  }
+}
