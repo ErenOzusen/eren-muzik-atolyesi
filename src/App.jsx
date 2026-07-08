@@ -12,6 +12,7 @@ import {
   CalendarCheck,
 } from "lucide-react";
 import "./App.css";
+import erenLogo from "./assets/eren-logo-navbar.webp";
 
 const API_BASE_URL =
   window.location.hostname === "localhost"
@@ -1110,7 +1111,13 @@ if (isAdminPage) {
     <div className="app">
 
 <nav className="navbar">
-  <div className="navbar-logo">Eren Müzik Atölyesi</div>
+  <div className="navbar-logo">
+  <img
+    src={erenLogo}
+    alt="Eren Müzik Atölyesi Logo"
+    className="site-logo"
+  />
+</div>
 
   <button
     className="menu-toggle"

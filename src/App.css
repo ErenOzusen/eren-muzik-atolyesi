@@ -5242,3 +5242,28 @@ margin-top: 10px;
   text-align: center;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
 }
+
+/* SITE LOGO */
+.site-logo {
+  height: 92px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 130px;
+}
+
+@media (max-width: 768px) {
+  .site-logo {
+    height: 74px;
+  }
+
+  .navbar-logo {
+    min-width: auto;
+  }
+}
