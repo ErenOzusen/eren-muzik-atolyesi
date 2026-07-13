@@ -172,10 +172,28 @@ const [isVideoSubmitting, setIsVideoSubmitting] = useState(false);
   const [lessonFilter, setLessonFilter] = useState("");
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
+  const [activeAdminSection, setActiveAdminSection] = useState("dashboard");
+  const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+  useEffect(() => {
+  if (!videoFormStatus) return;
+
+  const statusTimer = setTimeout(() => {
+    setVideoFormStatus(null);
+  }, 3500);
+
+  return () => clearTimeout(statusTimer);
+}, [videoFormStatus]);
 
 const toggleFaq = (index) => {
   setOpenFaqIndex((currentIndex) => (currentIndex === index ? null : index));
+};
+
+const handleAdminSectionChange = (section) => {
+  setActiveAdminSection(section);
+  setIsAdminMenuOpen(false);
 };
 
 
@@ -221,6 +239,31 @@ const toggleFaq = (index) => {
     { label: "Bas Gitar", value: submissionStats.basGitar },
     { label: "Müzik Teorisi", value: submissionStats.muzikTeorisi },
   ];
+
+  const adminSectionInfo = {
+  dashboard: {
+    eyebrow: "Genel Bakış",
+    title: "Ana Panel",
+    description:
+      "Başvuruların ve içeriklerin genel durumunu buradan takip edebilirsin.",
+  },
+  submissions: {
+    eyebrow: "Başvuru Yönetimi",
+    title: "Gelen Başvurular",
+    description:
+      "Form üzerinden gelen öğrenci başvurularını buradan takip edebilirsin.",
+  },
+  videos: {
+    eyebrow: "Video Galeri",
+    title: "Video Yönetimi",
+    description:
+      "Atölye videolarını buradan ekleyebilir, düzenleyebilir ve silebilirsin.",
+  },
+};
+
+const currentAdminSectionInfo =
+  adminSectionInfo[activeAdminSection] || adminSectionInfo.dashboard;
+
 
   const getYouTubeEmbedUrl = (url) => {
   if (!url) return "";
@@ -746,16 +789,75 @@ if (isAdminPage) {
         </div>
       ) : (
         <div className="admin-dashboard">
-      <div className="admin-dashboard-header">
-  <div>
-    <p className="admin-eyebrow">Başvuru Yönetimi</p>
-    <h1>Gelen Başvurular</h1>
-    <p>
-      Form üzerinden gelen öğrenci başvurularını buradan takip edebilirsin.
-    </p>
+  <div className="admin-mobile-topbar">
+    <div className="admin-mobile-brand">
+      <strong>Eren Müzik Atölyesi</strong>
+      <span>Yönetim Paneli</span>
+    </div>
+
+    <button
+      type="button"
+      className="admin-menu-toggle"
+      onClick={() => setIsAdminMenuOpen((current) => !current)}
+      aria-expanded={isAdminMenuOpen}
+      aria-label="Admin menüsünü aç veya kapat"
+    >
+      {isAdminMenuOpen ? "✕" : "☰"}
+    </button>
   </div>
 
-  
+  <nav
+    className={`admin-section-nav ${
+      isAdminMenuOpen ? "admin-section-nav-open" : ""
+    }`}
+  >
+    <button
+      type="button"
+      className={
+        activeAdminSection === "dashboard"
+          ? "admin-section-button active"
+          : "admin-section-button"
+      }
+      onClick={() => handleAdminSectionChange("dashboard")}
+    >
+      Ana Panel
+    </button>
+
+    <button
+      type="button"
+      className={
+        activeAdminSection === "submissions"
+          ? "admin-section-button active"
+          : "admin-section-button"
+      }
+      onClick={() => handleAdminSectionChange("submissions")}
+    >
+      Başvurular
+    </button>
+
+    <button
+      type="button"
+      className={
+        activeAdminSection === "videos"
+          ? "admin-section-button active"
+          : "admin-section-button"
+      }
+      onClick={() => handleAdminSectionChange("videos")}
+    >
+      Video Yönetimi
+    </button>
+  </nav>
+
+<div className="admin-dashboard-header">
+  <div>
+    <p className="admin-eyebrow">
+      {currentAdminSectionInfo.eyebrow}
+    </p>
+
+    <h1>{currentAdminSectionInfo.title}</h1>
+
+    <p>{currentAdminSectionInfo.description}</p>
+  </div>
 
   <div className="admin-header-actions">
     <button
@@ -768,34 +870,42 @@ if (isAdminPage) {
   </div>
 </div>
 
-          <div className="admin-stats-grid">
-            {statCards.map((card) => (
-              <div
-                key={card.label}
-                className={`admin-stat-card${
-                  card.variant === "total" ? " admin-stat-card-total" : ""
-                }`}
-              >
-                <span>{card.label}</span>
-                <strong>{card.value}</strong>
-              </div>
-            ))}
-          </div>
-
-    <div className="admin-video-management">
-  <div className="admin-video-header">
-    <div>
-      <p className="admin-eyebrow">Video Galeri</p>
-      <h2>Video Yönetimi</h2>
-      <p>Atölye videolarını buradan ekleyebilir, düzenleyebilir ve silebilirsin.</p>
-    </div>
+      {activeAdminSection === "dashboard" && (
+  <div className="admin-stats-grid">
+    {statCards.map((card) => (
+      <div
+        key={card.label}
+        className={`admin-stat-card${
+          card.variant === "total" ? " admin-stat-card-total" : ""
+        }`}
+      >
+        <span>{card.label}</span>
+        <strong>{card.value}</strong>
+      </div>
+    ))}
   </div>
+)}
 
+    {activeAdminSection === "videos" && (
+  <div className="admin-video-management">
+  
 {videoFormStatus && (
   <p className="admin-video-status">
     {videoFormStatus}
   </p>
 )}
+
+<div className="admin-video-form-heading">
+  <h3>
+    {editingVideoId ? "Videoyu Düzenle" : "Yeni Video Ekle"}
+  </h3>
+
+  <p>
+    {editingVideoId
+      ? "Seçtiğin videonun bilgilerini güncelleyip yeniden kaydedebilirsin."
+      : "YouTube veya YouTube Shorts bağlantısını kullanarak galeriye yeni video ekleyebilirsin."}
+  </p>
+</div>
 <form className="admin-video-form" onSubmit={handleVideoSubmit}>    
   <input
   type="text"
@@ -808,7 +918,7 @@ if (isAdminPage) {
     <input
   type="text"
   name="videoUrl"
-  placeholder="YouTube / Shorts linki"
+  placeholder="YouTube veya Shorts bağlantısını buraya yapıştır"
   value={videoForm.videoUrl}
   onChange={handleVideoFormChange}
 />
@@ -816,29 +926,30 @@ if (isAdminPage) {
  <input
   type="text"
   name="category"
-  placeholder="Kategori örn: Gitar, Piyano, Performans"
+ placeholder="Kategori: Gitar, Piyano veya Performans"
   value={videoForm.category}
   onChange={handleVideoFormChange}
 />
 
-    <input
+<input
   type="number"
   name="order"
-  placeholder="Sıra"
+  min="0"
+  placeholder="Gösterim sırası: 0 en üstte"
   value={videoForm.order}
   onChange={handleVideoFormChange}
 />
 <input
   type="text"
   name="thumbnailUrl"
-  placeholder="Thumbnail linki opsiyonel"
+ placeholder="Özel kapak görseli bağlantısı — isteğe bağlı"
   value={videoForm.thumbnailUrl}
   onChange={handleVideoFormChange}
 />
 
     <textarea
   name="description"
-  placeholder="Açıklama"
+  placeholder="Videoda ne olduğunu kısaca anlat"
   value={videoForm.description}
   onChange={handleVideoFormChange}
 />
@@ -853,9 +964,26 @@ if (isAdminPage) {
       Aktif olarak yayında göster
     </label>
 
-    <button type="submit" disabled={isVideoSubmitting}>
-  {isVideoSubmitting ? "Kaydediliyor..." : "Video Kaydet"}
-</button>
+    <div className="admin-video-form-actions">
+  <button type="submit" disabled={isVideoSubmitting}>
+    {isVideoSubmitting
+      ? "Kaydediliyor..."
+      : editingVideoId
+        ? "Değişiklikleri Güncelle"
+        : "Video Kaydet"}
+  </button>
+
+  {editingVideoId && (
+    <button
+      type="button"
+      className="admin-video-cancel-button"
+      onClick={resetVideoForm}
+      disabled={isVideoSubmitting}
+    >
+      Düzenlemeyi İptal Et
+    </button>
+  )}
+</div>
   </form>
     <div className="admin-video-list">
     <h3>Eklenen Videolar</h3>
@@ -891,12 +1019,11 @@ if (isAdminPage) {
     )}
   </div>
 </div>
+)}
 
-          
-
-          
-
-          <div className="admin-filters">
+{activeAdminSection === "submissions" && (
+  <>
+<div className="admin-filters">
   <div className="admin-search-box">
     <input
       type="text"
@@ -1026,10 +1153,12 @@ if (isAdminPage) {
                   })}
                 </tbody>
               </table>
-            </div>
+                </div>
           )}
-        </div>
+        </>
       )}
+    </div>
+  )}
 
       {selectedSubmission && (
         <div
