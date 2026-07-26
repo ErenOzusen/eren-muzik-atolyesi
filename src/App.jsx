@@ -149,6 +149,7 @@ const [formStatus, setFormStatus] = useState({
 
 
   const [submissions, setSubmissions] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [videos, setVideos] = useState([]);
   const [adminVideos, setAdminVideos] = useState([]);
 const [videoForm, setVideoForm] = useState({
@@ -252,6 +253,12 @@ const handleAdminSectionChange = (section) => {
     title: "Gelen Başvurular",
     description:
       "Form üzerinden gelen öğrenci başvurularını buradan takip edebilirsin.",
+  },
+    appointments: {
+    eyebrow: "Randevu Yönetimi",
+    title: "Ders Randevuları",
+    description:
+      "Öğrencilerin oluşturduğu randevu taleplerini buradan takip edebilirsin.",
   },
   videos: {
     eyebrow: "Video Galeri",
@@ -389,6 +396,30 @@ const fetchSubmissions = async (token = adminToken) => {
   }
 };
 
+const fetchAppointments = async (token = adminToken) => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/appointments`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setAppointments(Array.isArray(data) ? data : []);
+    } else {
+      alert(data.message || "Randevular alınamadı");
+    }
+  } catch (error) {
+    console.error("Randevular alınamadı:", error);
+    alert("Randevular alınırken bir hata oluştu");
+  }
+};
+
 const fetchAdminVideos = async (token = adminToken) => {
   try {
  const response = await fetch(`${API_BASE_URL}/api/admin/videos`, {
@@ -416,8 +447,11 @@ useEffect(() => {
     setIsAdminLoggedIn(true);
     fetchSubmissions(savedToken);
     fetchAdminVideos(savedToken);
+    fetchAppointments(savedToken);
   }
 }, []);
+
+
 
 const handleVideoFormChange = (e) => {
   const { name, value, type, checked } = e.target;
@@ -598,6 +632,85 @@ const handleStatusChange = async (id, newStatus) => {
   }
 };
 
+const handleAppointmentStatusChange = async (id, newStatus) => {
+  if (!adminToken) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/appointments/${id}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.message || "Randevu durumu güncellenemedi");
+      return;
+    }
+
+    setAppointments((previousAppointments) =>
+      previousAppointments.map((appointment) =>
+        appointment._id === id
+          ? {
+              ...appointment,
+              status: data.appointment?.status || newStatus,
+            }
+          : appointment
+      )
+    );
+  } catch (error) {
+    console.error("Randevu durumu güncelleme hatası:", error);
+    alert("Randevu durumu güncellenirken bir hata oluştu");
+  }
+};
+
+const handleDeleteAppointment = async (id) => {
+  const confirmDelete = window.confirm(
+    "Bu randevuyu kalıcı olarak silmek istediğine emin misin?"
+  );
+
+  if (!confirmDelete || !adminToken) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/appointments/${id}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.message || "Randevu silinemedi");
+      return;
+    }
+
+    setAppointments((previousAppointments) =>
+      previousAppointments.filter(
+        (appointment) => appointment._id !== id
+      )
+    );
+  } catch (error) {
+    console.error("Randevu silme hatası:", error);
+    alert("Randevu silinirken bir hata oluştu");
+  }
+};
+
 const handleDeleteSubmission = async (id) => {
   const confirmDelete = window.confirm("Bu başvuruyu silmek istiyor musun?");
 
@@ -656,6 +769,7 @@ if (data.success) {
   setAdminToken(data.token);
   setIsAdminLoggedIn(true);
   fetchSubmissions(data.token);
+  fetchAppointments(data.token);
   fetchAdminVideos(data.token);
 } else {
       alert("Şifre yanlış kral");
@@ -834,6 +948,18 @@ if (isAdminPage) {
     >
       Başvurular
     </button>
+
+    <button
+  type="button"
+  className={
+    activeAdminSection === "appointments"
+      ? "admin-section-button active"
+      : "admin-section-button"
+  }
+  onClick={() => handleAdminSectionChange("appointments")}
+>
+  Randevular
+</button>
 
     <button
       type="button"
@@ -1019,6 +1145,85 @@ if (isAdminPage) {
     )}
   </div>
 </div>
+)}
+
+{activeAdminSection === "appointments" && (
+  <>
+    {appointments.length === 0 ? (
+      <div className="admin-empty">
+        Henüz randevu bulunmuyor.
+      </div>
+    ) : (
+      <div className="admin-table-wrapper">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Ad Soyad</th>
+              <th>Telefon</th>
+              <th>E-posta</th>
+              <th>Ders</th>
+              <th>Randevu Tarihi</th>
+              <th>Saat</th>
+              <th>Not</th>
+              <th>Durum</th>
+              <th>İşlem</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {appointments.map((appointment) => (
+              <tr key={appointment._id}>
+                <td>{appointment.name}</td>
+
+                <td>
+                  <a href={`tel:${appointment.phone}`}>
+                    {appointment.phone}
+                  </a>
+                </td>
+
+                <td>{appointment.email || "-"}</td>
+
+                <td>{appointment.lesson}</td>
+
+                <td>{appointment.appointmentDate}</td>
+
+                <td>{appointment.appointmentTime}</td>
+
+                <td>{appointment.note || "-"}</td>
+
+                <td>
+  <select
+    className="admin-status-select"
+    value={appointment.status || "Beklemede"}
+    onChange={(e) =>
+      handleAppointmentStatusChange(
+        appointment._id,
+        e.target.value
+      )
+    }
+  >
+    <option value="Beklemede">Beklemede</option>
+    <option value="Onaylandı">Onaylandı</option>
+    <option value="Tamamlandı">Tamamlandı</option>
+    <option value="İptal">İptal</option>
+  </select>
+</td>
+<td>
+  <button
+    type="button"
+    className="admin-delete-button"
+    onClick={() => handleDeleteAppointment(appointment._id)}
+  >
+    Sil
+  </button>
+</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </>
 )}
 
 {activeAdminSection === "submissions" && (

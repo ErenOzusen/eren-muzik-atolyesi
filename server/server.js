@@ -5,6 +5,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const Submission = require("./models/Submission");
 const Video = require("./models/Video");
+const Appointment = require("./models/Appointment");
 //const nodemailer = require("nodemailer");
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -28,6 +29,22 @@ function formatSubmission(submission) {
     status: submission.status || "Yeni",
     createdAt,
     date: createdAt ? new Date(createdAt).toISOString() : null,
+  };
+}
+
+function formatAppointment(appointment) {
+  return {
+    _id: appointment._id.toString(),
+    name: appointment.name,
+    phone: appointment.phone,
+    email: appointment.email || "",
+    lesson: appointment.lesson,
+    appointmentDate: appointment.appointmentDate,
+    appointmentTime: appointment.appointmentTime,
+    note: appointment.note || "",
+    status: appointment.status || "Beklemede",
+    createdAt: appointment.createdAt,
+    updatedAt: appointment.updatedAt,
   };
 }
 
@@ -144,6 +161,76 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+// Public: yeni randevu talebi oluştur
+app.post("/api/appointments", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  const {
+    name,
+    phone,
+    email,
+    lesson,
+    appointmentDate,
+    appointmentTime,
+    note,
+  } = req.body;
+
+  if (
+    !name?.trim() ||
+    !phone?.trim() ||
+    !lesson?.trim() ||
+    !appointmentDate?.trim() ||
+    !appointmentTime?.trim()
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Zorunlu alanların tamamını doldurmanız gerekiyor",
+    });
+  }
+
+  try {
+    const existingAppointment = await Appointment.findOne({
+      appointmentDate: appointmentDate.trim(),
+      appointmentTime: appointmentTime.trim(),
+      status: { $ne: "İptal" },
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        message: "Bu tarih ve saat için daha önce randevu alınmış",
+      });
+    }
+
+    const appointment = await Appointment.create({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email?.trim() || "",
+      lesson: lesson.trim(),
+      appointmentDate: appointmentDate.trim(),
+      appointmentTime: appointmentTime.trim(),
+      note: note?.trim() || "",
+    });
+
+    console.log("Yeni randevu talebi oluşturuldu:", formatAppointment(appointment));
+
+    res.status(201).json({
+      success: true,
+      message: "Randevu talebiniz başarıyla oluşturuldu",
+      appointment: formatAppointment(appointment),
+    });
+  } catch (error) {
+    console.error("Randevu oluşturulamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Randevu oluşturulurken bir hata meydana geldi",
+    });
+  }
+});
+
 app.post("/api/admin/login", (req, res) => {
   const { password } = req.body;
 
@@ -184,6 +271,13 @@ const VALID_SUBMISSION_STATUSES = [
   "Arandı",
   "Beklemede",
   "Derse başladı",
+  "İptal",
+];
+
+const VALID_APPOINTMENT_STATUSES = [
+  "Beklemede",
+  "Onaylandı",
+  "Tamamlandı",
   "İptal",
 ];
 
@@ -332,6 +426,133 @@ app.delete("/api/admin/videos/:id", checkAdminToken, async (req, res) => {
     res.status(500).json({ message: "Video silinemedi" });
   }
 });
+
+// Admin: tüm randevuları getir
+app.get("/api/admin/appointments", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  try {
+    const appointments = await Appointment.find()
+      .sort({
+        appointmentDate: 1,
+        appointmentTime: 1,
+        createdAt: -1,
+      })
+      .lean();
+
+    res.json(
+      appointments.map((appointment) => formatAppointment(appointment))
+    );
+  } catch (error) {
+    console.error("Randevular alınamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Randevular alınırken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: randevu durumunu güncelle
+app.patch(
+  "/api/admin/appointments/:id/status",
+  checkAdminToken,
+  async (req, res) => {
+    if (!ensureDbConnection(res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Geçersiz randevu id",
+      });
+    }
+
+    if (!VALID_APPOINTMENT_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Geçersiz randevu durumu",
+      });
+    }
+
+    try {
+      const updatedAppointment = await Appointment.findByIdAndUpdate(
+        id,
+        { status },
+        { new: true }
+      );
+
+      if (!updatedAppointment) {
+        return res.status(404).json({
+          success: false,
+          message: "Randevu bulunamadı",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Randevu durumu güncellendi",
+        appointment: formatAppointment(updatedAppointment),
+      });
+    } catch (error) {
+      console.error("Randevu durumu güncellenemedi:", error.message);
+
+      res.status(500).json({
+        success: false,
+        message: "Randevu durumu güncellenirken bir hata oluştu",
+      });
+    }
+  }
+);
+
+// Admin: randevuyu sil
+app.delete(
+  "/api/admin/appointments/:id",
+  checkAdminToken,
+  async (req, res) => {
+    if (!ensureDbConnection(res)) {
+      return;
+    }
+
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Geçersiz randevu id",
+      });
+    }
+
+    try {
+      const deletedAppointment = await Appointment.findByIdAndDelete(id);
+
+      if (!deletedAppointment) {
+        return res.status(404).json({
+          success: false,
+          message: "Randevu bulunamadı",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Randevu başarıyla silindi",
+      });
+    } catch (error) {
+      console.error("Randevu silinemedi:", error.message);
+
+      res.status(500).json({
+        success: false,
+        message: "Randevu silinirken bir hata oluştu",
+      });
+    }
+  }
+);
 
 app.get("/api/submissions", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
