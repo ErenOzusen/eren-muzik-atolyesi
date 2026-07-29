@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 const Submission = require("./models/Submission");
 const Video = require("./models/Video");
 const Appointment = require("./models/Appointment");
+const BlockedSlot = require("./models/BlockedSlot");
 //const nodemailer = require("nodemailer");
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -212,6 +213,12 @@ const sameDayAppointments = await Appointment.find({
   status: { $ne: "İptal" },
 });
 
+const blockedSlotsForDate = await BlockedSlot.find({
+  date: appointmentDate.trim(),
+})
+  .select("startTime endTime -_id")
+  .lean();
+
 const hasTimeConflict = sameDayAppointments.some((item) => {
   const [existingHour, existingMinute] = item.appointmentTime
     .split(":")
@@ -223,11 +230,24 @@ const hasTimeConflict = sameDayAppointments.some((item) => {
   return requestedStart < existingEnd && requestedEnd > existingStart;
 });
 
-if (hasTimeConflict) {
+const hasBlockedSlotConflict = blockedSlotsForDate.some((blockedSlot) => {
+  const [blockedStartHour, blockedStartMinute] =
+    blockedSlot.startTime.split(":").map(Number);
+
+  const [blockedEndHour, blockedEndMinute] =
+    blockedSlot.endTime.split(":").map(Number);
+
+  const blockedStart = blockedStartHour * 60 + blockedStartMinute;
+  const blockedEnd = blockedEndHour * 60 + blockedEndMinute;
+
+  return requestedStart < blockedEnd && requestedEnd > blockedStart;
+});
+
+if (hasTimeConflict || hasBlockedSlotConflict) {
   return res.status(409).json({
     success: false,
     message:
-      "Bu saate yakın başka bir randevu bulunuyor. Lütfen en az 30 dakika aralıklı bir saat seçin.",
+  "Seçtiğiniz saat uygun değil. Lütfen başka bir randevu saati seçin.",
   });
 }
 
@@ -280,6 +300,11 @@ app.get("/api/appointments/availability", async (req, res) => {
     })
       .select("appointmentTime -_id")
       .lean();
+      const blockedSlots = await BlockedSlot.find({
+  date,
+})
+  .select("startTime endTime -_id")
+  .lean();
 
     const appointmentDuration = 30;
     const availableSlots = [];
@@ -297,15 +322,30 @@ app.get("/api/appointments/availability", async (req, res) => {
       const slotStart = slotHour * 60 + slotMinute;
       const slotEnd = slotStart + appointmentDuration;
 
-      return appointments.some((appointment) => {
-        const [existingHour, existingMinute] =
-          appointment.appointmentTime.split(":").map(Number);
+    const conflictsWithAppointment = appointments.some((appointment) => {
+  const [existingHour, existingMinute] =
+    appointment.appointmentTime.split(":").map(Number);
 
-        const existingStart = existingHour * 60 + existingMinute;
-        const existingEnd = existingStart + appointmentDuration;
+  const existingStart = existingHour * 60 + existingMinute;
+  const existingEnd = existingStart + appointmentDuration;
 
-        return slotStart < existingEnd && slotEnd > existingStart;
-      });
+  return slotStart < existingEnd && slotEnd > existingStart;
+});
+
+const conflictsWithBlockedSlot = blockedSlots.some((blockedSlot) => {
+  const [blockedStartHour, blockedStartMinute] =
+    blockedSlot.startTime.split(":").map(Number);
+
+  const [blockedEndHour, blockedEndMinute] =
+    blockedSlot.endTime.split(":").map(Number);
+
+  const blockedStart = blockedStartHour * 60 + blockedStartMinute;
+  const blockedEnd = blockedEndHour * 60 + blockedEndMinute;
+
+  return slotStart < blockedEnd && slotEnd > blockedStart;
+});
+
+return conflictsWithAppointment || conflictsWithBlockedSlot;
     });
 
     res.json({
@@ -318,6 +358,101 @@ app.get("/api/appointments/availability", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Dolu saatler alınırken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: kapalı gün veya saat aralığı ekle
+app.post("/api/admin/blocked-slots", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  const { date, startTime, endTime, reason } = req.body;
+
+  if (!date || !startTime || !endTime) {
+    return res.status(400).json({
+      success: false,
+      message: "Tarih, başlangıç saati ve bitiş saati gereklidir",
+    });
+  }
+
+  try {
+    const blockedSlot = await BlockedSlot.create({
+      date: date.trim(),
+      startTime: startTime.trim(),
+      endTime: endTime.trim(),
+      reason: reason?.trim() || "",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Kapalı saat başarıyla eklendi",
+      blockedSlot,
+    });
+  } catch (error) {
+    console.error("Kapalı saat eklenemedi:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Kapalı saat eklenirken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: kapalı gün ve saat aralıklarını getir
+app.get("/api/admin/blocked-slots", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  try {
+    const blockedSlots = await BlockedSlot.find()
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    res.json({
+      success: true,
+      blockedSlots,
+    });
+  } catch (error) {
+    console.error("Kapalı saatler alınamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Kapalı saatler alınırken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: kapalı gün veya saat aralığını sil
+app.delete("/api/admin/blocked-slots/:id", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  try {
+    const deletedBlockedSlot = await BlockedSlot.findByIdAndDelete(
+      req.params.id
+    );
+
+    if (!deletedBlockedSlot) {
+      return res.status(404).json({
+        success: false,
+        message: "Kapalı saat bulunamadı",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Kapalı saat başarıyla silindi",
+    });
+  } catch (error) {
+    console.error("Kapalı saat silinemedi:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Kapalı saat silinirken bir hata oluştu",
     });
   }
 });

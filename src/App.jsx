@@ -172,6 +172,19 @@ const [activeContactTab, setActiveContactTab] = useState("contact");
 
   const [submissions, setSubmissions] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [blockedSlots, setBlockedSlots] = useState([]);
+
+const [blockedSlotForm, setBlockedSlotForm] = useState({
+  date: "",
+  startTime: "",
+  endTime: "",
+  reason: "",
+});
+
+const [blockedSlotStatus, setBlockedSlotStatus] = useState(null);
+
+const [isBlockedSlotSubmitting, setIsBlockedSlotSubmitting] =
+  useState(false);
   const [videos, setVideos] = useState([]);
   const [adminVideos, setAdminVideos] = useState([]);
 const [videoForm, setVideoForm] = useState({
@@ -282,6 +295,12 @@ const handleAdminSectionChange = (section) => {
     description:
       "Öğrencilerin oluşturduğu randevu taleplerini buradan takip edebilirsin.",
   },
+  blockedSlots: {
+  eyebrow: "Takvim Yönetimi",
+  title: "Kapalı Saatler",
+  description:
+    "Randevu alınmasını istemediğin gün ve saat aralıklarını buradan yönetebilirsin.",
+},
   videos: {
     eyebrow: "Video Galeri",
     title: "Video Yönetimi",
@@ -546,6 +565,32 @@ const fetchAppointments = async (token = adminToken) => {
   }
 };
 
+const fetchBlockedSlots = async (token = adminToken) => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/blocked-slots`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setBlockedSlots(
+        Array.isArray(data.blockedSlots) ? data.blockedSlots : []
+      );
+    } else {
+      alert(data.message || "Kapalı saatler alınamadı");
+    }
+  } catch (error) {
+    console.error("Kapalı saatler alınamadı:", error);
+    alert("Kapalı saatler alınırken bir hata oluştu");
+  }
+};
+
 const fetchAdminVideos = async (token = adminToken) => {
   try {
  const response = await fetch(`${API_BASE_URL}/api/admin/videos`, {
@@ -574,10 +619,130 @@ useEffect(() => {
     fetchSubmissions(savedToken);
     fetchAdminVideos(savedToken);
     fetchAppointments(savedToken);
+    fetchBlockedSlots(savedToken);
   }
 }, []);
 
+const handleBlockedSlotFormChange = (e) => {
+  const { name, value } = e.target;
 
+  setBlockedSlotForm((prevForm) => ({
+    ...prevForm,
+    [name]: value,
+  }));
+};
+
+const handleBlockedSlotSubmit = async (e) => {
+  e.preventDefault();
+
+  if (
+    !blockedSlotForm.date ||
+    !blockedSlotForm.startTime ||
+    !blockedSlotForm.endTime
+  ) {
+    setBlockedSlotStatus({
+      type: "error",
+      message: "Tarih, başlangıç saati ve bitiş saati gereklidir.",
+    });
+    return;
+  }
+
+  if (blockedSlotForm.startTime >= blockedSlotForm.endTime) {
+    setBlockedSlotStatus({
+      type: "error",
+      message: "Bitiş saati, başlangıç saatinden sonra olmalıdır.",
+    });
+    return;
+  }
+
+  setIsBlockedSlotSubmitting(true);
+  setBlockedSlotStatus(null);
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/blocked-slots`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify(blockedSlotForm),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Kapalı saat eklenemedi.");
+    }
+
+    setBlockedSlotStatus({
+      type: "success",
+      message: data.message || "Kapalı saat başarıyla eklendi.",
+    });
+
+    setBlockedSlotForm({
+      date: "",
+      startTime: "",
+      endTime: "",
+      reason: "",
+    });
+
+    await fetchBlockedSlots(adminToken);
+  } catch (error) {
+    console.error("Kapalı saat eklenemedi:", error);
+
+    setBlockedSlotStatus({
+      type: "error",
+      message: error.message || "Kapalı saat eklenirken bir hata oluştu.",
+    });
+  } finally {
+    setIsBlockedSlotSubmitting(false);
+  }
+};
+
+const handleDeleteBlockedSlot = async (id) => {
+  const isConfirmed = window.confirm(
+    "Bu kapalı saat kaydını silmek istediğine emin misin?"
+  );
+
+  if (!isConfirmed) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/blocked-slots/${id}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Kapalı saat silinemedi.");
+    }
+
+    setBlockedSlotStatus({
+      type: "success",
+      message: data.message || "Kapalı saat başarıyla silindi.",
+    });
+
+    await fetchBlockedSlots(adminToken);
+  } catch (error) {
+    console.error("Kapalı saat silinemedi:", error);
+
+    setBlockedSlotStatus({
+      type: "error",
+      message: error.message || "Kapalı saat silinirken bir hata oluştu.",
+    });
+  }
+};
 
 const handleVideoFormChange = (e) => {
   const { name, value, type, checked } = e.target;
@@ -896,6 +1061,7 @@ if (data.success) {
   setIsAdminLoggedIn(true);
   fetchSubmissions(data.token);
   fetchAppointments(data.token);
+  fetchBlockedSlots(data.token);
   fetchAdminVideos(data.token);
 } else {
       alert("Şifre yanlış kral");
@@ -1086,7 +1252,17 @@ if (isAdminPage) {
 >
   Randevular
 </button>
-
+<button
+  type="button"
+  className={
+    activeAdminSection === "blockedSlots"
+      ? "admin-section-button active"
+      : "admin-section-button"
+  }
+  onClick={() => handleAdminSectionChange("blockedSlots")}
+>
+  Kapalı Saatler
+</button>
     <button
       type="button"
       className={
@@ -1271,6 +1447,127 @@ if (isAdminPage) {
     )}
   </div>
 </div>
+)}
+
+{activeAdminSection === "blockedSlots" && (
+  <div className="admin-video-management">
+    {blockedSlotStatus && (
+      <p className="admin-video-status">
+        {blockedSlotStatus.message}
+      </p>
+    )}
+
+    <div className="admin-video-form-heading">
+      <h3>Yeni Kapalı Saat Ekle</h3>
+
+      <p>
+        Öğrencilerin randevu alamayacağı tarih ve saat aralığını
+        belirleyebilirsin.
+      </p>
+    </div>
+
+    <form
+      className="admin-video-form"
+      onSubmit={handleBlockedSlotSubmit}
+    >
+      <label>
+        Tarih
+        <input
+          type="date"
+          name="date"
+          value={blockedSlotForm.date}
+          onChange={handleBlockedSlotFormChange}
+          required
+        />
+      </label>
+
+      <label>
+        Başlangıç saati
+        <input
+          type="time"
+          name="startTime"
+          step="1800"
+          value={blockedSlotForm.startTime}
+          onChange={handleBlockedSlotFormChange}
+          required
+        />
+      </label>
+
+      <label>
+        Bitiş saati
+        <input
+          type="time"
+          name="endTime"
+          step="1800"
+          value={blockedSlotForm.endTime}
+          onChange={handleBlockedSlotFormChange}
+          required
+        />
+      </label>
+
+      <label>
+        Açıklama
+        <input
+          type="text"
+          name="reason"
+          placeholder="Örneğin: Özel program, tatil veya ders"
+          value={blockedSlotForm.reason}
+          onChange={handleBlockedSlotFormChange}
+        />
+      </label>
+
+      <button
+        type="submit"
+        disabled={isBlockedSlotSubmitting}
+      >
+        {isBlockedSlotSubmitting
+          ? "Ekleniyor..."
+          : "Kapalı Saat Ekle"}
+      </button>
+    </form>
+
+    <div className="admin-video-list">
+      <h3>Kayıtlı Kapalı Saatler</h3>
+
+      {blockedSlots.length === 0 ? (
+        <p className="admin-empty-text">
+          Henüz kapalı saat eklenmedi.
+        </p>
+      ) : (
+        blockedSlots.map((blockedSlot) => (
+          <div
+            key={blockedSlot._id || blockedSlot.id}
+            className="admin-video-item"
+          >
+            <div>
+              <strong>
+                {blockedSlot.date} | {blockedSlot.startTime} –{" "}
+                {blockedSlot.endTime}
+              </strong>
+
+              <p>
+                {blockedSlot.reason || "Açıklama belirtilmedi"}
+              </p>
+            </div>
+
+            <div className="admin-video-actions">
+              <button
+                type="button"
+                className="admin-video-delete-button"
+                onClick={() =>
+                  handleDeleteBlockedSlot(
+                    blockedSlot._id || blockedSlot.id
+                  )
+                }
+              >
+                Sil
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  </div>
 )}
 
 {activeAdminSection === "appointments" && (
