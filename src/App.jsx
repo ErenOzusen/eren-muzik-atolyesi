@@ -147,6 +147,28 @@ const [formStatus, setFormStatus] = useState({
   message: "",
 });
 
+const [appointmentForm, setAppointmentForm] = useState({
+  name: "",
+  phone: "",
+  email: "",
+  lesson: "",
+  appointmentDate: "",
+  appointmentTime: "",
+  note: "",
+});
+
+const [unavailableAppointmentTimes, setUnavailableAppointmentTimes] =
+  useState([]);
+
+const [isAppointmentSubmitting, setIsAppointmentSubmitting] =
+  useState(false);
+
+const [appointmentFormStatus, setAppointmentFormStatus] = useState({
+  type: "",
+  message: "",
+});
+
+const [activeContactTab, setActiveContactTab] = useState("contact");
 
   const [submissions, setSubmissions] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -369,6 +391,110 @@ const handleContactSubmit = async (e) => {
     });
   } finally {
     setIsSubmitting(false);
+  }
+};
+
+useEffect(() => {
+  const selectedDate = appointmentForm.appointmentDate;
+
+  if (!selectedDate) {
+    setUnavailableAppointmentTimes([]);
+    return;
+  }
+
+  const fetchUnavailableTimes = async () => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/appointments/availability?date=${encodeURIComponent(
+          selectedDate
+        )}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Dolu saatler alınamadı");
+      }
+
+      const unavailableTimes = Array.isArray(data.unavailableTimes)
+        ? data.unavailableTimes
+        : [];
+
+      setUnavailableAppointmentTimes(unavailableTimes);
+
+      setAppointmentForm((currentForm) =>
+        unavailableTimes.includes(currentForm.appointmentTime)
+          ? { ...currentForm, appointmentTime: "" }
+          : currentForm
+      );
+    } catch (error) {
+      console.error("Dolu saatler alınamadı:", error);
+      setUnavailableAppointmentTimes([]);
+    }
+  };
+
+  fetchUnavailableTimes();
+}, [appointmentForm.appointmentDate]);
+
+const handleAppointmentSubmit = async (e) => {
+  e.preventDefault();
+
+  if (isAppointmentSubmitting) return;
+
+  setIsAppointmentSubmitting(true);
+  setAppointmentFormStatus({
+    type: "",
+    message: "",
+  });
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/appointments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(appointmentForm),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Randevu oluşturulamadı");
+    }
+
+    setAppointmentFormStatus({
+      type: "success",
+      message:
+        "Randevu talebiniz başarıyla alındı. Onay için sizinle iletişime geçeceğiz.",
+    });
+
+    setAppointmentForm({
+      name: "",
+      phone: "",
+      email: "",
+      lesson: "",
+      appointmentDate: "",
+      appointmentTime: "",
+      note: "",
+    });
+
+    setTimeout(() => {
+      setAppointmentFormStatus({
+        type: "",
+        message: "",
+      });
+    }, 6000);
+  } catch (error) {
+    console.error("Randevu gönderilirken hata oluştu:", error);
+
+    setAppointmentFormStatus({
+      type: "error",
+      message:
+        error.message ||
+        "Randevu gönderilirken bir sorun oluştu. Lütfen tekrar deneyin.",
+    });
+  } finally {
+    setIsAppointmentSubmitting(false);
   }
 };
 
@@ -2201,7 +2327,28 @@ if (isAdminPage) {
     </div>
   </div>
 
-  <div className="contact-form-intro">
+  <div className="contact-tabs">
+  <button
+    type="button"
+    className={activeContactTab === "contact" ? "active" : ""}
+    onClick={() => setActiveContactTab("contact")}
+  >
+    Bilgi Al
+  </button>
+
+  <button
+    type="button"
+    className={activeContactTab === "appointment" ? "active" : ""}
+    onClick={() => setActiveContactTab("appointment")}
+  >
+    Randevu Oluştur
+  </button>
+</div>
+
+{activeContactTab === "contact" && (
+  <>
+
+    <div className="contact-form-intro">
     <span className="contact-form-badge">Hızlı başvuru</span>
 
     <h3>Sana uygun dersi birlikte belirleyelim</h3>
@@ -2279,6 +2426,185 @@ if (isAdminPage) {
       {isSubmitting ? "Gönderiliyor..." : "Başvuru Gönder"}
     </button>
   </form>
+    </>
+)}
+{activeContactTab === "appointment" && (
+  <div className="appointment-area">
+  <div className="appointment-intro">
+    <span className="contact-form-badge">Randevu oluştur</span>
+
+    <h3>İlk görüşme için gün ve saat seç</h3>
+
+    <p>
+      Sana uygun ders türünü, tarihi ve saati seçerek randevu talebini
+      oluşturabilirsin. Randevun onaylandıktan sonra seninle iletişime
+      geçilecektir.
+    </p>
+  </div>
+
+  <form
+    className="appointment-form"
+    onSubmit={handleAppointmentSubmit}
+  >
+    <input
+      type="text"
+      placeholder="Ad Soyad"
+      value={appointmentForm.name}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          name: e.target.value,
+        })
+      }
+      required
+    />
+
+    <input
+      type="tel"
+      placeholder="Telefon"
+      value={appointmentForm.phone}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          phone: e.target.value,
+        })
+      }
+      required
+    />
+
+    <input
+      type="email"
+      placeholder="E-posta"
+      value={appointmentForm.email}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          email: e.target.value,
+        })
+      }
+      required
+    />
+
+    <select
+      value={appointmentForm.lesson}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          lesson: e.target.value,
+        })
+      }
+      required
+    >
+      <option value="">Ders seçiniz</option>
+      <option value="Gitar">Gitar</option>
+      <option value="Piyano">Piyano</option>
+      <option value="Bas Gitar">Bas Gitar</option>
+      <option value="Müzik Teorisi">Müzik Teorisi</option>
+      <option value="Çocuklar İçin Müzik">
+        Çocuklar İçin Müzik
+      </option>
+    </select>
+
+    <input
+      type="date"
+      value={appointmentForm.appointmentDate}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          appointmentDate: e.target.value,
+        })
+      }
+      required
+    />
+
+ <select
+  value={appointmentForm.appointmentTime}
+  onChange={(e) =>
+    setAppointmentForm({
+      ...appointmentForm,
+      appointmentTime: e.target.value,
+    })
+  }
+  required
+  disabled={!appointmentForm.appointmentDate}
+>
+  <option value="">
+    {appointmentForm.appointmentDate
+      ? "Randevu saati seç"
+      : "Önce randevu tarihi seç"}
+  </option>
+
+  {[
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+    "14:00",
+    "14:30",
+    "15:00",
+    "15:30",
+    "16:00",
+    "16:30",
+    "17:00",
+    "17:30",
+    "18:00",
+    "18:30",
+    "19:00",
+    "19:30",
+    "20:00",
+  ].map((time) => {
+    const isUnavailable =
+      unavailableAppointmentTimes.includes(time);
+
+    return (
+      <option
+        key={time}
+        value={time}
+        disabled={isUnavailable}
+      >
+        {time}
+        {isUnavailable ? " — Dolu" : ""}
+      </option>
+    );
+  })}
+</select>
+
+    <textarea
+      placeholder="Eklemek istediğin bir not varsa yazabilirsin."
+      value={appointmentForm.note}
+      onChange={(e) =>
+        setAppointmentForm({
+          ...appointmentForm,
+          note: e.target.value,
+        })
+      }
+    />
+
+    {appointmentFormStatus.message && (
+      <p className={`form-message ${appointmentFormStatus.type}`}>
+        {appointmentFormStatus.type === "success" && (
+          <span className="success-icon">✓</span>
+        )}
+
+        {appointmentFormStatus.message}
+      </p>
+    )}
+
+    <button
+      type="submit"
+      disabled={isAppointmentSubmitting}
+    >
+      {isAppointmentSubmitting
+        ? "Randevu gönderiliyor..."
+        : "Randevu Talebi Oluştur"}
+    </button>
+  </form>
+</div>
+  )}
 </section>
       <div className="mobile-bottom-cta">
         <div className="mobile-bottom-cta-text">

@@ -197,12 +197,39 @@ app.post("/api/appointments", async (req, res) => {
       status: { $ne: "İptal" },
     });
 
-    if (existingAppointment) {
-      return res.status(409).json({
-        success: false,
-        message: "Bu tarih ve saat için daha önce randevu alınmış",
-      });
-    }
+  const appointmentDuration = 30;
+
+const [requestedHour, requestedMinute] = appointmentTime
+  .trim()
+  .split(":")
+  .map(Number);
+
+const requestedStart = requestedHour * 60 + requestedMinute;
+const requestedEnd = requestedStart + appointmentDuration;
+
+const sameDayAppointments = await Appointment.find({
+  appointmentDate: appointmentDate.trim(),
+  status: { $ne: "İptal" },
+});
+
+const hasTimeConflict = sameDayAppointments.some((item) => {
+  const [existingHour, existingMinute] = item.appointmentTime
+    .split(":")
+    .map(Number);
+
+  const existingStart = existingHour * 60 + existingMinute;
+  const existingEnd = existingStart + appointmentDuration;
+
+  return requestedStart < existingEnd && requestedEnd > existingStart;
+});
+
+if (hasTimeConflict) {
+  return res.status(409).json({
+    success: false,
+    message:
+      "Bu saate yakın başka bir randevu bulunuyor. Lütfen en az 30 dakika aralıklı bir saat seçin.",
+  });
+}
 
     const appointment = await Appointment.create({
       name: name.trim(),
@@ -227,6 +254,70 @@ app.post("/api/appointments", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Randevu oluşturulurken bir hata meydana geldi",
+    });
+  }
+});
+
+// Public: seçilen tarihte kullanılamayan randevu saatlerini getir
+app.get("/api/appointments/availability", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  const { date } = req.query;
+
+  if (!date) {
+    return res.status(400).json({
+      success: false,
+      message: "Randevu tarihi gereklidir",
+    });
+  }
+
+  try {
+    const appointments = await Appointment.find({
+      appointmentDate: date,
+      status: { $ne: "İptal" },
+    })
+      .select("appointmentTime -_id")
+      .lean();
+
+    const appointmentDuration = 30;
+    const availableSlots = [];
+
+    for (let minutes = 10 * 60; minutes <= 20 * 60; minutes += 30) {
+      const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
+      const minute = String(minutes % 60).padStart(2, "0");
+
+      availableSlots.push(`${hour}:${minute}`);
+    }
+
+    const unavailableTimes = availableSlots.filter((slot) => {
+      const [slotHour, slotMinute] = slot.split(":").map(Number);
+
+      const slotStart = slotHour * 60 + slotMinute;
+      const slotEnd = slotStart + appointmentDuration;
+
+      return appointments.some((appointment) => {
+        const [existingHour, existingMinute] =
+          appointment.appointmentTime.split(":").map(Number);
+
+        const existingStart = existingHour * 60 + existingMinute;
+        const existingEnd = existingStart + appointmentDuration;
+
+        return slotStart < existingEnd && slotEnd > existingStart;
+      });
+    });
+
+    res.json({
+      success: true,
+      unavailableTimes,
+    });
+  } catch (error) {
+    console.error("Dolu randevu saatleri alınamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Dolu saatler alınırken bir hata oluştu",
     });
   }
 });

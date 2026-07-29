@@ -1844,7 +1844,7 @@ margin-top: 10px;
 }
 
 .contact-form {
-  margin-top: 28px;
+  margin: 28px auto 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -5642,3 +5642,241 @@ margin-top: 10px;
     flex: 1;
   }
 }
+/* RANDEVU FORMU */
+
+.appointment-area {
+  width: 100%;
+  max-width: 760px;
+  margin: 60px auto 0;
+  padding: 40px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+}
+
+.appointment-intro {
+  max-width: 620px;
+  margin: 0 auto 30px;
+  text-align: center;
+}
+
+.appointment-intro h3 {
+  margin: 20px 0 14px;
+  color: #ffffff;
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  line-height: 1.25;
+}
+
+.appointment-intro p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.7;
+}
+
+.appointment-form {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.appointment-form input,
+.appointment-form select,
+.appointment-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 15px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(2, 6, 23, 0.5);
+  color: #ffffff;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.appointment-form input::placeholder,
+.appointment-form textarea::placeholder {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.appointment-form input:focus,
+.appointment-form select:focus,
+.appointment-form textarea:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.appointment-form select option {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.appointment-form input[type="date"],
+.appointment-form input[type="time"] {
+  color-scheme: dark;
+}
+
+.appointment-form textarea {
+  grid-column: 1 / -1;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.appointment-form .form-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 15px 18px;
+  border-radius: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.appointment-form .form-message.success {
+  color: #dcfce7;
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.42);
+}
+
+.appointment-form .form-message.error {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+}
+
+.appointment-form button {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 15px 22px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22c55e, #14b8a6);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.25s ease, opacity 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.appointment-form button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(34, 197, 94, 0.22);
+}
+
+.appointment-form button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* RANDEVU FORMU MOBİL */
+
+@media (max-width: 768px) {
+  .appointment-area {
+    margin-top: 44px;
+    padding: 28px 18px;
+    border-radius: 24px;
+  }
+
+  .appointment-intro {
+    margin-bottom: 24px;
+  }
+
+  .appointment-intro h3 {
+    font-size: 1.6rem;
+  }
+
+  .appointment-form {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .appointment-form textarea,
+  .appointment-form button,
+  .appointment-form .form-message {
+    grid-column: 1;
+  }
+
+  .appointment-form input,
+  .appointment-form select,
+  .appointment-form textarea {
+    min-height: 56px;
+    font-size: 1rem;
+    border-radius: 18px;
+  }
+
+  .appointment-form textarea {
+    min-height: 130px;
+  }
+}
+
+/* İLETİŞİM FORMU SEKMELERİ */
+
+.contact-tabs {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 42px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+}
+
+.contact-tabs button {
+  min-width: 170px;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.contact-tabs button:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.contact-tabs button.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #22c55e, #14b8a6);
+  box-shadow: 0 12px 28px rgba(34, 197, 94, 0.24);
+}
+
+.contact-tabs button.active:hover {
+  transform: translateY(-1px);
+}
+
+/* Sekmeli düzende randevu kartı üst boşluğu */
+.contact-tabs + .appointment-area {
+  margin-top: 0;
+}
+
+@media (max-width: 768px) {
+  .contact-tabs {
+    width: 100%;
+    margin-bottom: 30px;
+  }
+
+  .contact-tabs button {
+    min-width: 0;
+    flex: 1;
+    padding: 13px 10px;
+    font-size: 14px;
+  }
+}
+
