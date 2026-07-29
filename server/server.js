@@ -7,6 +7,7 @@ const Submission = require("./models/Submission");
 const Video = require("./models/Video");
 const Appointment = require("./models/Appointment");
 const BlockedSlot = require("./models/BlockedSlot");
+const WeeklySchedule = require("./models/WeeklySchedule");
 //const nodemailer = require("nodemailer");
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -46,6 +47,17 @@ function formatAppointment(appointment) {
     status: appointment.status || "Beklemede",
     createdAt: appointment.createdAt,
     updatedAt: appointment.updatedAt,
+  };
+}
+function formatWeeklySchedule(schedule) {
+  return {
+    _id: schedule._id.toString(),
+    dayOfWeek: schedule.dayOfWeek,
+    isOpen: schedule.isOpen,
+    startTime: schedule.startTime,
+    endTime: schedule.endTime,
+    createdAt: schedule.createdAt,
+    updatedAt: schedule.updatedAt,
   };
 }
 
@@ -191,77 +203,168 @@ app.post("/api/appointments", async (req, res) => {
     });
   }
 
-  try {
-    const existingAppointment = await Appointment.findOne({
-      appointmentDate: appointmentDate.trim(),
-      appointmentTime: appointmentTime.trim(),
-      status: { $ne: "İptal" },
-    });
+  const normalizedDate = appointmentDate.trim();
+  const normalizedTime = appointmentTime.trim();
 
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  if (
+    !datePattern.test(normalizedDate) ||
+    !timePattern.test(normalizedTime)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz tarih veya saat bilgisi",
+    });
+  }
+
+  const [year, month, day] = normalizedDate.split("-").map(Number);
+  const selectedDate = new Date(Date.UTC(year, month - 1, day));
+
+  const isValidDate =
+    selectedDate.getUTCFullYear() === year &&
+    selectedDate.getUTCMonth() === month - 1 &&
+    selectedDate.getUTCDate() === day;
+
+  if (!isValidDate) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz randevu tarihi",
+    });
+  }
+
+  const dayOfWeek = selectedDate.getUTCDay();
   const appointmentDuration = 30;
 
-const [requestedHour, requestedMinute] = appointmentTime
-  .trim()
-  .split(":")
-  .map(Number);
+  try {
+    const weeklySchedule = await WeeklySchedule.findOne({
+      dayOfWeek,
+    }).lean();
 
-const requestedStart = requestedHour * 60 + requestedMinute;
-const requestedEnd = requestedStart + appointmentDuration;
+    const schedule = weeklySchedule || {
+      dayOfWeek,
+      isOpen: true,
+      startTime: "10:00",
+      endTime: "20:00",
+    };
 
-const sameDayAppointments = await Appointment.find({
-  appointmentDate: appointmentDate.trim(),
-  status: { $ne: "İptal" },
-});
+    if (!schedule.isOpen) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Seçtiğiniz gün randevuya kapalı. Lütfen başka bir gün seçin.",
+      });
+    }
 
-const blockedSlotsForDate = await BlockedSlot.find({
-  date: appointmentDate.trim(),
-})
-  .select("startTime endTime -_id")
-  .lean();
+    const [scheduleStartHour, scheduleStartMinute] =
+      schedule.startTime.split(":").map(Number);
 
-const hasTimeConflict = sameDayAppointments.some((item) => {
-  const [existingHour, existingMinute] = item.appointmentTime
-    .split(":")
-    .map(Number);
+    const [scheduleEndHour, scheduleEndMinute] =
+      schedule.endTime.split(":").map(Number);
 
-  const existingStart = existingHour * 60 + existingMinute;
-  const existingEnd = existingStart + appointmentDuration;
+    const scheduleStart =
+      scheduleStartHour * 60 + scheduleStartMinute;
 
-  return requestedStart < existingEnd && requestedEnd > existingStart;
-});
+    const scheduleEnd =
+      scheduleEndHour * 60 + scheduleEndMinute;
 
-const hasBlockedSlotConflict = blockedSlotsForDate.some((blockedSlot) => {
-  const [blockedStartHour, blockedStartMinute] =
-    blockedSlot.startTime.split(":").map(Number);
+    const [requestedHour, requestedMinute] =
+      normalizedTime.split(":").map(Number);
 
-  const [blockedEndHour, blockedEndMinute] =
-    blockedSlot.endTime.split(":").map(Number);
+    const requestedStart =
+      requestedHour * 60 + requestedMinute;
 
-  const blockedStart = blockedStartHour * 60 + blockedStartMinute;
-  const blockedEnd = blockedEndHour * 60 + blockedEndMinute;
+    const requestedEnd =
+      requestedStart + appointmentDuration;
 
-  return requestedStart < blockedEnd && requestedEnd > blockedStart;
-});
+    const isInsideWorkingHours =
+      requestedStart >= scheduleStart &&
+      requestedEnd <= scheduleEnd;
 
-if (hasTimeConflict || hasBlockedSlotConflict) {
-  return res.status(409).json({
-    success: false,
-    message:
-  "Seçtiğiniz saat uygun değil. Lütfen başka bir randevu saati seçin.",
-  });
-}
+    const isValidTimeInterval =
+      (requestedStart - scheduleStart) % appointmentDuration === 0;
+
+    if (!isInsideWorkingHours || !isValidTimeInterval) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Seçtiğiniz saat çalışma programına uygun değil. Lütfen başka bir saat seçin.",
+      });
+    }
+
+    const sameDayAppointments = await Appointment.find({
+      appointmentDate: normalizedDate,
+      status: { $ne: "İptal" },
+    })
+      .select("appointmentTime -_id")
+      .lean();
+
+    const blockedSlotsForDate = await BlockedSlot.find({
+      date: normalizedDate,
+    })
+      .select("startTime endTime -_id")
+      .lean();
+
+    const hasTimeConflict = sameDayAppointments.some((item) => {
+      const [existingHour, existingMinute] =
+        item.appointmentTime.split(":").map(Number);
+
+      const existingStart =
+        existingHour * 60 + existingMinute;
+
+      const existingEnd =
+        existingStart + appointmentDuration;
+
+      return (
+        requestedStart < existingEnd &&
+        requestedEnd > existingStart
+      );
+    });
+
+    const hasBlockedSlotConflict = blockedSlotsForDate.some(
+      (blockedSlot) => {
+        const [blockedStartHour, blockedStartMinute] =
+          blockedSlot.startTime.split(":").map(Number);
+
+        const [blockedEndHour, blockedEndMinute] =
+          blockedSlot.endTime.split(":").map(Number);
+
+        const blockedStart =
+          blockedStartHour * 60 + blockedStartMinute;
+
+        const blockedEnd =
+          blockedEndHour * 60 + blockedEndMinute;
+
+        return (
+          requestedStart < blockedEnd &&
+          requestedEnd > blockedStart
+        );
+      }
+    );
+
+    if (hasTimeConflict || hasBlockedSlotConflict) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Seçtiğiniz saat uygun değil. Lütfen başka bir randevu saati seçin.",
+      });
+    }
 
     const appointment = await Appointment.create({
       name: name.trim(),
       phone: phone.trim(),
       email: email?.trim() || "",
       lesson: lesson.trim(),
-      appointmentDate: appointmentDate.trim(),
-      appointmentTime: appointmentTime.trim(),
+      appointmentDate: normalizedDate,
+      appointmentTime: normalizedTime,
       note: note?.trim() || "",
     });
 
-    console.log("Yeni randevu talebi oluşturuldu:", formatAppointment(appointment));
+    console.log(
+      "Yeni randevu talebi oluşturuldu:",
+      formatAppointment(appointment)
+    );
 
     res.status(201).json({
       success: true,
@@ -278,7 +381,7 @@ if (hasTimeConflict || hasBlockedSlotConflict) {
   }
 });
 
-// Public: seçilen tarihte kullanılamayan randevu saatlerini getir
+// Public: seçilen tarihte uygun ve kullanılamayan randevu saatlerini getir
 app.get("/api/appointments/availability", async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
@@ -293,71 +396,158 @@ app.get("/api/appointments/availability", async (req, res) => {
     });
   }
 
+  const dateParts = date.split("-").map(Number);
+
+  if (
+    dateParts.length !== 3 ||
+    dateParts.some((part) => Number.isNaN(part))
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz randevu tarihi",
+    });
+  }
+
+  const [year, month, day] = dateParts;
+  const dayOfWeek = new Date(
+    Date.UTC(year, month - 1, day)
+  ).getUTCDay();
+
   try {
+    const weeklySchedule = await WeeklySchedule.findOne({
+      dayOfWeek,
+    }).lean();
+
+    const schedule = weeklySchedule || {
+      dayOfWeek,
+      isOpen: true,
+      startTime: "10:00",
+      endTime: "20:00",
+    };
+
+    if (!schedule.isOpen) {
+      return res.json({
+        success: true,
+        isOpen: false,
+        dayOfWeek,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+        availableTimes: [],
+        unavailableTimes: [],
+      });
+    }
+
+    const [startHour, startMinute] = schedule.startTime
+      .split(":")
+      .map(Number);
+
+    const [endHour, endMinute] = schedule.endTime
+      .split(":")
+      .map(Number);
+
+    const scheduleStart = startHour * 60 + startMinute;
+    const scheduleEnd = endHour * 60 + endMinute;
+    const appointmentDuration = 30;
+
     const appointments = await Appointment.find({
       appointmentDate: date,
       status: { $ne: "İptal" },
     })
       .select("appointmentTime -_id")
       .lean();
-      const blockedSlots = await BlockedSlot.find({
-  date,
-})
-  .select("startTime endTime -_id")
-  .lean();
 
-    const appointmentDuration = 30;
-    const availableSlots = [];
+    const blockedSlots = await BlockedSlot.find({
+      date,
+    })
+      .select("startTime endTime -_id")
+      .lean();
 
-    for (let minutes = 10 * 60; minutes <= 20 * 60; minutes += 30) {
+    const scheduleTimes = [];
+
+    for (
+      let minutes = scheduleStart;
+      minutes + appointmentDuration <= scheduleEnd;
+      minutes += appointmentDuration
+    ) {
       const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
       const minute = String(minutes % 60).padStart(2, "0");
 
-      availableSlots.push(`${hour}:${minute}`);
+      scheduleTimes.push(`${hour}:${minute}`);
     }
 
-    const unavailableTimes = availableSlots.filter((slot) => {
+    const unavailableTimes = scheduleTimes.filter((slot) => {
       const [slotHour, slotMinute] = slot.split(":").map(Number);
 
       const slotStart = slotHour * 60 + slotMinute;
       const slotEnd = slotStart + appointmentDuration;
 
-    const conflictsWithAppointment = appointments.some((appointment) => {
-  const [existingHour, existingMinute] =
-    appointment.appointmentTime.split(":").map(Number);
+      const conflictsWithAppointment = appointments.some(
+        (appointment) => {
+          const [existingHour, existingMinute] =
+            appointment.appointmentTime.split(":").map(Number);
 
-  const existingStart = existingHour * 60 + existingMinute;
-  const existingEnd = existingStart + appointmentDuration;
+          const existingStart =
+            existingHour * 60 + existingMinute;
 
-  return slotStart < existingEnd && slotEnd > existingStart;
-});
+          const existingEnd =
+            existingStart + appointmentDuration;
 
-const conflictsWithBlockedSlot = blockedSlots.some((blockedSlot) => {
-  const [blockedStartHour, blockedStartMinute] =
-    blockedSlot.startTime.split(":").map(Number);
+          return (
+            slotStart < existingEnd &&
+            slotEnd > existingStart
+          );
+        }
+      );
 
-  const [blockedEndHour, blockedEndMinute] =
-    blockedSlot.endTime.split(":").map(Number);
+      const conflictsWithBlockedSlot = blockedSlots.some(
+        (blockedSlot) => {
+          const [blockedStartHour, blockedStartMinute] =
+            blockedSlot.startTime.split(":").map(Number);
 
-  const blockedStart = blockedStartHour * 60 + blockedStartMinute;
-  const blockedEnd = blockedEndHour * 60 + blockedEndMinute;
+          const [blockedEndHour, blockedEndMinute] =
+            blockedSlot.endTime.split(":").map(Number);
 
-  return slotStart < blockedEnd && slotEnd > blockedStart;
-});
+          const blockedStart =
+            blockedStartHour * 60 + blockedStartMinute;
 
-return conflictsWithAppointment || conflictsWithBlockedSlot;
+          const blockedEnd =
+            blockedEndHour * 60 + blockedEndMinute;
+
+          return (
+            slotStart < blockedEnd &&
+            slotEnd > blockedStart
+          );
+        }
+      );
+
+      return (
+        conflictsWithAppointment ||
+        conflictsWithBlockedSlot
+      );
     });
+
+    const availableTimes = scheduleTimes.filter(
+      (slot) => !unavailableTimes.includes(slot)
+    );
 
     res.json({
       success: true,
+      isOpen: true,
+      dayOfWeek,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      availableTimes,
       unavailableTimes,
     });
   } catch (error) {
-    console.error("Dolu randevu saatleri alınamadı:", error.message);
+    console.error(
+      "Randevu uygunluk bilgisi alınamadı:",
+      error.message
+    );
 
     res.status(500).json({
       success: false,
-      message: "Dolu saatler alınırken bir hata oluştu",
+      message: "Randevu saatleri alınırken bir hata oluştu",
     });
   }
 });
@@ -453,6 +643,115 @@ app.delete("/api/admin/blocked-slots/:id", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Kapalı saat silinirken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: haftalık çalışma programını getir
+app.get("/api/admin/weekly-schedule", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  try {
+    const schedules = await Promise.all(
+      Array.from({ length: 7 }, (_, dayOfWeek) =>
+        WeeklySchedule.findOneAndUpdate(
+          { dayOfWeek },
+          {
+            $setOnInsert: {
+              dayOfWeek,
+              isOpen: true,
+              startTime: "10:00",
+              endTime: "20:00",
+            },
+          },
+          {
+            new: true,
+            upsert: true,
+          }
+        )
+      )
+    );
+
+    res.json({
+      success: true,
+      schedules: schedules.map(formatWeeklySchedule),
+    });
+  } catch (error) {
+    console.error("Haftalık program alınamadı:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Haftalık program alınırken bir hata oluştu",
+    });
+  }
+});
+
+// Admin: haftalık çalışma programındaki bir günü güncelle
+app.put("/api/admin/weekly-schedule/:dayOfWeek", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
+  const dayOfWeek = Number(req.params.dayOfWeek);
+  const { isOpen, startTime, endTime } = req.body;
+
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz gün bilgisi",
+    });
+  }
+
+  if (typeof isOpen !== "boolean") {
+    return res.status(400).json({
+      success: false,
+      message: "Çalışma durumu belirtilmelidir",
+    });
+  }
+
+  if (isOpen && (!startTime || !endTime)) {
+    return res.status(400).json({
+      success: false,
+      message: "Başlangıç ve bitiş saati gereklidir",
+    });
+  }
+
+  if (isOpen && startTime >= endTime) {
+    return res.status(400).json({
+      success: false,
+      message: "Bitiş saati başlangıç saatinden sonra olmalıdır",
+    });
+  }
+
+  try {
+    const schedule = await WeeklySchedule.findOneAndUpdate(
+      { dayOfWeek },
+      {
+        dayOfWeek,
+        isOpen,
+        startTime: startTime || "10:00",
+        endTime: endTime || "20:00",
+      },
+      {
+        new: true,
+        upsert: true,
+        runValidators: true,
+      }
+    );
+
+    res.json({
+      success: true,
+      message: "Çalışma programı başarıyla güncellendi",
+      schedule: formatWeeklySchedule(schedule),
+    });
+  } catch (error) {
+    console.error("Haftalık program güncellenemedi:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Haftalık program güncellenirken bir hata oluştu",
     });
   }
 });

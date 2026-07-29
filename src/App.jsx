@@ -160,6 +160,15 @@ const [appointmentForm, setAppointmentForm] = useState({
 const [unavailableAppointmentTimes, setUnavailableAppointmentTimes] =
   useState([]);
 
+  const [availableAppointmentTimes, setAvailableAppointmentTimes] =
+  useState([]);
+
+const [isSelectedAppointmentDayOpen, setIsSelectedAppointmentDayOpen] =
+  useState(true);
+
+const [isAppointmentAvailabilityLoading, setIsAppointmentAvailabilityLoading] =
+  useState(false);
+
 const [isAppointmentSubmitting, setIsAppointmentSubmitting] =
   useState(false);
 
@@ -173,6 +182,10 @@ const [activeContactTab, setActiveContactTab] = useState("contact");
   const [submissions, setSubmissions] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [blockedSlots, setBlockedSlots] = useState([]);
+  const [weeklySchedule, setWeeklySchedule] = useState([]);
+const [weeklyScheduleStatus, setWeeklyScheduleStatus] = useState(null);
+const [isWeeklyScheduleLoading, setIsWeeklyScheduleLoading] = useState(false);
+const [updatingScheduleDay, setUpdatingScheduleDay] = useState(null);
 
 const [blockedSlotForm, setBlockedSlotForm] = useState({
   date: "",
@@ -301,6 +314,12 @@ const handleAdminSectionChange = (section) => {
   description:
     "Randevu alınmasını istemediğin gün ve saat aralıklarını buradan yönetebilirsin.",
 },
+weeklySchedule: {
+  eyebrow: "Takvim Yönetimi",
+  title: "Haftalık Çalışma Saatleri",
+  description:
+    "Haftanın hangi günlerinde ve hangi saatler arasında randevu alınabileceğini buradan ayarlayabilirsin.",
+},
   videos: {
     eyebrow: "Video Galeri",
     title: "Video Yönetimi",
@@ -417,11 +436,22 @@ useEffect(() => {
   const selectedDate = appointmentForm.appointmentDate;
 
   if (!selectedDate) {
+    setAvailableAppointmentTimes([]);
     setUnavailableAppointmentTimes([]);
+    setIsSelectedAppointmentDayOpen(true);
+    setIsAppointmentAvailabilityLoading(false);
+
+    setAppointmentForm((currentForm) => ({
+      ...currentForm,
+      appointmentTime: "",
+    }));
+
     return;
   }
 
-  const fetchUnavailableTimes = async () => {
+  const fetchAppointmentAvailability = async () => {
+    setIsAppointmentAvailabilityLoading(true);
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/appointments/availability?date=${encodeURIComponent(
@@ -432,27 +462,48 @@ useEffect(() => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Dolu saatler alınamadı");
+        throw new Error(
+          data.message || "Randevu saatleri alınamadı"
+        );
       }
+
+      const availableTimes = Array.isArray(data.availableTimes)
+        ? data.availableTimes
+        : [];
 
       const unavailableTimes = Array.isArray(data.unavailableTimes)
         ? data.unavailableTimes
         : [];
 
+      setAvailableAppointmentTimes(availableTimes);
       setUnavailableAppointmentTimes(unavailableTimes);
+      setIsSelectedAppointmentDayOpen(data.isOpen !== false);
 
       setAppointmentForm((currentForm) =>
-        unavailableTimes.includes(currentForm.appointmentTime)
-          ? { ...currentForm, appointmentTime: "" }
-          : currentForm
+        availableTimes.includes(currentForm.appointmentTime)
+          ? currentForm
+          : {
+              ...currentForm,
+              appointmentTime: "",
+            }
       );
     } catch (error) {
-      console.error("Dolu saatler alınamadı:", error);
+      console.error("Randevu saatleri alınamadı:", error);
+
+      setAvailableAppointmentTimes([]);
       setUnavailableAppointmentTimes([]);
+      setIsSelectedAppointmentDayOpen(true);
+
+      setAppointmentForm((currentForm) => ({
+        ...currentForm,
+        appointmentTime: "",
+      }));
+    } finally {
+      setIsAppointmentAvailabilityLoading(false);
     }
   };
 
-  fetchUnavailableTimes();
+  fetchAppointmentAvailability();
 }, [appointmentForm.appointmentDate]);
 
 const handleAppointmentSubmit = async (e) => {
@@ -591,6 +642,110 @@ const fetchBlockedSlots = async (token = adminToken) => {
   }
 };
 
+const fetchWeeklySchedule = async (token = adminToken) => {
+  setIsWeeklyScheduleLoading(true);
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/weekly-schedule`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setWeeklySchedule(
+        Array.isArray(data.schedules) ? data.schedules : []
+      );
+    } else {
+      setWeeklyScheduleStatus({
+        type: "error",
+        message: data.message || "Haftalık program alınamadı",
+      });
+    }
+  } catch (error) {
+    console.error("Haftalık program alınamadı:", error);
+
+    setWeeklyScheduleStatus({
+      type: "error",
+      message: "Haftalık program alınırken bir hata oluştu",
+    });
+  } finally {
+    setIsWeeklyScheduleLoading(false);
+  }
+};
+
+const handleWeeklyScheduleChange = (dayOfWeek, field, value) => {
+  setWeeklySchedule((currentSchedule) =>
+    currentSchedule.map((day) =>
+      day.dayOfWeek === dayOfWeek
+        ? {
+            ...day,
+            [field]: value,
+          }
+        : day
+    )
+  );
+};
+
+const handleSaveWeeklySchedule = async (day) => {
+  setUpdatingScheduleDay(day.dayOfWeek);
+  setWeeklyScheduleStatus(null);
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/weekly-schedule/${day.dayOfWeek}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          isOpen: Boolean(day.isOpen),
+          startTime: day.startTime,
+          endTime: day.endTime,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok) {
+      setWeeklySchedule((currentSchedule) =>
+        currentSchedule.map((scheduleDay) =>
+          scheduleDay.dayOfWeek === data.schedule.dayOfWeek
+            ? data.schedule
+            : scheduleDay
+        )
+      );
+
+      setWeeklyScheduleStatus({
+        type: "success",
+        message: "Çalışma programı başarıyla güncellendi.",
+      });
+    } else {
+      setWeeklyScheduleStatus({
+        type: "error",
+        message: data.message || "Çalışma programı güncellenemedi.",
+      });
+    }
+  } catch (error) {
+    console.error("Çalışma programı güncellenemedi:", error);
+
+    setWeeklyScheduleStatus({
+      type: "error",
+      message: "Çalışma programı güncellenirken bir hata oluştu.",
+    });
+  } finally {
+    setUpdatingScheduleDay(null);
+  }
+};
+
 const fetchAdminVideos = async (token = adminToken) => {
   try {
  const response = await fetch(`${API_BASE_URL}/api/admin/videos`, {
@@ -620,6 +775,7 @@ useEffect(() => {
     fetchAdminVideos(savedToken);
     fetchAppointments(savedToken);
     fetchBlockedSlots(savedToken);
+    fetchWeeklySchedule(savedToken);
   }
 }, []);
 
@@ -1263,6 +1419,17 @@ if (isAdminPage) {
 >
   Kapalı Saatler
 </button>
+<button
+  type="button"
+  className={
+    activeAdminSection === "weeklySchedule"
+      ? "admin-section-button active"
+      : "admin-section-button"
+  }
+  onClick={() => handleAdminSectionChange("weeklySchedule")}
+>
+  Çalışma Saatleri
+</button>
     <button
       type="button"
       className={
@@ -1311,6 +1478,119 @@ if (isAdminPage) {
         <strong>{card.value}</strong>
       </div>
     ))}
+  </div>
+)}
+
+{activeAdminSection === "weeklySchedule" && (
+  <div className="admin-video-management">
+    {weeklyScheduleStatus && (
+      <p className="admin-video-status">
+        {weeklyScheduleStatus.message}
+      </p>
+    )}
+
+    <div className="admin-video-form-heading">
+      <h3>Haftalık Çalışma Programı</h3>
+
+      <p>
+        Öğrencilerin hangi günlerde ve hangi saatler arasında randevu
+        alabileceğini belirleyebilirsin.
+      </p>
+    </div>
+
+    {isWeeklyScheduleLoading ? (
+      <p>Çalışma programı yükleniyor...</p>
+    ) : (
+      <div className="weekly-schedule-list">
+        {weeklySchedule.map((day) => (
+          <div
+            key={day.dayOfWeek}
+            className="weekly-schedule-card"
+          >
+            <div className="weekly-schedule-day">
+              <strong>
+                {
+                  [
+                    "Pazar",
+                    "Pazartesi",
+                    "Salı",
+                    "Çarşamba",
+                    "Perşembe",
+                    "Cuma",
+                    "Cumartesi",
+                  ][day.dayOfWeek]
+                }
+              </strong>
+
+              <label className="admin-video-checkbox">
+                <input
+                  type="checkbox"
+                  checked={day.isOpen}
+                  onChange={(event) =>
+                    handleWeeklyScheduleChange(
+                      day.dayOfWeek,
+                      "isOpen",
+                      event.target.checked
+                    )
+                  }
+                />
+
+                <span>
+                  {day.isOpen ? "Randevuya Açık" : "Kapalı"}
+                </span>
+              </label>
+            </div>
+
+            <div className="weekly-schedule-times">
+              <label>
+                Başlangıç Saati
+
+                <input
+                  type="time"
+                  value={day.startTime}
+                  disabled={!day.isOpen}
+                  onChange={(event) =>
+                    handleWeeklyScheduleChange(
+                      day.dayOfWeek,
+                      "startTime",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+
+              <label>
+                Bitiş Saati
+
+                <input
+                  type="time"
+                  value={day.endTime}
+                  disabled={!day.isOpen}
+                  onChange={(event) =>
+                    handleWeeklyScheduleChange(
+                      day.dayOfWeek,
+                      "endTime",
+                      event.target.value
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className="admin-video-submit-button"
+              disabled={updatingScheduleDay === day.dayOfWeek}
+              onClick={() => handleSaveWeeklySchedule(day)}
+            >
+              {updatingScheduleDay === day.dayOfWeek
+                ? "Kaydediliyor..."
+                : "Günü Kaydet"}
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
   </div>
 )}
 
@@ -2823,51 +3103,30 @@ if (isAdminPage) {
     })
   }
   required
-  disabled={!appointmentForm.appointmentDate}
+  disabled={
+    !appointmentForm.appointmentDate ||
+    isAppointmentAvailabilityLoading ||
+    !isSelectedAppointmentDayOpen ||
+    availableAppointmentTimes.length === 0
+  }
 >
   <option value="">
-    {appointmentForm.appointmentDate
-      ? "Randevu saati seç"
-      : "Önce randevu tarihi seç"}
+    {!appointmentForm.appointmentDate
+      ? "Önce randevu tarihi seç"
+      : isAppointmentAvailabilityLoading
+        ? "Saatler yükleniyor..."
+        : !isSelectedAppointmentDayOpen
+          ? "Seçilen gün randevuya kapalı"
+          : availableAppointmentTimes.length === 0
+            ? "Bu tarihte uygun saat bulunmuyor"
+            : "Randevu saati seç"}
   </option>
 
-  {[
-    "10:00",
-    "10:30",
-    "11:00",
-    "11:30",
-    "12:00",
-    "12:30",
-    "13:00",
-    "13:30",
-    "14:00",
-    "14:30",
-    "15:00",
-    "15:30",
-    "16:00",
-    "16:30",
-    "17:00",
-    "17:30",
-    "18:00",
-    "18:30",
-    "19:00",
-    "19:30",
-    "20:00",
-  ].map((time) => {
-    const isUnavailable =
-      unavailableAppointmentTimes.includes(time);
-
-    return (
-      <option
-        key={time}
-        value={time}
-        disabled={isUnavailable}
-      >
-        {time}
-        {isUnavailable ? " — Dolu" : ""}
-      </option>
-    );
-  })}
+  {availableAppointmentTimes.map((time) => (
+    <option key={time} value={time}>
+      {time}
+    </option>
+  ))}
 </select>
 
     <textarea
