@@ -8,12 +8,15 @@ const Video = require("./models/Video");
 const Appointment = require("./models/Appointment");
 const BlockedSlot = require("./models/BlockedSlot");
 const WeeklySchedule = require("./models/WeeklySchedule");
-//const nodemailer = require("nodemailer");
-const { Resend } = require("resend");
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+const nodemailer = require("nodemailer");
 
+  const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 const app = express();
 
 app.use(cors());
@@ -100,17 +103,21 @@ app.get("/", (req, res) => {
 });
 
 const sendNewSubmissionEmail = async (submission) => {
-  if (!process.env.RESEND_API_KEY || !process.env.NOTIFICATION_EMAIL) {
-    console.warn("E-posta bildirimi için gerekli env değişkenleri eksik.");
+  if (
+    !process.env.EMAIL_USER ||
+    !process.env.EMAIL_PASS ||
+    !process.env.NOTIFICATION_EMAIL
+  ) {
+    console.warn("Bilgi al e-postası için Gmail ayarları eksik.");
     return;
   }
 
-  const { data, error } = await resend.emails.send({
-    from: "Eren Müzik Atölyesi <onboarding@resend.dev>",
+  const info = await transporter.sendMail({
+    from: `Eren Müzik Atölyesi <${process.env.EMAIL_USER}>`,
     to: process.env.NOTIFICATION_EMAIL,
-    subject: "Yeni başvuru geldi 🎵",
+    subject: "Yeni bilgi alma başvurusu geldi 🎵",
     text: `
-Yeni başvuru geldi 🎵
+Yeni bir bilgi alma başvurusu geldi 🎵
 
 Ad Soyad: ${submission.name || "-"}
 Telefon: ${submission.phone || "-"}
@@ -122,12 +129,43 @@ https://eren-muzik-atolyesi.vercel.app/admin
     `,
   });
 
-  if (error) {
-    console.error("Resend e-posta hatası:", error);
+  console.log("Yeni başvuru e-postası gönderildi:", info.messageId);
+};
+
+const sendNewAppointmentEmail = async (appointment) => {
+  if (
+    !process.env.EMAIL_USER ||
+    !process.env.EMAIL_PASS ||
+    !process.env.NOTIFICATION_EMAIL
+  ) {
+    console.warn("Ön görüşme e-postası için Gmail ayarları eksik.");
     return;
   }
 
-  console.log("Yeni başvuru e-postası gönderildi. Resend ID:", data?.id);
+  const info = await transporter.sendMail({
+    from: `Eren Müzik Atölyesi <${process.env.EMAIL_USER}>`,
+    to: process.env.NOTIFICATION_EMAIL,
+    subject: "Yeni ön görüşme talebi geldi 🎵",
+    text: `
+Yeni bir ön görüşme talebi geldi 🎵
+
+Ad Soyad: ${appointment.name || "-"}
+Telefon: ${appointment.phone || "-"}
+E-posta: ${appointment.email || "-"}
+Ders: ${appointment.lesson || "-"}
+Tarih: ${appointment.appointmentDate || "-"}
+Saat: ${appointment.appointmentTime || "-"}
+Not: ${appointment.note || "-"}
+
+Admin panel:
+https://eren-muzik-atolyesi.vercel.app/admin
+    `,
+  });
+
+  console.log(
+    "Ön görüşme bildirim e-postası gönderildi:",
+    info.messageId
+  );
 };
 
 app.post("/api/contact", async (req, res) => {
@@ -367,6 +405,13 @@ app.post("/api/appointments", async (req, res) => {
       "Yeni randevu talebi oluşturuldu:",
       formatAppointment(appointment)
     );
+
+    sendNewAppointmentEmail(appointment).catch((emailError) => {
+  console.error(
+    "Ön görüşme bildirim e-postası gönderilemedi:",
+    emailError
+  );
+});
 
     res.status(201).json({
       success: true,
