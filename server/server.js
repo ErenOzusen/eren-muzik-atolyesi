@@ -10,7 +10,9 @@ const BlockedSlot = require("./models/BlockedSlot");
 const WeeklySchedule = require("./models/WeeklySchedule");
 //const nodemailer = require("nodemailer");
 const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 const app = express();
 

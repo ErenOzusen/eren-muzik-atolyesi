@@ -303,22 +303,22 @@ const handleAdminSectionChange = (section) => {
       "Form üzerinden gelen öğrenci başvurularını buradan takip edebilirsin.",
   },
     appointments: {
-    eyebrow: "Randevu Yönetimi",
-    title: "Ders Randevuları",
-    description:
-      "Öğrencilerin oluşturduğu randevu taleplerini buradan takip edebilirsin.",
-  },
+  eyebrow: "Ön Görüşme Yönetimi",
+  title: "Ön Görüşmeler",
+  description:
+    "Öğrenci adaylarının oluşturduğu ön görüşme taleplerini buradan takip edebilirsin.",
+},
   blockedSlots: {
   eyebrow: "Takvim Yönetimi",
   title: "Kapalı Saatler",
   description:
-    "Randevu alınmasını istemediğin gün ve saat aralıklarını buradan yönetebilirsin.",
+  "Ön görüşme planlanmasını istemediğin gün ve saat aralıklarını buradan yönetebilirsin.",
 },
 weeklySchedule: {
   eyebrow: "Takvim Yönetimi",
-  title: "Haftalık Çalışma Saatleri",
+  title: "Haftalık Görüşme Saatleri",
   description:
-    "Haftanın hangi günlerinde ve hangi saatler arasında randevu alınabileceğini buradan ayarlayabilirsin.",
+    "Haftanın hangi günlerinde ve hangi saatler arasında ön görüşme planlanabileceğini buradan ayarlayabilirsin.",
 },
   videos: {
     eyebrow: "Video Galeri",
@@ -463,7 +463,7 @@ useEffect(() => {
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Randevu saatleri alınamadı"
+          data.message || "Ön görüşme saatleri alınamadı"
         );
       }
 
@@ -488,7 +488,7 @@ useEffect(() => {
             }
       );
     } catch (error) {
-      console.error("Randevu saatleri alınamadı:", error);
+      console.error("Ön görüşme saatleri alınamadı:", error);
 
       setAvailableAppointmentTimes([]);
       setUnavailableAppointmentTimes([]);
@@ -529,13 +529,13 @@ const handleAppointmentSubmit = async (e) => {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || "Randevu oluşturulamadı");
+      throw new Error(data.message || "Ön görüşme oluşturulamadı");
     }
 
     setAppointmentFormStatus({
       type: "success",
       message:
-        "Randevu talebiniz başarıyla alındı. Onay için sizinle iletişime geçeceğiz.",
+  "Ön görüşme talebiniz başarıyla alındı. Onay için sizinle iletişime geçeceğiz.",
     });
 
     setAppointmentForm({
@@ -555,13 +555,13 @@ const handleAppointmentSubmit = async (e) => {
       });
     }, 6000);
   } catch (error) {
-    console.error("Randevu gönderilirken hata oluştu:", error);
+    console.error("Ön görüşme gönderilirken hata oluştu:", error);
 
     setAppointmentFormStatus({
       type: "error",
       message:
         error.message ||
-        "Randevu gönderilirken bir sorun oluştu. Lütfen tekrar deneyin.",
+        "Ön görüşme gönderilirken bir sorun oluştu. Lütfen tekrar deneyin.",
     });
   } finally {
     setIsAppointmentSubmitting(false);
@@ -608,11 +608,11 @@ const fetchAppointments = async (token = adminToken) => {
     if (response.ok) {
       setAppointments(Array.isArray(data) ? data : []);
     } else {
-      alert(data.message || "Randevular alınamadı");
+      alert(data.message || "Ön görüşmeler alınamadı");
     }
   } catch (error) {
-    console.error("Randevular alınamadı:", error);
-    alert("Randevular alınırken bir hata oluştu");
+    console.error("Ön görüşmeler alınamadı:", error);
+    alert("Ön görüşmeler alınırken bir hata oluştu");
   }
 };
 
@@ -1099,10 +1099,10 @@ const handleAppointmentStatusChange = async (id, newStatus) => {
 
     const data = await response.json();
 
-    if (!response.ok) {
-      alert(data.message || "Randevu durumu güncellenemedi");
-      return;
-    }
+   if (!response.ok) {
+  alert(data.message || "Ön görüşme durumu güncellenemedi");
+  return;
+}
 
     setAppointments((previousAppointments) =>
       previousAppointments.map((appointment) =>
@@ -1115,14 +1115,14 @@ const handleAppointmentStatusChange = async (id, newStatus) => {
       )
     );
   } catch (error) {
-    console.error("Randevu durumu güncelleme hatası:", error);
-    alert("Randevu durumu güncellenirken bir hata oluştu");
-  }
+  console.error("Ön görüşme durumu güncelleme hatası:", error);
+  alert("Ön görüşme durumu güncellenirken bir hata oluştu");
+}
 };
 
 const handleDeleteAppointment = async (id) => {
   const confirmDelete = window.confirm(
-    "Bu randevuyu kalıcı olarak silmek istediğine emin misin?"
+    "Bu ön görüşmeyi kalıcı olarak silmek istediğine emin misin?"
   );
 
   if (!confirmDelete || !adminToken) {
@@ -1143,7 +1143,7 @@ const handleDeleteAppointment = async (id) => {
     const data = await response.json();
 
     if (!response.ok) {
-      alert(data.message || "Randevu silinemedi");
+      alert(data.message || "Ön görüşme silinemedi");
       return;
     }
 
@@ -1153,8 +1153,8 @@ const handleDeleteAppointment = async (id) => {
       )
     );
   } catch (error) {
-    console.error("Randevu silme hatası:", error);
-    alert("Randevu silinirken bir hata oluştu");
+    console.error("Ön görüşme silme hatası:", error);
+    alert("Ön görüşme silinirken bir hata oluştu");
   }
 };
 
@@ -1406,7 +1406,7 @@ if (isAdminPage) {
   }
   onClick={() => handleAdminSectionChange("appointments")}
 >
-  Randevular
+  Ön Görüşmeler
 </button>
 <button
   type="button"
@@ -1490,12 +1490,12 @@ if (isAdminPage) {
     )}
 
     <div className="admin-video-form-heading">
-      <h3>Haftalık Çalışma Programı</h3>
+      <h3>Haftalık Ön Görüşme Programı</h3>
 
-      <p>
-        Öğrencilerin hangi günlerde ve hangi saatler arasında randevu
-        alabileceğini belirleyebilirsin.
-      </p>
+<p>
+  Öğrenci adaylarının hangi günlerde ve hangi saatler arasında ön görüşme
+  planlayabileceğini belirleyebilirsin.
+</p>
     </div>
 
     {isWeeklyScheduleLoading ? (
@@ -1536,7 +1536,7 @@ if (isAdminPage) {
                 />
 
                 <span>
-                  {day.isOpen ? "Randevuya Açık" : "Kapalı"}
+                  {day.isOpen ? "Ön Görüşmeye Açık" : "Kapalı"}
                 </span>
               </label>
             </div>
@@ -1741,8 +1741,8 @@ if (isAdminPage) {
       <h3>Yeni Kapalı Saat Ekle</h3>
 
       <p>
-        Öğrencilerin randevu alamayacağı tarih ve saat aralığını
-        belirleyebilirsin.
+      Öğrenci adaylarının ön görüşme planlayamayacağı tarih ve saat
+aralığını belirleyebilirsin..
       </p>
     </div>
 
@@ -1854,7 +1854,7 @@ if (isAdminPage) {
   <>
     {appointments.length === 0 ? (
       <div className="admin-empty">
-        Henüz randevu bulunmuyor.
+        Henüz ön görüşme bulunmuyor.
       </div>
     ) : (
       <div className="admin-table-wrapper">
@@ -1864,8 +1864,8 @@ if (isAdminPage) {
               <th>Ad Soyad</th>
               <th>Telefon</th>
               <th>E-posta</th>
-              <th>Ders</th>
-              <th>Randevu Tarihi</th>
+              <th>İlgilenilen Ders</th>
+              <th>Görüşme Tarihi</th>
               <th>Saat</th>
               <th>Not</th>
               <th>Durum</th>
@@ -2918,7 +2918,7 @@ if (isAdminPage) {
     className={activeContactTab === "appointment" ? "active" : ""}
     onClick={() => setActiveContactTab("appointment")}
   >
-    Randevu Oluştur
+    Ön Görüşme Planla
   </button>
 </div>
 
@@ -3008,15 +3008,15 @@ if (isAdminPage) {
 {activeContactTab === "appointment" && (
   <div className="appointment-area">
   <div className="appointment-intro">
-    <span className="contact-form-badge">Randevu oluştur</span>
+    <span className="contact-form-badge">Ücretsiz Ön Görüşme</span>
 
-    <h3>İlk görüşme için gün ve saat seç</h3>
+<h3>Ön görüşme için gün ve saat seç</h3>
 
-    <p>
-      Sana uygun ders türünü, tarihi ve saati seçerek randevu talebini
-      oluşturabilirsin. Randevun onaylandıktan sonra seninle iletişime
-      geçilecektir.
-    </p>
+<p>
+  İlgilendiğin ders türünü, tarihi ve saati seçerek ön görüşme talebini
+  oluşturabilirsin. Talebin onaylandıktan sonra seninle iletişime
+  geçilecektir.
+</p>
   </div>
 
   <form
@@ -3112,14 +3112,14 @@ if (isAdminPage) {
 >
   <option value="">
     {!appointmentForm.appointmentDate
-      ? "Önce randevu tarihi seç"
+      ? "Önce görüşme tarihi seç"
       : isAppointmentAvailabilityLoading
         ? "Saatler yükleniyor..."
         : !isSelectedAppointmentDayOpen
-          ? "Seçilen gün randevuya kapalı"
+          ? "Seçilen gün ön görüşmeye kapalı"
           : availableAppointmentTimes.length === 0
             ? "Bu tarihte uygun saat bulunmuyor"
-            : "Randevu saati seç"}
+            : "Görüşme saati seç"}
   </option>
 
   {availableAppointmentTimes.map((time) => (
@@ -3155,8 +3155,8 @@ if (isAdminPage) {
       disabled={isAppointmentSubmitting}
     >
       {isAppointmentSubmitting
-        ? "Randevu gönderiliyor..."
-        : "Randevu Talebi Oluştur"}
+  ? "Ön görüşme gönderiliyor..."
+  : "Ön Görüşme Talebi Gönder"}
     </button>
   </form>
 </div>
