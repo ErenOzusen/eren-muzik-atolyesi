@@ -21,6 +21,50 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+const sendBrevoEmail = async ({ subject, text }) => {
+  if (
+    !process.env.BREVO_API_KEY ||
+    !process.env.EMAIL_USER ||
+    !process.env.NOTIFICATION_EMAIL
+  ) {
+    console.warn("Brevo e-posta ayarları eksik.");
+    return null;
+  }
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      sender: {
+        name: "Eren Müzik Atölyesi",
+        email: process.env.EMAIL_USER,
+      },
+      to: [
+        {
+          email: process.env.NOTIFICATION_EMAIL,
+        },
+      ],
+      subject,
+      textContent: text,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      `Brevo API hatası (${response.status}): ${
+        result.message || JSON.stringify(result)
+      }`
+    );
+  }
+
+  return result;
+};
 
 let isDbConnected = false;
 
@@ -103,18 +147,7 @@ app.get("/", (req, res) => {
 });
 
 const sendNewSubmissionEmail = async (submission) => {
-  if (
-    !process.env.EMAIL_USER ||
-    !process.env.EMAIL_PASS ||
-    !process.env.NOTIFICATION_EMAIL
-  ) {
-    console.warn("Bilgi al e-postası için Gmail ayarları eksik.");
-    return;
-  }
-
-  const info = await transporter.sendMail({
-    from: `Eren Müzik Atölyesi <${process.env.EMAIL_USER}>`,
-    to: process.env.NOTIFICATION_EMAIL,
+  const result = await sendBrevoEmail({
     subject: "Yeni bilgi alma başvurusu geldi 🎵",
     text: `
 Yeni bir bilgi alma başvurusu geldi 🎵
@@ -129,22 +162,14 @@ https://eren-muzik-atolyesi.vercel.app/admin
     `,
   });
 
-  console.log("Yeni başvuru e-postası gönderildi:", info.messageId);
+  console.log(
+    "Yeni başvuru e-postası Brevo ile gönderildi:",
+    result?.messageId
+  );
 };
 
 const sendNewAppointmentEmail = async (appointment) => {
-  if (
-    !process.env.EMAIL_USER ||
-    !process.env.EMAIL_PASS ||
-    !process.env.NOTIFICATION_EMAIL
-  ) {
-    console.warn("Ön görüşme e-postası için Gmail ayarları eksik.");
-    return;
-  }
-
-  const info = await transporter.sendMail({
-    from: `Eren Müzik Atölyesi <${process.env.EMAIL_USER}>`,
-    to: process.env.NOTIFICATION_EMAIL,
+  const result = await sendBrevoEmail({
     subject: "Yeni ön görüşme talebi geldi 🎵",
     text: `
 Yeni bir ön görüşme talebi geldi 🎵
@@ -163,11 +188,10 @@ https://eren-muzik-atolyesi.vercel.app/admin
   });
 
   console.log(
-    "Ön görüşme bildirim e-postası gönderildi:",
-    info.messageId
+    "Ön görüşme e-postası Brevo ile gönderildi:",
+    result?.messageId
   );
 };
-
 app.post("/api/contact", async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
