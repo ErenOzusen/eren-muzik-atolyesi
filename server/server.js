@@ -21,14 +21,29 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-const sendBrevoEmail = async ({ subject, text }) => {
+const sendBrevoEmail = async ({
+  subject,
+  text,
+  to,
+  toName = "",
+}) => {
+  const recipientEmail = to || process.env.NOTIFICATION_EMAIL;
+
   if (
     !process.env.BREVO_API_KEY ||
     !process.env.EMAIL_USER ||
-    !process.env.NOTIFICATION_EMAIL
+    !recipientEmail
   ) {
-    console.warn("Brevo e-posta ayarları eksik.");
+    console.warn("Brevo e-posta ayarları veya alıcı adresi eksik.");
     return null;
+  }
+
+  const recipient = {
+    email: recipientEmail,
+  };
+
+  if (toName && toName.trim()) {
+    recipient.name = toName.trim();
   }
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -43,11 +58,7 @@ const sendBrevoEmail = async ({ subject, text }) => {
         name: "Eren Müzik Atölyesi",
         email: process.env.EMAIL_USER,
       },
-      to: [
-        {
-          email: process.env.NOTIFICATION_EMAIL,
-        },
-      ],
+      to: [recipient],
       subject,
       textContent: text,
     }),
@@ -62,6 +73,11 @@ const sendBrevoEmail = async ({ subject, text }) => {
       }`
     );
   }
+
+  console.log(
+    "Brevo e-postası kabul edildi:",
+    result.messageId || result
+  );
 
   return result;
 };
@@ -1078,22 +1094,85 @@ app.patch(
     }
 
     try {
-      const updatedAppointment = await Appointment.findByIdAndUpdate(
-        id,
-        { status },
-        { new: true }
-      );
+      const currentAppointment = await Appointment.findById(id);
 
-      if (!updatedAppointment) {
+      if (!currentAppointment) {
         return res.status(404).json({
           success: false,
           message: "Randevu bulunamadı",
         });
       }
 
+      const previousStatus = currentAppointment.status;
+
+      currentAppointment.status = status;
+      const updatedAppointment = await currentAppointment.save();
+
+      let confirmationEmailSent = false;
+
+      if (
+        status === "Onaylandı" &&
+        previousStatus !== "Onaylandı" &&
+        updatedAppointment.email
+      ) {
+        try {
+          const rawAppointmentDate = String(
+            updatedAppointment.appointmentDate
+          );
+
+          const appointmentDate = new Date(
+            rawAppointmentDate.includes("T")
+              ? rawAppointmentDate
+              : `${rawAppointmentDate}T12:00:00`
+          );
+
+          const formattedDate = appointmentDate.toLocaleDateString("tr-TR", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            weekday: "long",
+            timeZone: "Europe/Istanbul",
+          });
+
+          await sendBrevoEmail({
+            to: updatedAppointment.email,
+            toName: updatedAppointment.name,
+            subject: "Ön görüşmeniz onaylandı | Eren Müzik Atölyesi",
+            text: `Merhaba ${updatedAppointment.name},
+
+Ön görüşme talebiniz onaylandı.
+
+Tarih: ${formattedDate}
+Saat: ${updatedAppointment.appointmentTime}
+Ders: ${updatedAppointment.lesson}
+
+Görüşme öncesinde gerekli olması hâlinde sizinle telefon veya WhatsApp üzerinden iletişime geçeceğiz.
+
+Görüşmek üzere,
+
+Eren Özüşen
+Eren Müzik Atölyesi`,
+          });
+
+          confirmationEmailSent = true;
+
+          console.log(
+            `Ön görüşme onay e-postası gönderildi: ${updatedAppointment.email}`
+          );
+        } catch (emailError) {
+          console.error(
+            "Öğrenci onay e-postası gönderilemedi:",
+            emailError.message
+          );
+        }
+      }
+
       res.json({
         success: true,
-        message: "Randevu durumu güncellendi",
+        message: confirmationEmailSent
+          ? "Randevu durumu güncellendi ve öğrenciye onay e-postası gönderildi"
+          : "Randevu durumu güncellendi",
+        confirmationEmailSent,
         appointment: formatAppointment(updatedAppointment),
       });
     } catch (error) {
