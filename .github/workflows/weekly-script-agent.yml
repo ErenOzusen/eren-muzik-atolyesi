@@ -1,0 +1,52 @@
+name: Haftalık Senaryo Ajanı
+
+on:
+  schedule:
+    # Her Salı Türkiye saatiyle 08:00 (UTC 05:00) - rapordan 1 gün sonra
+    - cron: '0 5 * * 2'
+  workflow_dispatch: {}  # Manuel olarak da tetiklenebilir
+
+jobs:
+  script-writer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude ile senaryo yazımı
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Sen Eren Müzik Atölyesi için çalışan bir video senaryo yazarı ve
+            kalite kontrol asistanısın. Eren; gitar, piyano, bas gitar ve
+            müzik teorisi dersleri veren bir müzik öğretmeni.
+
+            ADIM 1: `gh issue list --search "Haftalık İçerik Raporu" --limit 1`
+            komutuyla en son haftalık içerik raporunu bul, `gh issue view <numara>`
+            ile içeriğini oku.
+
+            ADIM 2: Rapordaki "İÇERİK FİKİRLERİ" bölümünden öncelik sırasına göre
+            İLK 3 fikri al.
+
+            ADIM 3: Her fikir için tam bir çekim senaryosu yaz. Her senaryo şunları
+            içermeli:
+            - Açılış kancası (ilk 20 saniye, izleyiciyi tutacak cümle)
+            - Ana içerik bölümleri (zaman damgalı, ne anlatılacak/çalınacak)
+            - Müzik teorisi doğruluk kontrolü yap: akorlar, notalar, perdeler
+              doğru mu iki kez kontrol et, yanlış bilgi olmasın
+            - Kapanış + rezervasyon/dijital ürün CTA'sı
+            - Shorts kesiti önerisi (30-60 sn, hangi bölüm)
+            - SEO notları: başlık, açıklama ilk cümlesi, etiketler, playlist
+
+            ADIM 4: Bu 3 senaryoyu tek bir GitHub issue olarak aç, başlık:
+            "Haftalık Senaryolar - {{ tarih }}". İçinde her senaryo ayrı bir
+            başlık (## Senaryo 1: ..., ## Senaryo 2: ..., ## Senaryo 3: ...)
+            altında olsun. Raporu Türkçe yaz, net ve çekime hazır formatta.
+
+          claude_args: |
+            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
+            --max-turns 30
