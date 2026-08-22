@@ -48,5 +48,5 @@ jobs:
             altında olsun. Raporu Türkçe yaz, net ve çekime hazır formatta.
 
             claude_args: |
-            --allowedTools "Bash(gh:*),Write"
-            --max-turns 50
+            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Write"
+            --max-turns 40
