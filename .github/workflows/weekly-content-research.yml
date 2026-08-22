@@ -50,4 +50,4 @@ jobs:
 
           claude_args: |
             --allowedTools "WebSearch,Bash(gh issue create:*)"
-            --max-turns 15
+            --max-turns 30
