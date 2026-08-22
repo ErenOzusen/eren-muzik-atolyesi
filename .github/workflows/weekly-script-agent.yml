@@ -47,6 +47,6 @@ jobs:
             başlık (## Senaryo 1: ..., ## Senaryo 2: ..., ## Senaryo 3: ...)
             altında olsun. Raporu Türkçe yaz, net ve çekime hazır formatta.
 
-          claude_args: |
-            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
-            --max-turns 30
+            claude_args: |
+            --allowedTools "Bash(gh:*),Write"
+            --max-turns 50
