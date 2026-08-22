@@ -81,7 +81,6 @@ jobs:
             - Issue başarıyla oluşturulduğu anda başka hiçbir işlem yapma.
             - Görevi tamamla ve dur.
 
-          claude_args: |
-            --model claude-4-0-sonnet-20250805
-            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
-            --max-turns 6
+         claude_args: |
+                 --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
+                 --max-turns 6
