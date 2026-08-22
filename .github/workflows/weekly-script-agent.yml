@@ -51,12 +51,11 @@ jobs:
           PROMPT=$(cat <<'EOF'
           Sen Eren Müzik Atölyesi için çalışan profesyonel video senaryo yazarısın.
 
-          Aşağıdaki haftalık içerik raporunun "İÇERİK FİKİRLERİ" bölümünden
-          öncelik sırasına göre ilk 3 fikri seç.
+          Aşağıdaki "İÇERİK FİKİRLERİ" bölümünden öncelik sırasına göre ilk 3 fikri seç.
 
-          Her fikir için çekime hazır, uygulanabilir bir video senaryosu oluştur.
+          Her fikir için çekime hazır, uygulanabilir ve öz bir video senaryosu oluştur.
 
-          Her senaryoda yalnızca şunlar olsun:
+          Her senaryoda:
           - Güçlü açılış kancası
           - Ana içerik akışı
           - Gerekliyse müzik teorisi doğruluk kontrolü
@@ -67,17 +66,13 @@ jobs:
           - Etiketler
           - Playlist önerisi
 
-          Gereksiz açıklama, analiz veya tekrar yazma.
-          Çıktıyı Türkçe yaz.
-          Çekime hazır ve öz tut.
-
-          ÇOK ÖNEMLİ:
-          - Her senaryo maksimum 700 kelime olsun.
-          - Toplam çıktı maksimum 2200 kelime olsun.
+          Kurallar:
+          - Her senaryo yaklaşık 400-500 kelimeyi geçmesin.
           - Üç senaryoyu da mutlaka tamamla.
-          - Gereksiz kamera açıklamaları ve uzun teorik açıklamalar yazma.
-          - Aynı bilgiyi tekrar etme.
-          - Öncelik üç senaryonun da eksiksiz tamamlanmasıdır.
+          - Gereksiz kamera açıklaması, tekrar ve uzun teori yazma.
+          - Raporda bulunmayan kesin akor, BPM, ton veya teknik bilgileri uydurma.
+          - Çıktıyı Türkçe yaz.
+          - Öncelik eksiksiz 3 senaryodur.
 
           Çıktı formatı:
 
@@ -99,7 +94,7 @@ jobs:
             --arg report "$REPORT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 4000,
+              max_tokens: 3500,
               messages: [
                 {
                   role: "user",
@@ -116,6 +111,7 @@ jobs:
             -d "$JSON")
 
           SENARYOLAR=$(echo "$RESPONSE" | jq -r '.content[0].text // empty')
+          STOP_REASON=$(echo "$RESPONSE" | jq -r '.stop_reason // empty')
 
           if [ -z "$SENARYOLAR" ]; then
             echo "Claude senaryo çıktısı üretmedi."
@@ -125,6 +121,53 @@ jobs:
 
           printf '%s\n' "$SENARYOLAR" > /tmp/scripts.txt
 
+          if [ "$STOP_REASON" = "max_tokens" ]; then
+            echo "İlk çıktı token sınırında kesildi. Eksik bölüm tamamlanıyor..."
+
+            CONTINUE_PROMPT=$(cat <<EOF
+          Aşağıdaki çıktı token sınırında yarıda kesildi.
+
+          Sadece eksik kalan kısmı tamamla.
+          Baştan tekrar yazma.
+          Tamamlanmış senaryoları tekrar etme.
+          Yarım kalan senaryodan devam et.
+          Eksik başlıkları ve bölümleri eksiksiz tamamla.
+
+          MEVCUT ÇIKTI:
+          $SENARYOLAR
+          EOF
+            )
+
+            CONTINUE_JSON=$(jq -n \
+              --arg prompt "$CONTINUE_PROMPT" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 1800,
+                messages: [
+                  {
+                    role: "user",
+                    content: $prompt
+                  }
+                ]
+              }')
+
+            CONTINUE_RESPONSE=$(curl --fail-with-body -sS \
+              https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $ANTHROPIC_API_KEY" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "$CONTINUE_JSON")
+
+            DEVAM=$(echo "$CONTINUE_RESPONSE" | jq -r '.content[0].text // empty')
+
+            if [ -z "$DEVAM" ]; then
+              echo "Devam çağrısı çıktı üretmedi."
+              echo "$CONTINUE_RESPONSE"
+              exit 1
+            fi
+
+            printf '\n%s\n' "$DEVAM" >> /tmp/scripts.txt
+          fi
       - name: Senaryoları GitHub Issue olarak oluştur
         shell: bash
         run: |
