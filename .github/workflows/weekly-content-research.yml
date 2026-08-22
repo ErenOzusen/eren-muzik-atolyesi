@@ -1,0 +1,52 @@
+name: Haftalık İçerik Araştırma Raporu
+
+on:
+  schedule:
+    # Her Pazartesi Türkiye saatiyle 08:00 (UTC 05:00)
+    - cron: '0 5 * * 1'
+  workflow_dispatch: {}  # Manuel olarak da tetiklenebilir
+
+jobs:
+  weekly-research:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude ile haftalık içerik araştırması
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Sen Eren Müzik Atölyesi için çalışan bir içerik araştırma asistanısın.
+            Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veren bir
+            müzik öğretmeni ve YouTube kanalı + web sitesi (rezervasyon ve
+            dijital ürün satışı) işletiyor.
+
+            Bu hafta için şunları araştır ve bir rapor hazırla:
+
+            1. TREND KONULAR: Gitar/piyano/bas gitar/müzik teorisi alanında
+               son 1-2 haftada YouTube'da öne çıkan veya artan ilgi gören konular
+               nelerdir? (yeni şarkı coverları, viral teknikler, mevsimsel
+               konular vb.)
+
+            2. RAKİP HAREKETLERİ: Selim Işık, Deniz Sayman, Egemen Dişli,
+               Onur Güler, Vehbi Can Uyaroğlu (Gitar_Dersleri) gibi Türkçe
+               müzik eğitmenlerinin son yayınladığı öne çıkan videolar var mı?
+               Hangi formatlar iyi performans gösteriyor?
+
+            3. İÇERİK FİKİRLERİ: Yukarıdaki bulgulara dayanarak, Eren'in
+               bu hafta çekebileceği 5-7 somut video fikri öner (haftada
+               birkaç video çekimine yetecek kadar). Her biri için: başlık
+               önerisi, hangi enstrüman, tahmini format (ders/cover/SSS).
+
+            4. Bu raporu net başlıklarla, kısa ve aksiyon alınabilir şekilde
+               Türkçe yaz.
+
+            Raporu bir GitHub issue olarak aç, başlık: "Haftalık İçerik Raporu - {{ tarih }}"
+
+          claude_args: |
+            --allowedTools "WebSearch,Bash(gh issue create:*)"
+            --max-turns 15
