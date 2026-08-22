@@ -25,7 +25,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           show_full_output: true
 
-          prompt: |
+                    prompt: |
             Sen Eren Müzik Atölyesi için çalışan video senaryo ajanısın.
 
             GÖREVİN:
@@ -81,7 +81,7 @@ jobs:
             - Issue başarıyla oluşturulduğu anda başka hiçbir işlem yapma.
             - Görevi tamamla ve dur.
 
-            claude_args: |
+          claude_args: |
             --model claude-4-0-sonnet-20250805
             --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
             --max-turns 6
