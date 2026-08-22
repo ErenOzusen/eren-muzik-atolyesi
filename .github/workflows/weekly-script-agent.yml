@@ -2,76 +2,126 @@ name: Haftalık Senaryo Ajanı
 
 on:
   schedule:
+    # Her Salı Türkiye saatiyle 08:00
     - cron: '0 5 * * 2'
   workflow_dispatch:
 
 jobs:
   script-writer:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     permissions:
       contents: read
       issues: write
-      id-token: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Son haftalık raporu al
+        id: report
+        shell: bash
+        run: |
+          ISSUE_NUMBER=$(gh issue list \
+            --search "Haftalık İçerik Raporu" \
+            --limit 1 \
+            --json number \
+            --jq '.[0].number')
 
-      - name: Claude ile senaryo yazımı
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          show_full_output: true
-          prompt: |
-            Sen Eren Müzik Atölyesi için çalışan video senaryo ajanısın.
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "Haftalık içerik raporu bulunamadı."
+            exit 1
+          fi
 
-            Önce en son haftalık içerik raporunu bul:
-            gh issue list --search "Haftalık İçerik Raporu" --limit 1
+          gh issue view "$ISSUE_NUMBER" \
+            --json body \
+            --jq '.body' > /tmp/report.txt
 
-            Ardından bulunan issue'yu oku:
-            gh issue view <issue_numarası>
+          echo "Kaynak rapor: Issue #$ISSUE_NUMBER"
 
-            Rapordaki İÇERİK FİKİRLERİ bölümünden ilk 3 fikri seç.
+      - name: Claude ile 3 senaryo üret
+        shell: bash
+        run: |
+          REPORT=$(cat /tmp/report.txt)
 
-            Her fikir için çekime hazır bir video senaryosu hazırla.
+          PROMPT=$(cat <<'EOF'
+          Sen Eren Müzik Atölyesi için çalışan profesyonel video senaryo yazarısın.
 
-            Her senaryoda:
-            - Açılış kancası
-            - Ana içerik bölümleri
-            - Müzik teorisi doğruluk kontrolü
-            - Kapanış ve CTA
-            - Shorts kesiti
-            - SEO başlığı
-            - Açıklama ilk cümlesi
-            - Etiketler
-            - Playlist önerisi
+          Aşağıdaki haftalık içerik raporunun "İÇERİK FİKİRLERİ" bölümünden
+          öncelik sırasına göre ilk 3 fikri seç.
 
-            bulunmalı.
+          Her fikir için çekime hazır, uygulanabilir bir video senaryosu oluştur.
 
-            Üç senaryoyu TEK bir GitHub Issue olarak oluştur.
+          Her senaryoda yalnızca şunlar olsun:
+          - Güçlü açılış kancası
+          - Ana içerik akışı
+          - Gerekliyse müzik teorisi doğruluk kontrolü
+          - Kapanış ve CTA
+          - 30-60 saniyelik Shorts kesiti
+          - SEO başlığı
+          - Açıklamanın ilk cümlesi
+          - Etiketler
+          - Playlist önerisi
 
-            Issue başlığı:
-            Haftalık Senaryolar - güncel tarih
+          Gereksiz açıklama, analiz veya tekrar yazma.
+          Çıktıyı Türkçe yaz.
+          Çekime hazır ve öz tut.
 
-            Issue içerisinde:
-            ## Senaryo 1
-            ## Senaryo 2
-            ## Senaryo 3
+          Çıktı formatı:
 
-            başlıklarını kullan.
+          ## Senaryo 1: Başlık
+          ...
 
-            Repo dosyalarını inceleme.
-            Web araştırması yapma.
-            Dosya oluşturma.
-            Sonucu doğrudan gh issue create komutuyla GitHub Issue olarak oluştur.
-            Issue oluşturulduktan sonra görevi bitir.
+          ## Senaryo 2: Başlık
+          ...
 
-            - En fazla şu sırayı izle: issue list → issue view → senaryoları hazırla → issue create → dur.
-            - Aynı komutu ikinci kez çalıştırma.
-            - Issue okunduktan sonra tekrar GitHub sorgusu yapma.
-            - Senaryolar hazır olduğunda doğrudan issue create çalıştır.
+          ## Senaryo 3: Başlık
+          ...
 
-          claude_args: |
-            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
-            --max-turns 10
+          HAFTALIK RAPOR:
+          EOF
+          )
+
+          JSON=$(jq -n \
+            --arg prompt "$PROMPT" \
+            --arg report "$REPORT" \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 5000,
+              messages: [
+                {
+                  role: "user",
+                  content: ($prompt + "\n\n" + $report)
+                }
+              ]
+            }')
+
+          RESPONSE=$(curl --fail-with-body -sS \
+            https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$JSON")
+
+          SENARYOLAR=$(echo "$RESPONSE" | jq -r '.content[0].text // empty')
+
+          if [ -z "$SENARYOLAR" ]; then
+            echo "Claude senaryo çıktısı üretmedi."
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          printf '%s\n' "$SENARYOLAR" > /tmp/scripts.txt
+
+      - name: Senaryoları GitHub Issue olarak oluştur
+        shell: bash
+        run: |
+          DATE=$(TZ=Europe/Istanbul date '+%d-%m-%Y')
+
+          gh issue create \
+            --title "Haftalık Senaryolar - $DATE" \
+            --body-file /tmp/scripts.txt
+
+          echo "Haftalık senaryolar başarıyla oluşturuldu."
