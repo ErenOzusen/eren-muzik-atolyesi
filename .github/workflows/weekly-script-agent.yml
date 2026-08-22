@@ -18,8 +18,11 @@ jobs:
 
       - name: Claude ile senaryo yazımı
         uses: anthropics/claude-code-action@v1
-        with:
+                with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          show_full_output: true
+
           prompt: |
             Sen Eren Müzik Atölyesi için çalışan bir video senaryo yazarı ve
             kalite kontrol asistanısın. Eren; gitar, piyano, bas gitar ve
@@ -34,19 +37,18 @@ jobs:
 
             ADIM 3: Her fikir için tam bir çekim senaryosu yaz. Her senaryo şunları
             içermeli:
-            - Açılış kancası (ilk 20 saniye, izleyiciyi tutacak cümle)
-            - Ana içerik bölümleri (zaman damgalı, ne anlatılacak/çalınacak)
-            - Müzik teorisi doğruluk kontrolü yap: akorlar, notalar, perdeler
-              doğru mu iki kez kontrol et, yanlış bilgi olmasın
-            - Kapanış + rezervasyon/dijital ürün CTA'sı
-            - Shorts kesiti önerisi (30-60 sn, hangi bölüm)
-            - SEO notları: başlık, açıklama ilk cümlesi, etiketler, playlist
+            - Açılış kancası
+            - Ana içerik bölümleri
+            - Müzik teorisi doğruluk kontrolü
+            - Kapanış + CTA
+            - Shorts kesiti önerisi
+            - SEO notları
 
             ADIM 4: Bu 3 senaryoyu tek bir GitHub issue olarak aç, başlık:
-            "Haftalık Senaryolar - {{ tarih }}". İçinde her senaryo ayrı bir
-            başlık (## Senaryo 1: ..., ## Senaryo 2: ..., ## Senaryo 3: ...)
-            altında olsun. Raporu Türkçe yaz, net ve çekime hazır formatta.
+            "Haftalık Senaryolar - {{ tarih }}".
+
+            GitHub issue başarıyla oluşturulduktan sonra başka işlem yapma ve görevi bitir.
 
           claude_args: |
             --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
-            --max-turns 40
+            --max-turns 12
