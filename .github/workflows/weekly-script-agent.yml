@@ -46,7 +46,7 @@ jobs:
       - name: Claude ile 3 senaryo üret
         shell: bash
         run: |
-          REPORT=$(cat /tmp/report.txt)
+          REPORT=$(awk '/İÇERİK FİKİRLERİ/ {found=1}found {print}' /tmp/report.txt)
 
           PROMPT=$(cat <<'EOF'
           Sen Eren Müzik Atölyesi için çalışan profesyonel video senaryo yazarısın.
@@ -91,7 +91,7 @@ jobs:
             --arg report "$REPORT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 5000,
+              max_tokens: 3200,
               messages: [
                 {
                   role: "user",
