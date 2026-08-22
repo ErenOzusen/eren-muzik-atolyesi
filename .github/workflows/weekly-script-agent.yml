@@ -4,23 +4,24 @@ on:
   schedule:
     # Her Salı Türkiye saatiyle 08:00 (UTC 05:00) - rapordan 1 gün sonra
     - cron: '0 5 * * 2'
-  workflow_dispatch: {}  # Manuel olarak da tetiklenebilir
+  workflow_dispatch: {}
 
 jobs:
   script-writer:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       issues: write
       id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Claude ile senaryo yazımı
         uses: anthropics/claude-code-action@v1
-                with:
+        with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
           show_full_output: true
 
           prompt: |
@@ -28,26 +29,47 @@ jobs:
             kalite kontrol asistanısın. Eren; gitar, piyano, bas gitar ve
             müzik teorisi dersleri veren bir müzik öğretmeni.
 
-            ADIM 1: `gh issue list --search "Haftalık İçerik Raporu" --limit 1`
-            komutuyla en son haftalık içerik raporunu bul, `gh issue view <numara>`
-            ile içeriğini oku.
+            ADIM 1:
+            `gh issue list --search "Haftalık İçerik Raporu" --limit 1`
+            komutuyla en son haftalık içerik raporunu bul.
 
-            ADIM 2: Rapordaki "İÇERİK FİKİRLERİ" bölümünden öncelik sırasına göre
-            İLK 3 fikri al.
+            Ardından:
+            `gh issue view <numara>`
+            komutuyla raporun içeriğini oku.
 
-            ADIM 3: Her fikir için tam bir çekim senaryosu yaz. Her senaryo şunları
-            içermeli:
+            ADIM 2:
+            Rapordaki "İÇERİK FİKİRLERİ" bölümünden öncelik sırasına göre
+            ilk 3 fikri seç.
+
+            ADIM 3:
+            Her fikir için çekime hazır bir video senaryosu oluştur.
+
+            Her senaryoda:
             - Açılış kancası
             - Ana içerik bölümleri
             - Müzik teorisi doğruluk kontrolü
-            - Kapanış + CTA
+            - Kapanış ve CTA
             - Shorts kesiti önerisi
-            - SEO notları
+            - SEO başlığı
+            - Açıklama ilk cümlesi
+            - Etiketler
+            - Playlist önerisi
 
-            ADIM 4: Bu 3 senaryoyu tek bir GitHub issue olarak aç, başlık:
-            "Haftalık Senaryolar - {{ tarih }}".
+            bulunmalı.
 
-            GitHub issue başarıyla oluşturulduktan sonra başka işlem yapma ve görevi bitir.
+            ADIM 4:
+            Üç senaryonun tamamını tek bir GitHub Issue olarak oluştur.
+
+            Başlık:
+            "Haftalık Senaryolar - güncel tarih"
+
+            Her senaryoyu ayrı başlık altında yaz:
+            ## Senaryo 1
+            ## Senaryo 2
+            ## Senaryo 3
+
+            GitHub Issue başarıyla oluşturulduktan sonra
+            başka hiçbir işlem yapma ve görevi bitir.
 
           claude_args: |
             --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
