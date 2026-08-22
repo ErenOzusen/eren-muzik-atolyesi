@@ -2,7 +2,7 @@ name: Haftalık Senaryo Ajanı
 
 on:
   schedule:
-    # Her Salı Türkiye saatiyle 08:00 (UTC 05:00) - rapordan 1 gün sonra
+    # Her Salı Türkiye saatiyle 08:00 (UTC 05:00)
     - cron: '0 5 * * 2'
   workflow_dispatch: {}
 
@@ -25,24 +25,20 @@ jobs:
           show_full_output: true
 
           prompt: |
-            Sen Eren Müzik Atölyesi için çalışan bir video senaryo yazarı ve
-            kalite kontrol asistanısın. Eren; gitar, piyano, bas gitar ve
-            müzik teorisi dersleri veren bir müzik öğretmeni.
+            Sen Eren Müzik Atölyesi için çalışan video senaryo ajanısın.
 
-            ADIM 1:
-            `gh issue list --search "Haftalık İçerik Raporu" --limit 1`
-            komutuyla en son haftalık içerik raporunu bul.
+            GÖREVİN:
 
-            Ardından:
-            `gh issue view <numara>`
-            komutuyla raporun içeriğini oku.
+            1. Sadece şu komutu kullanarak en son haftalık içerik raporunu bul:
+               gh issue list --search "Haftalık İçerik Raporu" --limit 1
 
-            ADIM 2:
-            Rapordaki "İÇERİK FİKİRLERİ" bölümünden öncelik sırasına göre
-            ilk 3 fikri seç.
+            2. Bulduğun issue'yu şu komutla oku:
+               gh issue view <issue_numarası>
 
-            ADIM 3:
-            Her fikir için çekime hazır bir video senaryosu oluştur.
+            3. Rapordaki "İÇERİK FİKİRLERİ" bölümünden
+               öncelik sırasına göre ilk 3 fikri seç.
+
+            4. Her fikir için çekime hazır bir video senaryosu hazırla.
 
             Her senaryoda:
             - Açılış kancası
@@ -57,19 +53,36 @@ jobs:
 
             bulunmalı.
 
-            ADIM 4:
-            Üç senaryonun tamamını tek bir GitHub Issue olarak oluştur.
+            5. Üç senaryoyu TEK bir GitHub Issue olarak oluştur.
 
-            Başlık:
+            Issue başlığı:
             "Haftalık Senaryolar - güncel tarih"
 
-            Her senaryoyu ayrı başlık altında yaz:
+            Issue içerisinde:
             ## Senaryo 1
             ## Senaryo 2
             ## Senaryo 3
 
-            GitHub Issue başarıyla oluşturulduktan sonra
-            başka hiçbir işlem yapma ve görevi bitir.
+            başlıklarını kullan.
+
+            ÇOK ÖNEMLİ KURALLAR:
+
+            - Repo dosyalarını inceleme.
+            - ls, find veya benzeri komutlar çalıştırma.
+            - Write veya Edit aracını kullanma.
+            - Herhangi bir .md veya .txt dosyası oluşturma.
+            - /tmp dizinine hiçbir şey yazma.
+            - Web araştırması yapma.
+            - Senaryoları bir dosyaya kaydetme.
+            - Senaryoları kendi bağlamında hazırla.
+            - Sonucu doğrudan gh issue create komutuyla GitHub Issue olarak oluştur.
+            - Issue body içeriğini stdin üzerinden gh issue create komutuna aktar.
+            - Issue başarıyla oluşturulduğu anda başka hiçbir işlem yapma.
+            - Görevi tamamla ve dur.
+
+          claude_args: |
+            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
+            --max-turns 6
 
           claude_args: |
             --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*)"
