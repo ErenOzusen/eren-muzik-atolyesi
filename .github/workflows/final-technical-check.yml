@@ -1,0 +1,273 @@
+name: Son Teknik Kontrol Ajanı
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Haftalık Düzeltme Ajanı
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: final-technical-check
+  cancel-in-progress: false
+
+jobs:
+  final-check:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Nihai senaryoları ve QC raporunu bul
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FINAL_NUMBER=$(gh issue list \
+            --state all \
+            --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+            --limit 1 \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -z "$FINAL_NUMBER" ]]; then
+            echo "Nihai Senaryolar Issue'su bulunamadı."
+            exit 1
+          fi
+
+          gh issue view "$FINAL_NUMBER" --json title,body,url > /tmp/final.json
+          jq -r '.body' /tmp/final.json > /tmp/final-scripts.md
+          FINAL_URL=$(jq -r '.url' /tmp/final.json)
+
+          QC_NUMBER=$(grep -i 'Kalite kontrol raporu' /tmp/final-scripts.md \
+            | grep -oE '(issues/|#)[0-9]+' \
+            | grep -oE '[0-9]+' \
+            | head -n 1 || true)
+
+          if [[ -z "$QC_NUMBER" ]]; then
+            QC_NUMBER=$(gh issue list \
+              --state all \
+              --search '"Kalite Kontrol Raporu" in:title sort:created-desc' \
+              --limit 1 \
+              --json number \
+              --jq '.[0].number // empty')
+          fi
+
+          if [[ -z "$QC_NUMBER" ]]; then
+            echo "Kalite Kontrol Raporu bulunamadı."
+            exit 1
+          fi
+
+          gh issue view "$QC_NUMBER" --json title,body,url > /tmp/qc.json
+          jq -r '.body' /tmp/qc.json > /tmp/qc-report.md
+          QC_URL=$(jq -r '.url' /tmp/qc.json)
+
+          {
+            echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_URL=$FINAL_URL"
+            echo "QC_NUMBER=$QC_NUMBER"
+            echo "QC_URL=$QC_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Son kontrol isteğini hazırla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/system-prompt.txt <<'PROMPT'
+          Sen Eren Müzik Atölyesi'nin bağımsız son teknik kontrol editörüsün.
+
+          Görevin düzeltilmiş nihai senaryoları yayımlamadan ve Eren'in onayına
+          sunmadan önce denetlemektir. Senaryoları yeniden yazma; sorunları bul,
+          gerekçelendir ve her bloklayıcı sorun için uygulanabilir kesin düzeltme ver.
+
+          YENİ WEB ARAŞTIRMASI YAPMA. Sana verilen QC raporu ve nihai senaryolarla çalış.
+          "Uygulanan QC düzeltmeleri" bölümündeki beyanlara güvenme; gerçek metni incele.
+
+          ZORUNLU KONTROLLER:
+          1. QC raporundaki nihai/GENEL KARAR ve önerilen düzeltmeler gerçekten uygulanmış mı?
+          2. Ton, ilk akor, transpozisyon, yeniden armonizasyon ve pedagojik sadeleştirme
+             kavramları birbirine karıştırılmış mı?
+          3. Akor dizileri, nota adları, tel/perde numaraları ve müzik teorisi kendi içinde tutarlı mı?
+          4. Her TAB'ı zaman çizelgesi gibi oku. Aynı dikey hizada yazılan notalar aynı anda
+             çalınır. İstenmeyen çift ses, eksik/fazla nota veya belirsiz hizalama var mı?
+          5. TAB'daki nota sayısı açıklamadaki sayım, ritim, ölçü ve vuruş sayısıyla eşleşiyor mu?
+             Örneğin sekiz çeyrek nota 4/4'lük iki ölçü gerektirir; tek ölçü gibi sunulamaz.
+          6. Her riffte tel/perde dizisi, ölçü, sayım, nota değerleri ve tempo çekimde
+             tereddüt bırakmayacak kadar açık mı?
+          7. "Neredeyse her şarkı", "en sağlam temel", "en kolay", "en düşük" gibi
+             genellemeler kanıtlanmış gerçek gibi sunulmuş mu?
+          8. Doğrulanmamış indirim, kampanya, fiyat, garanti veya sonuç vaadi var mı?
+          9. Başlıklardaki #1 gibi ifadeler GitHub Issue bağlantısına dönüşüyor mu?
+             Gerekirse "Ders 1" biçimini öner.
+          10. Senaryo gerçekten çekime hazır mı; Eren'in çekim sırasında nota, ritim,
+              örnek, görsel veya konuşma içeriğini kendisinin icat etmesi gerekiyor mu?
+          11. Bir düzeltme yeni bir teknik hata, çelişki veya doğrulanmamış iddia üretmiş mi?
+
+          KARAR KURALI:
+          - Tek bir yanlış, çelişkili, ritmik olarak belirsiz veya çekimi engelleyen unsur varsa:
+            GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
+          - Yalnızca küçük üslup önerileri varsa ve çekime engel hiçbir sorun yoksa:
+            GENEL KARAR: ✅ EREN ONAYINA HAZIR
+          - Emin olmadığın teknik noktayı geçer sayma; açıkça BELİRSİZ olarak belirt ve
+            düzeltme gerektiren karar ver.
+
+          RAPOR BİÇİMİ:
+          # 🔍 EREN MÜZİK ATÖLYESİ — SON TEKNİK KONTROL
+          ## Kontrol Özeti
+          Kısa bir tablo: Senaryo | QC Uyumu | Teknik Tutarlılık | Çekime Hazır mı
+          ## Bloklayıcı Bulgular
+          Her bulguda: senaryo, özgün ifade/TAB, sorun, gerekçe, kesin önerilen düzeltme.
+          Sorun yoksa "Bloklayıcı bulgu yok" yaz.
+          ## Küçük İyileştirmeler
+          En fazla beş madde.
+          ## GENEL KARAR
+          Son satır tam olarak iki seçenekten yalnızca biri olsun:
+          GENEL KARAR: ✅ EREN ONAYINA HAZIR
+          GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
+
+          Yalnızca Markdown raporunu yaz. Kod bloğu veya ön açıklama ekleme.
+          PROMPT
+
+          jq -n \
+            --rawfile system /tmp/system-prompt.txt \
+            --rawfile final_scripts /tmp/final-scripts.md \
+            --rawfile qc /tmp/qc-report.md \
+            --arg final_url "$FINAL_URL" \
+            --arg qc_url "$QC_URL" \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 3000,
+              temperature: 0,
+              system: $system,
+              messages: [
+                {
+                  role: "user",
+                  content: (
+                    "Aşağıdaki nihai senaryoları, verilen QC raporuyla karşılaştırarak son teknik kontrolden geçir.\n\n" +
+                    "NİHAİ SENARYOLAR — " + $final_url + "\n\n" + $final_scripts +
+                    "\n\nÖNCEKİ QC RAPORU — " + $qc_url + "\n\n" + $qc
+                  )
+                }
+              ]
+            }' > /tmp/request.json
+
+      - name: Anthropic API ile son teknik kontrolü yap
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            echo "ANTHROPIC_API_KEY secret'ı bulunamadı."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            --data-binary @/tmp/request.json \
+            > /tmp/response.json
+
+          if jq -e '.error != null' /tmp/response.json > /dev/null; then
+            jq -r '.error.message // "Anthropic API hatası"' /tmp/response.json
+            exit 1
+          fi
+
+          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
+            /tmp/response.json > /tmp/final-check.md
+
+          if [[ ! -s /tmp/final-check.md ]]; then
+            echo "Son teknik kontrol çıktısı boş geldi."
+            exit 1
+          fi
+
+      - name: Kontrol raporunu ve onay etiketlerini yayınla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+          TITLE="Son Teknik Kontrol Raporu - $RUN_DATE"
+
+          if grep -q 'GENEL KARAR: ✅ EREN ONAYINA HAZIR' /tmp/final-check.md; then
+            DECISION="✅ EREN ONAYINA HAZIR"
+            REPORT_LABEL="son-kontrol-gecti"
+            FINAL_LABEL="eren-onayi-bekliyor"
+          else
+            DECISION="⚠️ DÜZELTME GEREKİYOR"
+            REPORT_LABEL="duzeltme-gerekiyor"
+            FINAL_LABEL="duzeltme-gerekiyor"
+          fi
+
+          {
+            echo "**Kaynak nihai senaryolar:** $FINAL_URL"
+            echo "**Önceki kalite kontrol raporu:** $QC_URL"
+            echo "**Otomatik karar:** $DECISION"
+            echo
+            cat /tmp/final-check.md
+          } > /tmp/report-body.md
+
+          gh label create "son-kontrol-gecti" \
+            --color "0E8A16" \
+            --description "Son teknik kontrolü geçti" \
+            --force
+
+          gh label create "duzeltme-gerekiyor" \
+            --color "D93F0B" \
+            --description "İçerikte düzeltme gerekiyor" \
+            --force
+
+          gh label create "eren-onayi-bekliyor" \
+            --color "FBCA04" \
+            --description "Nihai içerik Eren'in onayını bekliyor" \
+            --force
+
+          REPORT_NUMBER=$(gh issue list \
+            --state all \
+            --search '"Son Teknik Kontrol Raporu" in:title sort:created-desc' \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$REPORT_NUMBER" ]]; then
+            gh issue edit "$REPORT_NUMBER" \
+              --title "$TITLE" \
+              --body-file /tmp/report-body.md \
+              --add-label "$REPORT_LABEL"
+            REPORT_URL=$(gh issue view "$REPORT_NUMBER" --json url --jq '.url')
+          else
+            REPORT_URL=$(gh issue create \
+              --title "$TITLE" \
+              --body-file /tmp/report-body.md \
+              --label "$REPORT_LABEL")
+          fi
+
+          gh issue edit "$FINAL_NUMBER" \
+            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" \
+            --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" \
+            --remove-label "son-kontrol-gecti" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" --add-label "$FINAL_LABEL"
+
+          gh issue comment "$FINAL_NUMBER" \
+            --body "Son teknik kontrol tamamlandı: $DECISION — $REPORT_URL"
+
+          echo "### Son teknik kontrol tamamlandı" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Nihai senaryolar: #$FINAL_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Önceki QC raporu: #$QC_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Karar: $DECISION" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Rapor: $REPORT_URL" >> "$GITHUB_STEP_SUMMARY"
