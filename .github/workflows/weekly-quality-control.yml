@@ -121,10 +121,11 @@ jobs:
               jq -r '[.content[]? | select(.type == "text") | .citations[]? | select(.url != null) | {title, url}] | unique_by(.url)[] | "- [" + (.title // .url) + "](" + .url + ")"' response.json
             } >> qc-report.md
           fi
-              - name: Taslak raporu ikinci kez denetle
-             env:
+              
+      - name: Taslak raporu ikinci kez denetle
+        env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-             run: |
+        run: |
           set -euo pipefail
 
           jq -n \
