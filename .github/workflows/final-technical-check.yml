@@ -94,17 +94,28 @@ jobs:
           YENİ WEB ARAŞTIRMASI YAPMA. Sana verilen QC raporu ve nihai senaryolarla çalış.
           "Uygulanan QC düzeltmeleri" bölümündeki beyanlara güvenme; gerçek metni incele.
 
+          EREN'İN UZMAN ONAYI — AŞAĞIDAKİ MÜZİKAL VERİLER BAĞLAYICIDIR:
+          - Riff 1: 4/4, iki ölçü. Ölçü 1'de E0 dört çeyrek; ölçü 2'de E2 dört çeyrek.
+          - Riff 2: 4/4, tek ölçü. E0, E0, A0, A2; her biri çeyrek.
+          - Riff 3: 4/4, tek ölçü. E0 sekizlik vuruş 1; A2 sekizlik 1-ve;
+            A0 çeyrek vuruş 2; E0 çeyrek vuruş 3; çeyrek sus vuruş 4.
+          Bu dizileri yeniden tartışma veya başka notalar önerme; yalnızca belgede bunlarla
+          nesnel bir çelişki bulunup bulunmadığını kontrol et.
+
           ZORUNLU KONTROLLER:
           1. QC raporundaki nihai/GENEL KARAR ve önerilen düzeltmeler gerçekten uygulanmış mı?
           2. Ton, ilk akor, transpozisyon, yeniden armonizasyon ve pedagojik sadeleştirme
              kavramları birbirine karıştırılmış mı?
           3. Akor dizileri, nota adları, tel/perde numaraları ve müzik teorisi kendi içinde tutarlı mı?
-          4. Her TAB'ı zaman çizelgesi gibi oku. Aynı dikey hizada yazılan notalar aynı anda
-             çalınır. İstenmeyen çift ses, eksik/fazla nota veya belirsiz hizalama var mı?
-          5. TAB'daki nota sayısı açıklamadaki sayım, ritim, ölçü ve vuruş sayısıyla eşleşiyor mu?
-             Örneğin sekiz çeyrek nota 4/4'lük iki ölçü gerektirir; tek ölçü gibi sunulamaz.
-          6. Her riffte tel/perde dizisi, ölçü, sayım, nota değerleri ve tempo çekimde
-             tereddüt bırakmayacak kadar açık mı?
+          4. Nota olay tablosu "ritim açısından esas kaynak" olarak belirtilmişse tablo
+             otoritatiftir. Ölçü toplamı doğruysa ASCII TAB'daki tirelerden ayrıca nota
+             süresi icat etme; TAB yalnızca tel/perde saldırı noktalarını görselleştirir.
+          5. "Sayım |1-&-2-&-3-&-4-&-|" ızgarasında etiket konumları sırasıyla karakter
+             0, 2, 4, 6, 8, 10, 12 ve 14'tür. Tel satırındaki notayı aynı karakter
+             konumuyla karşılaştır. Karakter aralıklarını yeniden ölçeklendirme.
+          6. Her riffteki olay tablosunda tel/perde dizisi, ölçü, zaman, nota süresi ve
+             tempo çekimde tereddüt bırakmayacak kadar açık mı? TAB ile gerçek bir nota
+             saldırısı çelişmedikçe yalnızca görsel boşluk tercihini bloklayıcı sayma.
           7. "Neredeyse her şarkı", "en sağlam temel", "en kolay", "en düşük" gibi
              genellemeler kanıtlanmış gerçek gibi sunulmuş mu?
           8. Doğrulanmamış indirim, kampanya, fiyat, garanti veya sonuç vaadi var mı?
@@ -113,21 +124,30 @@ jobs:
           10. Senaryo gerçekten çekime hazır mı; Eren'in çekim sırasında nota, ritim,
               örnek, görsel veya konuşma içeriğini kendisinin icat etmesi gerekiyor mu?
           11. Bir düzeltme yeni bir teknik hata, çelişki veya doğrulanmamış iddia üretmiş mi?
+          12. Kendi incelemen bir bölümün matematiksel olarak doğru olduğunu gösteriyorsa
+              aynı bölümü sonradan varsayımsal bir gerekçeyle bloklayıcı ilan etme.
+          13. Bir ölçünün sonundaki açıkça yazılmış sus ve sonraki tekrara dönüş normaldir;
+              nota sırası belirtilmişse bunu çekim engeli sayma.
+          14. "Beş dakikada öğren" vaadi ile 3:50'lik video süresi çelişmez; içerik beş
+              dakikadan uzun sürmediği için bunu hata veya yanıltma olarak işaretleme.
 
           KARAR KURALI:
-          - Tek bir yanlış, çelişkili, ritmik olarak belirsiz veya çekimi engelleyen unsur varsa:
+          - Yalnızca kanıtlayabildiğin nesnel bir yanlış, gerçek çelişki veya çekimi
+            engelleyen eksik veri varsa:
             GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
-          - Yalnızca küçük üslup önerileri varsa ve çekime engel hiçbir sorun yoksa:
+          - Açıklama zaten doğruysa ve önerin yalnızca daha ayrıntılı söyleyiş, üslup,
+            tekrar geçişi veya görsel boşluk tercihi ise bunu küçük iyileştirmeye yaz ve:
             GENEL KARAR: ✅ EREN ONAYINA HAZIR
-          - Emin olmadığın teknik noktayı geçer sayma; açıkça BELİRSİZ olarak belirt ve
-            düzeltme gerektiren karar ver.
+          - Sonuç üretmeden önce her bloklayıcı bulgu için "Metindeki hangi iki bilgi
+            aynı anda doğru olamaz?" sorusunu cevapla. Cevaplayamıyorsan bloklayıcı değildir.
 
           RAPOR BİÇİMİ:
           # 🔍 EREN MÜZİK ATÖLYESİ — SON TEKNİK KONTROL
           ## Kontrol Özeti
           Kısa bir tablo: Senaryo | QC Uyumu | Teknik Tutarlılık | Çekime Hazır mı
           ## Bloklayıcı Bulgular
-          Her bulguda: senaryo, özgün ifade/TAB, sorun, gerekçe, kesin önerilen düzeltme.
+          En fazla üç bloklayıcı bulgu yaz. Her bulguda: senaryo, çelişen iki bilgi,
+          kısa gerekçe ve kesin önerilen düzeltme. Uzun karakter-karakter düşünce dökümü yazma.
           Sorun yoksa "Bloklayıcı bulgu yok" yaz.
           ## Küçük İyileştirmeler
           En fazla beş madde.
@@ -147,7 +167,7 @@ jobs:
             --arg qc_url "$QC_URL" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 3000,
+              max_tokens: 1800,
               temperature: 0,
               system: $system,
               messages: [
