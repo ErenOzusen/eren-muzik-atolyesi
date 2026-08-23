@@ -65,12 +65,59 @@ jobs:
           jq -r '.body' /tmp/scripts.json > /tmp/scripts.md
 
           SCRIPT_URL=$(jq -r '.url' /tmp/scripts.json)
+          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+          CURRENT_FINAL_TITLE="Nihai Senaryolar - $RUN_DATE"
+          FINAL_CHECK_TITLE="Son Teknik Kontrol Raporu - $RUN_DATE"
+
+          CURRENT_FINAL_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$CURRENT_FINAL_TITLE\" in:title sort:updated-desc" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$CURRENT_FINAL_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$CURRENT_FINAL_NUMBER" ]]; then
+            gh issue view "$CURRENT_FINAL_NUMBER" --json body,url > /tmp/current-final.json
+            jq -r '.body' /tmp/current-final.json > /tmp/current-final-scripts.md
+            CURRENT_FINAL_URL=$(jq -r '.url' /tmp/current-final.json)
+          else
+            echo "Bu haftaya ait mevcut nihai senaryo taslağı henüz yok." \
+              > /tmp/current-final-scripts.md
+            CURRENT_FINAL_URL="Yok"
+          fi
+
+          FINAL_CHECK_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$FINAL_CHECK_TITLE\" in:title sort:updated-desc" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$FINAL_CHECK_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$FINAL_CHECK_NUMBER" ]]; then
+            gh issue view "$FINAL_CHECK_NUMBER" --json body,url > /tmp/final-check.json
+            jq -r '.body' /tmp/final-check.json > /tmp/final-technical-report.md
+            FINAL_CHECK_URL=$(jq -r '.url' /tmp/final-check.json)
+
+            if ! grep -q 'DÜZELTME GEREKİYOR' /tmp/final-technical-report.md; then
+              echo "Bu haftaya ait bloklayıcı Son Teknik Kontrol bulgusu yok." \
+                > /tmp/final-technical-report.md
+              FINAL_CHECK_URL="Yok"
+            fi
+          else
+            echo "Bu haftaya ait Son Teknik Kontrol raporu henüz yok." \
+              > /tmp/final-technical-report.md
+            FINAL_CHECK_URL="Yok"
+          fi
 
           {
             echo "QC_NUMBER=$QC_NUMBER"
             echo "QC_URL=$QC_URL"
             echo "SCRIPT_NUMBER=$SCRIPT_NUMBER"
             echo "SCRIPT_URL=$SCRIPT_URL"
+            echo "CURRENT_FINAL_URL=$CURRENT_FINAL_URL"
+            echo "FINAL_CHECK_URL=$FINAL_CHECK_URL"
           } >> "$GITHUB_ENV"
 
       - name: Düzeltme isteğini hazırla
@@ -112,6 +159,19 @@ jobs:
               şarkı riffi verilmemişse "gerçek riff" deme; "özgün egzersiz riffi" de.
           17. Çıktıyı vermeden önce sessizce madde madde öz denetim yap. "Uygulanan QC
               düzeltmeleri" bölümünde yalnızca metinde gerçekten uyguladığın değişiklikleri yaz.
+          18. Aynı haftaya ait Son Teknik Kontrol raporu varsa bu rapor en güncel ve en
+              yüksek öncelikli geri bildirimdir. Tüm bloklayıcı bulguları eksiksiz uygula.
+              Aynı haftaya ait mevcut nihai taslak varsa düzeltmeleri bu taslak üzerinde yap;
+              özgün senaryoları yalnızca amaç ve kapsam referansı olarak kullan.
+          19. Son Teknik Kontrol kesin bir TAB düzeltmesi verdiyse onu ritim ve hizalama
+              mantığını bozmadan kullan. Her TAB için sessizce nota olaylarını soldan sağa
+              say; aynı sütundaki notaların istemeden birlikte çalınmadığını doğrula.
+          20. Dört dörtlük ölçüde nota değerlerinin toplamını kontrol et. Sekiz çeyrek
+              notayı iki ölçü olarak açıkça göster; eksik vuruş veya belirsiz tire bırakma.
+          21. "Neredeyse her şarkı", "en sağlam temel" gibi kanıtlanmamış genellemeleri
+              daha dar ve pedagojik olarak açıklanabilir ifadelerle değiştir.
+          22. Başlık ve SEO alanlarında "#1" kullanma; GitHub bağlantısını önlemek için
+              "Ders 1" veya "Bas Gitar — Ders 1" yaz.
 
           HER SENARYODA ŞUNLAR BULUNMALI:
           - Başlık ve amaç
@@ -136,8 +196,12 @@ jobs:
             --rawfile system /tmp/system-prompt.txt \
             --rawfile scripts /tmp/scripts.md \
             --rawfile qc /tmp/qc-report.md \
+            --rawfile current_final /tmp/current-final-scripts.md \
+            --rawfile final_check /tmp/final-technical-report.md \
             --arg script_url "$SCRIPT_URL" \
             --arg qc_url "$QC_URL" \
+            --arg current_final_url "$CURRENT_FINAL_URL" \
+            --arg final_check_url "$FINAL_CHECK_URL" \
             '{
               model: "claude-sonnet-4-6",
               max_tokens: 5000,
@@ -149,7 +213,9 @@ jobs:
                   content: (
                     "Aşağıdaki özgün senaryoları QC raporuna göre düzelt.\n\n" +
                     "ÖZGÜN SENARYOLAR — " + $script_url + "\n\n" + $scripts +
-                    "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc
+                    "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc +
+                    "\n\nMEVCUT NİHAİ TASLAK — " + $current_final_url + "\n\n" + $current_final +
+                    "\n\nSON TEKNİK KONTROL RAPORU — " + $final_check_url + "\n\n" + $final_check
                   )
                 }
               ]
