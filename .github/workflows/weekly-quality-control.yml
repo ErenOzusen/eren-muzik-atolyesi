@@ -121,7 +121,75 @@ jobs:
               jq -r '[.content[]? | select(.type == "text") | .citations[]? | select(.url != null) | {title, url}] | unique_by(.url)[] | "- [" + (.title // .url) + "](" + .url + ")"' response.json
             } >> qc-report.md
           fi
+              - name: Taslak raporu ikinci kez denetle
+             env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+             run: |
+          set -euo pipefail
 
+          jq -n \
+            --rawfile scripts weekly-scripts.txt \
+            --rawfile draft qc-report.md \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 5000,
+              system: (
+                "Sen Eren Müzik Atölyesi için çalışan son denetim editörüsün. Sana özgün video senaryoları ve başka bir ajanın hazırladığı taslak kalite kontrol raporu verilecek. Web araştırması yapmayacaksın. Yalnızca özgün senaryoları, taslak raporu ve raporda gösterilen kaynakları kullanacaksın.\n\n" +
+
+                "Görevin taslak raporu özetlemek değil; mantık, kanıt ve tutarlılık hatalarını düzelterek temiz bir nihai rapor oluşturmaktır. Yalnızca son raporu yaz. Çalışma sürecini, düşündüğünü veya arama sonuçlarını aldığını söyleme.\n\n" +
+
+                "Her iddiayı özgün senaryodaki ifadeyle karşılaştır. Aynı iddiaya raporun farklı bölümlerinde farklı sonuç verilmişse kesin hükmü kaldır ve BELİRSİZ olarak işaretle. Tablo, açıklama, senaryo kararı ve genel karar birbiriyle uyumlu olmalıdır.\n\n" +
+
+                "Bir parçanın tonu ile ilk duyulan akorunu birbirine karıştırma. Bir kaynağın farklı ton göstermesi, parçanın belirli bir akorla başlamadığı anlamına gelmez. Gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyon kavramlarını birbirinden ayır.\n\n" +
+
+                "Daha hassas bir ifade bulunması mevcut cümleyi otomatik olarak yanlış yapmaz. Anlamı bozmayan eksik ayrıntıları kritik hata sayma. Pedagojik genellemeleri ve pazarlama ifadelerini gerçek bilgi hatası gibi sunma.\n\n" +
+
+                "Taslak rapordaki önerilen düzeltmeleri de denetle. Bir düzeltme yeni ve doğrulanmamış bir iddia ekliyorsa o düzeltmeyi kullanma. Kaynağın doğrudan desteklemediği kesin ifadeler kurma. Zayıf veya çelişkili kaynak varsa sonucu BELİRSİZ yap.\n\n" +
+
+                "Maliyet karşılaştırmasını güncel ve karşılaştırılabilir fiyatlar olmadan doğrulanmış kabul etme. Elektro veya bas gitar için yükseltilmiş ve tam ses gerektiğinde amfi, kulaklık amfisi ya da ses arabirimi gerekebileceğini belirt; ancak enstrümanı amfisiz tamamen sessiz veya taşınamaz olarak tanımlama.\n\n" +
+
+                "Bas gitarın ritim, armoni ve melodiyle ilişkili olabileceğini kabul et. Ritim ile melodi arasında köprü ifadesini tek başına bilgi hatası sayma. Daha hassas bir alternatif gerekiyorsa bunu yalnızca HASSASİYET ÖNERİSİ olarak göster.\n\n" +
+
+                "Her senaryoda şu bölümler bulunmalı: İddia ve Kanıt Tablosu, Gerçek Bilgi Hataları, Hassasiyet Önerileri, İçerik Kalitesi ve Senaryo Kararı. Sonunda Genel Tutarlılık Kontrolü ve tek bir Genel Karar bulunmalı.\n\n" +
+
+                "Taslak rapordaki Kullanılan Kaynaklar bölümünü bağlantılarıyla koru fakat yeni kaynak uydurma. En son satır tam olarak şu iki biçimden biri olmalı: GENEL KARAR: ✅ YAYINA HAZIR veya GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR."
+              ),
+              messages: [
+                {
+                  role: "user",
+                  content: (
+                    "ÖZGÜN SENARYOLAR:\n\n" +
+                    $scripts +
+                    "\n\n---\n\nDENETLENECEK TASLAK RAPOR:\n\n" +
+                    $draft
+                  )
+                }
+              ]
+            }' > audit-request.json
+
+          AUDIT_HTTP_CODE="$(curl --silent --show-error \
+            --output audit-response.json \
+            --write-out "%{http_code}" \
+            https://api.anthropic.com/v1/messages \
+            --header "x-api-key: $ANTHROPIC_API_KEY" \
+            --header "anthropic-version: 2023-06-01" \
+            --header "content-type: application/json" \
+            --data-binary @audit-request.json)"
+
+          if [ "$AUDIT_HTTP_CODE" -lt 200 ] || [ "$AUDIT_HTTP_CODE" -ge 300 ]; then
+            echo "İkinci denetim API hatası. HTTP kodu: $AUDIT_HTTP_CODE"
+            jq . audit-response.json || true
+            exit 1
+          fi
+
+          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n\n")' \
+            audit-response.json > final-report.md
+
+          if [ ! -s final-report.md ]; then
+            echo "İkinci denetim boş rapor döndürdü."
+            jq . audit-response.json
+            exit 1
+          fi
       - name: Kalite kontrol raporunu issue olarak yayımla
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,7 +201,7 @@ jobs:
           REPORT_URL="$(gh issue create \
             --repo "$GITHUB_REPOSITORY" \
             --title "Kalite Kontrol Raporu - $REPORT_DATE" \
-            --body-file qc-report.md)"
+            --body-file final-report.md)"
 
           gh issue comment "${{ steps.source.outputs.issue_number }}" \
             --repo "$GITHUB_REPOSITORY" \
