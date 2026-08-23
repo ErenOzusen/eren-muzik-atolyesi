@@ -96,6 +96,22 @@ jobs:
           8. Bas gitarın rolü gibi müzikal genellemeleri mutlak ifadelerle anlatma.
           9. Özgün senaryolardaki iyi kanca, akış ve Eren'in samimi anlatım tarzını koru.
           10. Tam olarak üç senaryo üret. Eksik senaryo bırakma.
+          11. QC raporunda taslak ve nihai karar çelişirse en sonda yer alan GENEL KARAR,
+              SON EDİT veya önerilen düzeltme önceliklidir. Daha temkinli ifade kazanır.
+          12. C–G–Em–F düzenlemesini yalnızca "aynı tonda değil" diye açıklamakla yetinme.
+              Bunun orijinalin birebir transpozisyonu olmadığını, farklı akor grubu kullanan
+              öğrenme amaçlı sadeleştirilmiş/yeniden armonize edilmiş bir düzenleme olduğunu söyle.
+          13. Bas gitarın işlevini anlatırken "ritim ile melodi" deme. "Ritim ile armoni
+              arasında köprü" ifadesini kullan; bunun pedagojik bir benzetme olduğunu koru.
+          14. Bas gitarın taşınabilirliğinden veya sessiz çalışmadan söz edilen her yerde,
+              sesi duymak için amfi, kulaklık amfisi ya da ses arabirimi gerekebileceğini belirt.
+          15. Kaynaklarda doğrulanmış güncel bir kampanya yoksa indirim, özel teklif veya
+              kampanya uydurma. CTA'yı ders bilgisi ve ön görüşme bağlantısına yönlendir.
+          16. Bir riff dersi çekime hazır sayılabilmesi için her riffte tel/perde dizisi,
+              ritim veya sayım, önerilen tempo ve okunabilir TAB bulunmalı. Bilinen bir
+              şarkı riffi verilmemişse "gerçek riff" deme; "özgün egzersiz riffi" de.
+          17. Çıktıyı vermeden önce sessizce madde madde öz denetim yap. "Uygulanan QC
+              düzeltmeleri" bölümünde yalnızca metinde gerçekten uyguladığın değişiklikleri yaz.
 
           HER SENARYODA ŞUNLAR BULUNMALI:
           - Başlık ve amaç
@@ -109,6 +125,7 @@ jobs:
           - Açıklamanın ilk cümlesi
           - Etiketler
           - Playlist önerisi
+          - Ders içeriği gerektiriyorsa somut akor/TAB/nota veya uygulama bilgisi
           - En fazla üç maddelik "Uygulanan QC düzeltmeleri" bölümü
 
           Yalnızca nihai Markdown metnini yaz. Kod bloğu, ön açıklama veya özür ekleme.
