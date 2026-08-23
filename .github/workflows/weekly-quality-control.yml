@@ -133,7 +133,7 @@ jobs:
             --rawfile draft qc-report.md \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 5000,
+              max_tokens: 7000,
               system: (
                 "Sen Eren Müzik Atölyesi için çalışan son denetim editörüsün. Sana özgün video senaryoları ve başka bir ajanın hazırladığı taslak kalite kontrol raporu verilecek. Web araştırması yapmayacaksın. Yalnızca özgün senaryoları, taslak raporu ve raporda gösterilen kaynakları kullanacaksın.\n\n" +
 
@@ -148,6 +148,10 @@ jobs:
                 "Taslak rapordaki önerilen düzeltmeleri de denetle. Bir düzeltme yeni ve doğrulanmamış bir iddia ekliyorsa o düzeltmeyi kullanma. Kaynağın doğrudan desteklemediği kesin ifadeler kurma. Zayıf veya çelişkili kaynak varsa sonucu BELİRSİZ yap.\n\n" +
 
                 "Maliyet karşılaştırmasını güncel ve karşılaştırılabilir fiyatlar olmadan doğrulanmış kabul etme. Elektro veya bas gitar için yükseltilmiş ve tam ses gerektiğinde amfi, kulaklık amfisi ya da ses arabirimi gerekebileceğini belirt; ancak enstrümanı amfisiz tamamen sessiz veya taşınamaz olarak tanımlama.\n\n" +
+               
+                "Fiziksel taşınabilirlik ile yükseltilmiş ses ihtiyacını birbirine karıştırma. Bir bas gitar yatakta veya balkonda fiziksel olarak çalınabilir ve düşük akustik sesle pratik yapılabilir. Senaryo tam veya yükseltilmiş ses vadetmiyorsa taşınabilirlik ifadesini bilgi hatası sayma; yalnızca ek ekipman hassasiyeti olarak belirt.\n\n" +
+
+                "İddia tablosundaki sonuç yalnızca DOĞRU, YANLIŞ, YANILTICI, BELİRSİZ veya GÖRÜŞ olabilir. KISMI gibi başka bir sonuç kullanma. Raporu gereksiz tekrar yapmadan özlü tut fakat Kaynaklar ve Genel Karar bölümlerini mutlaka tamamla.\n\n" +
 
                 "Bas gitarın ritim, armoni ve melodiyle ilişkili olabileceğini kabul et. Ritim ile melodi arasında köprü ifadesini tek başına bilgi hatası sayma. Daha hassas bir alternatif gerekiyorsa bunu yalnızca HASSASİYET ÖNERİSİ olarak göster.\n\n" +
 
@@ -177,9 +181,16 @@ jobs:
             --header "content-type: application/json" \
             --data-binary @audit-request.json)"
 
-          if [ "$AUDIT_HTTP_CODE" -lt 200 ] || [ "$AUDIT_HTTP_CODE" -ge 300 ]; then
+            if [ "$AUDIT_HTTP_CODE" -lt 200 ] || [ "$AUDIT_HTTP_CODE" -ge 300 ]; then
             echo "İkinci denetim API hatası. HTTP kodu: $AUDIT_HTTP_CODE"
             jq . audit-response.json || true
+            exit 1
+          fi
+
+          AUDIT_STOP_REASON="$(jq -r '.stop_reason // empty' audit-response.json)"
+
+          if [ "$AUDIT_STOP_REASON" = "max_tokens" ]; then
+            echo "İkinci denetim token sınırına ulaştı. Eksik rapor yayımlanmayacak."
             exit 1
           fi
 
