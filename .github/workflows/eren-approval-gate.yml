@@ -1,0 +1,85 @@
+name: Eren Onay Kapısı
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: eren-approval-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve-content:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
+      github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Eren onayını doğrula ve kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RAW_COMMENT=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
+          NORMALIZED_COMMENT=$(printf '%s' "$RAW_COMMENT" \
+            | tr '[:lower:]' '[:upper:]' \
+            | tr -d '[:space:]')
+
+          if [[ "$NORMALIZED_COMMENT" != "ONAYLIYORUM" ]]; then
+            echo "Yorum onay komutu değil; işlem yapılmadı."
+            exit 0
+          fi
+
+          if gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            | grep -qx 'eren-onayli'; then
+            echo "Bu içerik daha önce Eren tarafından onaylanmış."
+            exit 0
+          fi
+
+          gh label create "eren-onayli" \
+            --color "0E8A16" \
+            --description "İçerik Eren tarafından onaylandı" \
+            --force
+
+          gh label create "cekime-hazir" \
+            --color "1D76DB" \
+            --description "İçerik çekim aşamasına hazır" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --add-label "eren-onayli" \
+            --add-label "cekime-hazir"
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          ## ✅ Eren onayı kaydedildi
+
+          Nihai senaryolar Eren tarafından onaylandı.
+
+          **Durum:** Çekime hazır  
+          **Sıradaki aşama:** Çekim paketinin hazırlanması ve ham videoların kaydedilmesi
+          MESSAGE
+          )"
+
+          ISSUE_URL=$(gh issue view "$ISSUE_NUMBER" --json url --jq '.url')
+
+          echo "### Eren onayı kaydedildi" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Issue: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Durum: Çekime hazır" >> "$GITHUB_STEP_SUMMARY"
