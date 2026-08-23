@@ -1,0 +1,223 @@
+name: Haftalık Düzeltme Ajanı
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: weekly-script-correction
+  cancel-in-progress: false
+
+jobs:
+  correct-scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Kaynak senaryoları ve kalite raporunu bul
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          QC_NUMBER=$(gh issue list \
+            --state all \
+            --search '"Kalite Kontrol Raporu" in:title sort:created-desc' \
+            --limit 1 \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -z "$QC_NUMBER" ]]; then
+            echo "Kalite Kontrol Raporu bulunamadı."
+            exit 1
+          fi
+
+          gh issue view "$QC_NUMBER" --json title,body,url > /tmp/qc.json
+          jq -r '.body' /tmp/qc.json > /tmp/qc-report.md
+
+          QC_URL=$(jq -r '.url' /tmp/qc.json)
+          SCRIPT_NUMBER=$(grep -oiE 'Issue[[:space:]]*(\[#|#)?[0-9]+' /tmp/qc-report.md \
+            | grep -oE '[0-9]+' \
+            | head -n 1 || true)
+
+          if [[ -z "$SCRIPT_NUMBER" ]]; then
+            SCRIPT_NUMBER=$(gh issue list \
+              --state all \
+              --search '"Haftalık Senaryolar" in:title sort:created-desc' \
+              --limit 1 \
+              --json number \
+              --jq '.[0].number // empty')
+          fi
+
+          if [[ -z "$SCRIPT_NUMBER" ]]; then
+            echo "Haftalık Senaryolar Issue'su bulunamadı."
+            exit 1
+          fi
+
+          gh issue view "$SCRIPT_NUMBER" --json title,body,url > /tmp/scripts.json
+          jq -r '.body' /tmp/scripts.json > /tmp/scripts.md
+
+          SCRIPT_URL=$(jq -r '.url' /tmp/scripts.json)
+
+          {
+            echo "QC_NUMBER=$QC_NUMBER"
+            echo "QC_URL=$QC_URL"
+            echo "SCRIPT_NUMBER=$SCRIPT_NUMBER"
+            echo "SCRIPT_URL=$SCRIPT_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Düzeltme isteğini hazırla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/system-prompt.txt <<'PROMPT'
+          Sen Eren Müzik Atölyesi'nin nihai senaryo düzeltme editörüsün.
+
+          Görevin, özgün üç senaryoyu kalite kontrol raporundaki bulgulara göre
+          düzeltmek ve çekime hazır nihai senaryoları üretmektir.
+
+          KURALLAR:
+          1. Yeni web araştırması yapma ve kaynak uydurma.
+          2. QC raporunda YANLIŞ veya YANILTICI olan her ifadeyi düzelt ya da kaldır.
+          3. BELİRSİZ iddiaları kesin gerçek gibi yazma; temkinli biçimde yeniden yaz
+             veya senaryodan çıkar.
+          4. DOĞRU bulunan ifadeleri gereksiz yere değiştirme.
+          5. Pedagojik sadeleştirmeyi, doğrulanabilir tarihsel/teorik gerçek gibi sunma.
+          6. Bir parçanın tonu ile ilk akorunu birbirine karıştırma.
+          7. Ekipman, fiyat ve maliyet ifadelerini koşullara göre değişebilecek şekilde yaz.
+          8. Bas gitarın rolü gibi müzikal genellemeleri mutlak ifadelerle anlatma.
+          9. Özgün senaryolardaki iyi kanca, akış ve Eren'in samimi anlatım tarzını koru.
+          10. Tam olarak üç senaryo üret. Eksik senaryo bırakma.
+
+          HER SENARYODA ŞUNLAR BULUNMALI:
+          - Başlık ve amaç
+          - Tahmini süre ve video formatı
+          - İlk 3 saniyelik kanca
+          - Zaman kodlu konuşma ve çekim akışı
+          - Ekran yazıları veya çekim notları
+          - Kapanış ve CTA
+          - Shorts/Reels kesiti
+          - SEO başlığı
+          - Açıklamanın ilk cümlesi
+          - Etiketler
+          - Playlist önerisi
+          - En fazla üç maddelik "Uygulanan QC düzeltmeleri" bölümü
+
+          Yalnızca nihai Markdown metnini yaz. Kod bloğu, ön açıklama veya özür ekleme.
+          Metin "# 🎬 EREN MÜZİK ATÖLYESİ — NİHAİ SENARYOLAR" başlığıyla başlasın.
+          PROMPT
+
+          jq -n \
+            --rawfile system /tmp/system-prompt.txt \
+            --rawfile scripts /tmp/scripts.md \
+            --rawfile qc /tmp/qc-report.md \
+            --arg script_url "$SCRIPT_URL" \
+            --arg qc_url "$QC_URL" \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 5000,
+              temperature: 0.2,
+              system: $system,
+              messages: [
+                {
+                  role: "user",
+                  content: (
+                    "Aşağıdaki özgün senaryoları QC raporuna göre düzelt.\n\n" +
+                    "ÖZGÜN SENARYOLAR — " + $script_url + "\n\n" + $scripts +
+                    "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc
+                  )
+                }
+              ]
+            }' > /tmp/request.json
+
+      - name: Anthropic API ile senaryoları düzelt
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+            echo "ANTHROPIC_API_KEY secret'ı bulunamadı."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            --data-binary @/tmp/request.json \
+            > /tmp/response.json
+
+          if jq -e '.error != null' /tmp/response.json > /dev/null; then
+            jq -r '.error.message // "Anthropic API hatası"' /tmp/response.json
+            exit 1
+          fi
+
+          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
+            /tmp/response.json > /tmp/final-scripts.md
+
+          if [[ ! -s /tmp/final-scripts.md ]]; then
+            echo "Düzeltilmiş senaryo çıktısı boş geldi."
+            exit 1
+          fi
+
+      - name: Nihai senaryoları Issue olarak yayınla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+          TITLE="Nihai Senaryolar - $RUN_DATE"
+
+          {
+            echo "> **Durum:** ⏳ Eren'in onayı bekleniyor"
+            echo
+            echo "**Kaynak senaryolar:** $SCRIPT_URL"
+            echo "**Kalite kontrol raporu:** $QC_URL"
+            echo
+            cat /tmp/final-scripts.md
+            echo
+            echo "---"
+            echo "Onaylamak için bu Issue'ya **ONAYLIYORUM** yaz."
+          } > /tmp/issue-body.md
+
+          gh label create "eren-onayi-bekliyor" \
+            --color "FBCA04" \
+            --description "Nihai içerik Eren'in onayını bekliyor" \
+            --force
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search '"Nihai Senaryolar" in:title sort:created-desc' \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --title "$TITLE" \
+              --body-file /tmp/issue-body.md \
+              --add-label "eren-onayi-bekliyor"
+            ISSUE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+            echo "Mevcut nihai senaryo Issue'su güncellendi: $ISSUE_URL"
+          else
+            ISSUE_URL=$(gh issue create \
+              --title "$TITLE" \
+              --body-file /tmp/issue-body.md \
+              --label "eren-onayi-bekliyor")
+            echo "Yeni nihai senaryo Issue'su oluşturuldu: $ISSUE_URL"
+          fi
+
+          echo "### Düzeltme ajanı tamamlandı" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Kaynak senaryolar: #$SCRIPT_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Kalite raporu: #$QC_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Nihai çıktı: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
