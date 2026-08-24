@@ -1,9 +1,6 @@
 name: Haftalık Senaryo Ajanı
 
 on:
-  schedule:
-    # Her Salı Türkiye saatiyle 08:00
-    - cron: '0 5 * * 2'
   workflow_dispatch:
 
 jobs:
