@@ -31,13 +31,16 @@ jobs:
           from email.utils import parsedate_to_datetime
           from urllib.parse import quote
           from urllib.request import Request, urlopen
+          import json
           import sys
           import xml.etree.ElementTree as ET
 
           CUTOFF = datetime.now(timezone.utc) - timedelta(days=14)
-          USER_AGENT = "Mozilla/5.0 (compatible; ErenMuzikResearch/1.0)"
+          USER_AGENT = "Mozilla/5.0 (compatible; ErenMuzikResearch/2.0)"
           youtube_success = 0
           news_success = 0
+          sources = {}
+          ids_by_url = {}
 
           def fetch(url):
               request = Request(url, headers={"User-Agent": USER_AGENT})
@@ -58,15 +61,20 @@ jobs:
                   except (TypeError, ValueError):
                       return None
 
+          def source_ref(url):
+              if url not in ids_by_url:
+                  source_id = f"S{len(sources) + 1:02d}"
+                  ids_by_url[url] = source_id
+                  sources[source_id] = url
+              return f"[{ids_by_url[url]}]"
+
           def print_youtube(name, url):
               global youtube_success
               print(f"\n### {name}")
               try:
                   root = ET.fromstring(fetch(url))
                   youtube_success += 1
-                  namespace = {
-                      "atom": "http://www.w3.org/2005/Atom",
-                  }
+                  namespace = {"atom": "http://www.w3.org/2005/Atom"}
                   recent = []
                   for entry in root.findall("atom:entry", namespace):
                       title = clean(entry.findtext("atom:title", default="", namespaces=namespace))
@@ -79,8 +87,8 @@ jobs:
                   recent.sort(reverse=True)
                   if not recent:
                       print("- Son 14 günde RSS akışında yeni video bulunamadı.")
-                  for published, title, link in recent[:5]:
-                      print(f"- {published.date().isoformat()} | {title} | {link}")
+                  for published, title, link in recent[:3]:
+                      print(f"- {published.date().isoformat()} | {title} | {source_ref(link)}")
               except Exception as error:
                   print(f"- Kaynak alınamadı: {type(error).__name__}")
 
@@ -97,12 +105,15 @@ jobs:
                       published = parse_date(item.findtext("pubDate"))
                       if title and link and (published is None or published >= CUTOFF):
                           items.append((published, title, link))
-                  items.sort(key=lambda row: row[0] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                  items.sort(
+                      key=lambda row: row[0] or datetime.min.replace(tzinfo=timezone.utc),
+                      reverse=True,
+                  )
                   if not items:
                       print("- Son 14 günde uygun kayıt bulunamadı.")
                   for published, title, link in items[:limit]:
                       date_text = published.date().isoformat() if published else "tarih-yok"
-                      print(f"- {date_text} | {title} | {link}")
+                      print(f"- {date_text} | {title} | {source_ref(link)}")
               except Exception as error:
                   print(f"- Kaynak alınamadı: {type(error).__name__}")
 
@@ -125,13 +136,13 @@ jobs:
           print_rss(
               "Google Trends Türkiye",
               "https://trends.google.com/trending/rss?geo=TR",
-              20,
+              10,
           )
           query = quote('gitar OR piyano OR "bas gitar" OR "müzik teorisi" OR "yeni şarkı" when:14d')
           print_rss(
               "Google Haberler - Müzik Eğitimi ve Yeni Şarkılar",
               f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr",
-              15,
+              10,
           )
 
           if youtube_success < 2 or news_success < 1:
@@ -140,18 +151,21 @@ jobs:
                   file=sys.stderr,
               )
               raise SystemExit(1)
+
+          with open("/tmp/source-map.json", "w", encoding="utf-8") as handle:
+              json.dump(sources, handle, ensure_ascii=False, indent=2)
           PY
 
           SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
-          if [ "$SOURCE_SIZE" -gt 20000 ]; then
-            head -c 20000 /tmp/source-data.txt > /tmp/source-data-limited.txt
+          SOURCE_COUNT=$(jq 'length' /tmp/source-map.json)
+          if [ "$SOURCE_SIZE" -gt 12000 ]; then
+            head -c 12000 /tmp/source-data.txt > /tmp/source-data-limited.txt
             mv /tmp/source-data-limited.txt /tmp/source-data.txt
-            SOURCE_SIZE=20000
+            SOURCE_SIZE=12000
           fi
+          echo "Claude'a gönderilecek temiz veri: $SOURCE_SIZE karakter, $SOURCE_COUNT kaynak"
 
-          echo "Toplanan ve Claude'a gönderilecek veri: $SOURCE_SIZE karakter"
-
-      - name: Küçük veriyle tek Claude çağrısı yap
+      - name: Kısa kaynak kodlarıyla tek Claude çağrısı yap
         shell: bash
         run: |
           set -euo pipefail
@@ -159,6 +173,7 @@ jobs:
           DATE_TR=$(TZ=Europe/Istanbul date '+%d-%m-%Y')
           SOURCES=$(< /tmp/source-data.txt)
           SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
+          SOURCE_COUNT=$(jq 'length' /tmp/source-map.json)
 
           PROMPT=$(cat <<EOF
           Eren Müzik Atölyesi için aşağıdaki kodla toplanmış güncel verilerden haftalık
@@ -168,29 +183,38 @@ jobs:
           elektro gitar, bas gitar, bas amfisi ve piyano kullanabiliyor. Mevcut olmayan
           ekipman önerme.
 
+          Kaynaklar gerçek URL yerine [S01], [S02] biçiminde kısa kimliklerle gösterilir.
+          İlgili iddianın sonunda yalnız verilen kaynak kimliğini aynen kullan. URL yazma,
+          kaynak kimliği uydurma veya kimliğin biçimini değiştirme.
+
           Doğruluk ve seçim kuralları:
           - Kaydı olmayan rakip için açıkça "son 14 günde kayıt bulunamadı" yaz.
           - İzlenme verisi yoksa bir videonun iyi performans gösterdiğini iddia etme.
           - Genel Türkiye gündemindeki müzikle ilgisiz başlıkları kullanma.
-          - Şarkı, akor, ton, BPM veya yayın tarihi uydurma.
-          - Her güncel bulguda verilen kaynak bağlantısını koru.
+          - Şarkı, akor, ton, BPM, arama hacmi veya yayın tarihi uydurma.
           - Tam 5 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
-          - Türkçe, kısa ve aksiyon alınabilir yaz.
-          - Raporun tamamını 1.800 çıktı tokenının altında tut; giriş, tekrar ve uzun açıklama kullanma.
-          - Trend konularını en fazla 5 maddeyle, rakip hareketlerini kanal başına en fazla 1 maddeyle özetle.
+          - Her fikri en az bir gerçek kaynak kimliğiyle destekle.
+          - Türkçe, kısa ve aksiyon alınabilir yaz; tekrar yapma.
+          - Toplam çıktı yaklaşık 1.300-1.700 token olsun.
+          - Trendleri en fazla 5 maddeyle, rakipleri kanal başına en fazla 1 maddeyle özetle.
 
           Zorunlu çıktı biçimi:
           # Haftalık İçerik Araştırma Raporu - $DATE_TR
           ## 1. TREND KONULAR
           ## 2. RAKİP HAREKETLERİ
           ## 3. İÇERİK FİKİRLERİ
+          ### 💡 Fikir 1 (En Güçlü)
+          ### 💡 Fikir 2 (En Güçlü)
+          ### 💡 Fikir 3 (En Güçlü)
+          ### 💡 Fikir 4
+          ### 💡 Fikir 5
 
-          Her fikirde:
-          - Başlık önerisi
+          Her fikirde yalnız şunlar olsun:
+          - Başlık
           - Enstrüman
-          - Format (ders/cover/SSS)
+          - Format
           - Neden şimdi?
-          - Dayandığı bulgu ve kaynak bağlantısı
+          - Dayandığı bulgu ve kaynak kimliği
 
           ## 4. BU HAFTANIN KISA KARARI
 
@@ -203,7 +227,7 @@ jobs:
             --arg prompt "$PROMPT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 4000,
+              max_tokens: 2200,
               messages: [
                 {
                   role: "user",
@@ -225,7 +249,8 @@ jobs:
             <<<"$RESPONSE")
           INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
           OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
-          echo "AI kullanım özeti: source_chars=$SOURCE_SIZE input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
+
+          echo "AI kullanım özeti: source_chars=$SOURCE_SIZE source_count=$SOURCE_COUNT input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
 
           if [ -z "$REPORT" ] || [ "$REPORT" = "null" ]; then
             echo "Claude araştırma raporu üretmedi."
@@ -238,7 +263,53 @@ jobs:
             exit 1
           fi
 
-          printf '%s\n' "$REPORT" > /tmp/weekly-report.md
+          printf '%s\n' "$REPORT" > /tmp/weekly-report-raw.md
+
+          python3 - <<'PY'
+          import json
+          import re
+
+          with open("/tmp/weekly-report-raw.md", encoding="utf-8") as handle:
+              report = handle.read()
+          with open("/tmp/source-map.json", encoding="utf-8") as handle:
+              sources = json.load(handle)
+
+          required_sections = [
+              "## 1. TREND KONULAR",
+              "## 2. RAKİP HAREKETLERİ",
+              "## 3. İÇERİK FİKİRLERİ",
+              "## 4. BU HAFTANIN KISA KARARI",
+          ]
+          missing = [section for section in required_sections if section not in report]
+          if missing:
+              raise SystemExit(f"Eksik rapor bölümleri: {missing}")
+
+          idea_matches = list(re.finditer(r"^### 💡 Fikir ([1-5])(?:\s|$)", report, re.MULTILINE))
+          if [match.group(1) for match in idea_matches] != ["1", "2", "3", "4", "5"]:
+              raise SystemExit("Rapor tam ve sıralı 5 fikir içermiyor.")
+
+          known_ids = set(sources)
+          used_ids = set(re.findall(r"\[(S\d{2})\]", report))
+          unknown_ids = used_ids - known_ids
+          if unknown_ids:
+              raise SystemExit(f"Bilinmeyen kaynak kimlikleri: {sorted(unknown_ids)}")
+          if "http://" in report or "https://" in report:
+              raise SystemExit("Claude ham URL üretti; rapor yayımlanmadı.")
+
+          for index, match in enumerate(idea_matches):
+              end = idea_matches[index + 1].start() if index + 1 < len(idea_matches) else report.find("## 4.", match.start())
+              block = report[match.start():end]
+              if not re.search(r"\[S\d{2}\]", block):
+                  raise SystemExit(f"Fikir {index + 1} kaynak kimliği içermiyor.")
+
+          def restore_link(match):
+              source_id = match.group(1)
+              return f"[Kaynak {source_id}]({sources[source_id]})"
+
+          restored = re.sub(r"\[(S\d{2})\]", restore_link, report)
+          with open("/tmp/weekly-report.md", "w", encoding="utf-8") as handle:
+              handle.write(restored.rstrip() + "\n")
+          PY
 
           gh issue create \
             --title "Haftalık İçerik Raporu - $DATE_TR" \
