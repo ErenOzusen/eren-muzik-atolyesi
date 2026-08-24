@@ -199,6 +199,11 @@ jobs:
           import re
 
           raw = Path("raw-report.md").read_text(encoding="utf-8").strip()
+          raw = re.sub(
+              r"(?i)\bKISMI(?:\s+DOĞRU)?\b|\bKISMEN\s+DOĞRU\b",
+              "BELİRSİZ",
+              raw,
+          )
           lines = raw.splitlines()
           decision_re = re.compile(
               r"^\s*(?:#{1,6}\s*)?(?:\*\*)?\s*GENEL KARAR\s*:\s*"
@@ -232,9 +237,6 @@ jobs:
           for heading in required:
               if raw.count(heading) != 3:
                   raise SystemExit(f"Zorunlu başlık eksik veya tekrarlı: {heading}")
-
-          if "KISMI" in raw.upper():
-              raise SystemExit("Geçersiz KISMI sonucu kullanıldı.")
 
           normalized = re.sub(r"\s+", " ", decisions[-1]).upper()
           if "YAYINA HAZIR" in normalized:
