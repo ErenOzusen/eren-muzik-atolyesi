@@ -174,8 +174,10 @@ jobs:
           - Genel Türkiye gündemindeki müzikle ilgisiz başlıkları kullanma.
           - Şarkı, akor, ton, BPM veya yayın tarihi uydurma.
           - Her güncel bulguda verilen kaynak bağlantısını koru.
-          - 5-7 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
+          - Tam 5 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
           - Türkçe, kısa ve aksiyon alınabilir yaz.
+          - Raporun tamamını 1.800 çıktı tokenının altında tut; giriş, tekrar ve uzun açıklama kullanma.
+          - Trend konularını en fazla 5 maddeyle, rakip hareketlerini kanal başına en fazla 1 maddeyle özetle.
 
           Zorunlu çıktı biçimi:
           # Haftalık İçerik Araştırma Raporu - $DATE_TR
@@ -201,7 +203,7 @@ jobs:
             --arg prompt "$PROMPT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 3000,
+              max_tokens: 4000,
               messages: [
                 {
                   role: "user",
@@ -221,6 +223,9 @@ jobs:
           REPORT=$(jq -r \
             '[.content[] | select(.type == "text") | .text] | join("\n")' \
             <<<"$RESPONSE")
+          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
+          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
+          echo "AI kullanım özeti: source_chars=$SOURCE_SIZE input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
 
           if [ -z "$REPORT" ] || [ "$REPORT" = "null" ]; then
             echo "Claude araştırma raporu üretmedi."
@@ -234,10 +239,6 @@ jobs:
           fi
 
           printf '%s\n' "$REPORT" > /tmp/weekly-report.md
-
-          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
-          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
-          echo "AI kullanım özeti: source_chars=$SOURCE_SIZE input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
 
           gh issue create \
             --title "Haftalık İçerik Raporu - $DATE_TR" \
