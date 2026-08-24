@@ -4,50 +4,187 @@ on:
   schedule:
     # Her Pazartesi Türkiye saatiyle 08:00 (UTC 05:00)
     - cron: '0 5 * * 1'
-  workflow_dispatch: {}  # Manuel olarak da tetiklenebilir
+  workflow_dispatch: {}
 
 jobs:
   weekly-research:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
+
     permissions:
       contents: read
       issues: write
-      id-token: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Hedefli haftalık araştırma yap
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Claude ile haftalık içerik araştırması
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Sen Eren Müzik Atölyesi için çalışan bir içerik araştırma asistanısın.
-            Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veren bir
-            müzik öğretmeni ve YouTube kanalı + web sitesi (rezervasyon ve
-            dijital ürün satışı) işletiyor.
+          DATE_TR=$(TZ=Europe/Istanbul date '+%d-%m-%Y')
+          TODAY_TR=$(TZ=Europe/Istanbul date '+%Y-%m-%d')
 
-            Bu hafta için şunları araştır ve bir rapor hazırla:
+          PROMPT=$(cat <<EOF
+          Bugünün Türkiye tarihi: $TODAY_TR.
 
-            1. TREND KONULAR: Gitar/piyano/bas gitar/müzik teorisi alanında
-               son 1-2 haftada YouTube'da öne çıkan veya artan ilgi gören konular
-               nelerdir? (yeni şarkı coverları, viral teknikler, mevsimsel
-               konular vb.)
+          Eren Müzik Atölyesi için son 14 günü kapsayan haftalık içerik araştırması yap.
+          Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veriyor. YouTube kanalı,
+          rezervasyon alan web sitesi ve ileride dijital ürün satışı bulunuyor.
 
-            2. RAKİP HAREKETLERİ: Selim Işık, Deniz Sayman, Egemen Dişli,
-               Onur Güler, Vehbi Can Uyaroğlu (Gitar_Dersleri) gibi Türkçe
-               müzik eğitmenlerinin son yayınladığı öne çıkan videolar var mı?
-               Hangi formatlar iyi performans gösteriyor?
+          Araştırma hedefleri:
+          1. Türkiye'de gitar, piyano, bas gitar ve müzik teorisi alanında son 14 günde
+             öne çıkan güncel konuları bul. Yeni şarkı/cover fırsatları, viral teknikler,
+             mevsimsel aramalar ve öğrenci sorularına öncelik ver.
+          2. Selim Işık, Deniz Sayman, Egemen Dişli, Onur Güler ve
+             Vehbi Can Uyaroğlu (Gitar_Dersleri) kanallarının yakın tarihli görünür
+             hareketlerini kontrol et. Bir bilgi bulunamazsa açıkça "bulunamadı" yaz.
+          3. Bulgulara dayanarak Eren'in mevcut imkânlarıyla çekebileceği 5-7 somut fikir üret.
 
-            3. İÇERİK FİKİRLERİ: Yukarıdaki bulgulara dayanarak, Eren'in
-               bu hafta çekebileceği 5-7 somut video fikri öner (haftada
-               birkaç video çekimine yetecek kadar). Her biri için: başlık
-               önerisi, hangi enstrüman, tahmini format (ders/cover/SSS).
+          Tasarruf ve doğruluk kuralları:
+          - En fazla 6 hedefli arama kullan; aynı amaca hizmet eden isimleri tek sorguda grupla.
+          - Yalnızca son 14 günle ilgili sonuçları rapora al; eski içeriği yeniymiş gibi sunma.
+          - İzlenme/performans verisi doğrulanmıyorsa "iyi performans gösteriyor" deme.
+          - Yayın tarihi, şarkı, akor, ton, BPM veya teknik bilgiyi uydurma.
+          - Her önemli güncel bulgunun yanında kaynak adını belirt.
+          - Arama sürecini anlatma; yalnızca nihai raporu yaz.
+          - Türkçe, kısa, somut ve aksiyon alınabilir yaz.
 
-            4. Bu raporu net başlıklarla, kısa ve aksiyon alınabilir şekilde
-               Türkçe yaz.
+          Zorunlu çıktı biçimi:
+          # Haftalık İçerik Araştırma Raporu - $DATE_TR
+          ## 1. TREND KONULAR
+          ## 2. RAKİP HAREKETLERİ
+          ## 3. İÇERİK FİKİRLERİ
 
-            Raporu bir GitHub issue olarak aç, başlık: "Haftalık İçerik Raporu - {{ tarih }}"
+          Her içerik fikrinde sırasıyla şunlar bulunsun:
+          - Başlık önerisi
+          - Enstrüman
+          - Format (ders/cover/SSS)
+          - Neden şimdi?
+          - Dayandığı bulgu
 
-          claude_args: |
-            --allowedTools "WebSearch,Bash(gh issue create:*)"
-            --max-turns 30
+          ## 4. BU HAFTANIN KISA KARARI
+          EOF
+          )
+
+          REQUEST=$(jq -n \
+            --arg prompt "$PROMPT" \
+            '{
+              model: "claude-sonnet-4-6",
+              max_tokens: 3200,
+              tools: [
+                {
+                  type: "web_search_20260318",
+                  name: "web_search",
+                  max_uses: 6,
+                  response_inclusion: "excluded",
+                  user_location: {
+                    type: "approximate",
+                    country: "TR",
+                    timezone: "Europe/Istanbul"
+                  }
+                }
+              ],
+              messages: [
+                {
+                  role: "user",
+                  content: $prompt
+                }
+              ]
+            }')
+
+          call_claude() {
+            curl --fail-with-body -sS \
+              https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $ANTHROPIC_API_KEY" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "$1"
+          }
+
+          RESPONSE=$(call_claude "$REQUEST")
+          STOP_REASON=$(jq -r '.stop_reason // empty' <<<"$RESPONSE")
+          TOTAL_INPUT=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
+          TOTAL_OUTPUT=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
+          TOTAL_SEARCHES=$(jq -r '.usage.server_tool_use.web_search_requests // 0' <<<"$RESPONSE")
+
+          # Uzun süren sunucu araması nadiren duraklarsa yalnızca bir kez devam ettir.
+          if [ "$STOP_REASON" = "pause_turn" ]; then
+            PAUSED_CONTENT=$(jq '.content' <<<"$RESPONSE")
+            REQUEST=$(jq -n \
+              --arg prompt "$PROMPT" \
+              --argjson paused "$PAUSED_CONTENT" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 3200,
+                tools: [
+                  {
+                    type: "web_search_20260318",
+                    name: "web_search",
+                    max_uses: 6,
+                    response_inclusion: "excluded",
+                    user_location: {
+                      type: "approximate",
+                      country: "TR",
+                      timezone: "Europe/Istanbul"
+                    }
+                  }
+                ],
+                messages: [
+                  {role: "user", content: $prompt},
+                  {role: "assistant", content: $paused}
+                ]
+              }')
+            RESPONSE=$(call_claude "$REQUEST")
+            STOP_REASON=$(jq -r '.stop_reason // empty' <<<"$RESPONSE")
+            TOTAL_INPUT=$((TOTAL_INPUT + $(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")))
+            TOTAL_OUTPUT=$((TOTAL_OUTPUT + $(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")))
+            TOTAL_SEARCHES=$((TOTAL_SEARCHES + $(jq -r '.usage.server_tool_use.web_search_requests // 0' <<<"$RESPONSE")))
+          fi
+
+          if [ "$STOP_REASON" = "pause_turn" ]; then
+            echo "Araştırma ikinci kez durakladı; kontrolsüz API döngüsü açılmadı."
+            exit 1
+          fi
+
+          REPORT=$(jq -r \
+            '[.content[] | select(.type == "text") | .text] | join("\n")' \
+            <<<"$RESPONSE")
+
+          if [ -z "$REPORT" ] || [ "$REPORT" = "null" ]; then
+            echo "Claude araştırma raporu üretmedi."
+            jq '{stop_reason, usage, error}' <<<"$RESPONSE"
+            exit 1
+          fi
+
+          printf '%s\n' "$REPORT" > /tmp/weekly-report.md
+
+          SOURCES=$(jq -r '
+            [
+              .content[]
+              | select(.type == "text")
+              | .citations[]?
+              | select(.url != null)
+              | "- [" + (.title // .url) + "](" + .url + ")"
+            ]
+            | unique
+            | .[]
+          ' <<<"$RESPONSE")
+
+          if [ -n "$SOURCES" ]; then
+            {
+              printf '\n## Kaynaklar\n\n'
+              printf '%s\n' "$SOURCES"
+            } >> /tmp/weekly-report.md
+          fi
+
+          echo "AI kullanım özeti: input=$TOTAL_INPUT output=$TOTAL_OUTPUT web_search=$TOTAL_SEARCHES"
+
+          gh issue create \
+            --title "Haftalık İçerik Raporu - $DATE_TR" \
+            --body-file /tmp/weekly-report.md
+
+          echo "Haftalık içerik raporu başarıyla oluşturuldu."
