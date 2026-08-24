@@ -45,7 +45,7 @@ jobs:
           echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
           echo "Kaynak rapor: Issue #$ISSUE_NUMBER"
 
-      - name: İlk 3 fikri kodla ayıkla
+      - name: İlk 3 fikri ve kanıt paketini kodla ayıkla
         shell: bash
         run: |
           set -euo pipefail
@@ -79,6 +79,46 @@ jobs:
               end = idea_matches[index + 1].start() if index + 1 < len(idea_matches) else len(section)
               blocks.append(section[match.start():end].strip())
 
+          evidence = []
+          source_pattern = re.compile(
+              r"\[Kaynak\s+(S\d+)\]\((https?://[^)\s]+)\)",
+              flags=re.IGNORECASE,
+          )
+
+          for scenario_number, block in enumerate(blocks, start=1):
+              finding_match = re.search(
+                  r"(?mi)^Dayandığı bulgu(?: ve kaynak kimliği)?:\s*(.+)$",
+                  block,
+              )
+              if not finding_match:
+                  raise SystemExit(f"Fikir {scenario_number} için dayanak bulgu bulunamadı.")
+
+              sources = []
+              seen = set()
+              for source_id, url in source_pattern.findall(block):
+                  normalized_id = source_id.upper()
+                  key = (normalized_id, url)
+                  if key not in seen:
+                      seen.add(key)
+                      sources.append({"id": normalized_id, "url": url})
+
+              if not sources:
+                  raise SystemExit(f"Fikir {scenario_number} için bağlantılı kaynak bulunamadı.")
+
+              finding = source_pattern.sub(
+                  lambda match: f"Kaynak {match.group(1).upper()}",
+                  finding_match.group(1),
+              )
+              finding = re.sub(r"\s+", " ", finding).strip().replace("--", "—")
+
+              evidence.append(
+                  {
+                      "scenario": scenario_number,
+                      "finding": finding,
+                      "sources": sources,
+                  }
+              )
+
           selected = "\n\n".join(blocks)
           selected = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", selected)
           selected = re.sub(r"https?://\S+", "", selected)
@@ -87,12 +127,20 @@ jobs:
 
           output = Path("/tmp/top-3-ideas.txt")
           output.write_text(selected, encoding="utf-8")
+          Path("/tmp/qc-evidence.json").write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
 
           size = len(selected.encode("utf-8"))
           if size < 300 or size > 12000:
               raise SystemExit(f"Ayıklanan fikir verisi güvenli sınır dışında: {size} bayt")
 
-          print(f"Claude'a gönderilecek ilk 3 fikir: {size} bayt")
+          source_count = sum(len(item["sources"]) for item in evidence)
+          print(
+              f"Claude'a gönderilecek ilk 3 fikir: {size} bayt; "
+              f"QC kanıtı: 3 bulgu, {source_count} kaynak"
+          )
           PY
 
       - name: Claude ile tek çağrıda 3 senaryo üret
@@ -112,6 +160,7 @@ jobs:
 
           Kurallar:
           - Üç senaryoyu da tek cevapta eksiksiz tamamla.
+          - Sırayı değiştirme: Senaryo 1 = Fikir 1, Senaryo 2 = Fikir 2, Senaryo 3 = Fikir 3.
           - Her senaryo yaklaşık 400-500 kelime olsun.
           - Güçlü ve kısa bir açılış kancası kullan.
           - Ana akış konuşma metni olarak doğrudan çekilebilir olsun.
@@ -182,6 +231,7 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import json
           import re
 
           text = Path("/tmp/scripts-raw.txt").read_text(encoding="utf-8").strip()
@@ -189,6 +239,9 @@ jobs:
 
           if [match.group(1) for match in headings] != ["1", "2", "3"]:
               raise SystemExit("Üç senaryo başlığı eksik, tekrarlı veya sırasız.")
+
+          if "QC_KANIT_V1" in text:
+              raise SystemExit("Model çıktısı ayrılmış QC kanıt işaretini içeriyor.")
 
           required = [
               "SEO Başlığı:",
@@ -201,20 +254,47 @@ jobs:
               "[SHORTS KESİTİ]",
           ]
 
+          evidence = json.loads(
+              Path("/tmp/qc-evidence.json").read_text(encoding="utf-8")
+          )
+          evidence_by_scenario = {item["scenario"]: item for item in evidence}
+          completed_blocks = []
+
           for index, heading in enumerate(headings):
+              scenario_number = index + 1
               end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
-              block = text[heading.start():end]
+              block = text[heading.start():end].strip()
               for marker in required:
                   if marker not in block:
-                      raise SystemExit(f"Senaryo {index + 1} zorunlu bölümü içermiyor: {marker}")
+                      raise SystemExit(
+                          f"Senaryo {scenario_number} zorunlu bölümü içermiyor: {marker}"
+                      )
 
               word_count = len(re.findall(r"\b\w+\b", block, flags=re.UNICODE))
               if word_count < 300 or word_count > 650:
                   raise SystemExit(
-                      f"Senaryo {index + 1} güvenli uzunluk dışında: {word_count} kelime"
+                      f"Senaryo {scenario_number} güvenli uzunluk dışında: {word_count} kelime"
                   )
 
-          Path("/tmp/scripts.txt").write_text(text + "\n", encoding="utf-8")
+              item = evidence_by_scenario.get(scenario_number)
+              if not item or not item.get("sources"):
+                  raise SystemExit(f"Senaryo {scenario_number} için QC kanıtı eksik.")
+
+              packet_lines = [
+                  "<!-- QC_KANIT_V1",
+                  f"SENARYO={scenario_number}",
+                  f"BULGU={item['finding']}",
+              ]
+              packet_lines.extend(
+                  f"KAYNAK={source['id']}|{source['url']}"
+                  for source in item["sources"]
+              )
+              packet_lines.append("-->")
+              completed_blocks.append(block + "\n\n" + "\n".join(packet_lines))
+
+          final_text = "\n\n".join(completed_blocks).strip() + "\n"
+          Path("/tmp/scripts.txt").write_text(final_text, encoding="utf-8")
+          print(f"Üç senaryoya doğrulanmış araştırma kanıt paketi eklendi: {len(evidence)} paket")
           PY
 
       - name: Senaryoları GitHub Issue olarak oluştur
