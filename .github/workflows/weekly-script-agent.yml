@@ -87,7 +87,8 @@ jobs:
 
           for scenario_number, block in enumerate(blocks, start=1):
               finding_match = re.search(
-                  r"(?mi)^Dayandığı bulgu(?: ve kaynak kimliği)?:\s*(.+)$",
+                  r"(?mi)^\s*(?:[-*]\s*)?\*{0,2}Dayandığı bulgu"
+                  r"(?: ve kaynak kimliği)?\*{0,2}\s*:\s*\*{0,2}\s*(.+)$",
                   block,
               )
               if not finding_match:
