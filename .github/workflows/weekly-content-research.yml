@@ -9,7 +9,7 @@ on:
 jobs:
   weekly-research:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
 
     permissions:
       contents: read
@@ -17,41 +17,165 @@ jobs:
 
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
-      - name: Hedefli haftalık araştırma yap
+      - name: Güncel kaynakları kodla topla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY' > /tmp/source-data.txt
+          from datetime import datetime, timedelta, timezone
+          from email.utils import parsedate_to_datetime
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+          import sys
+          import xml.etree.ElementTree as ET
+
+          CUTOFF = datetime.now(timezone.utc) - timedelta(days=14)
+          USER_AGENT = "Mozilla/5.0 (compatible; ErenMuzikResearch/1.0)"
+          youtube_success = 0
+          news_success = 0
+
+          def fetch(url):
+              request = Request(url, headers={"User-Agent": USER_AGENT})
+              with urlopen(request, timeout=20) as response:
+                  return response.read()
+
+          def clean(text):
+              return " ".join((text or "").split())
+
+          def parse_date(text):
+              if not text:
+                  return None
+              try:
+                  return datetime.fromisoformat(text.replace("Z", "+00:00"))
+              except ValueError:
+                  try:
+                      return parsedate_to_datetime(text).astimezone(timezone.utc)
+                  except (TypeError, ValueError):
+                      return None
+
+          def print_youtube(name, url):
+              global youtube_success
+              print(f"\n### {name}")
+              try:
+                  root = ET.fromstring(fetch(url))
+                  youtube_success += 1
+                  namespace = {
+                      "atom": "http://www.w3.org/2005/Atom",
+                  }
+                  recent = []
+                  for entry in root.findall("atom:entry", namespace):
+                      title = clean(entry.findtext("atom:title", default="", namespaces=namespace))
+                      published_text = entry.findtext("atom:published", default="", namespaces=namespace)
+                      published = parse_date(published_text)
+                      link_element = entry.find("atom:link[@rel='alternate']", namespace)
+                      link = link_element.get("href", "") if link_element is not None else ""
+                      if published and published >= CUTOFF and title and link:
+                          recent.append((published, title, link))
+                  recent.sort(reverse=True)
+                  if not recent:
+                      print("- Son 14 günde RSS akışında yeni video bulunamadı.")
+                  for published, title, link in recent[:5]:
+                      print(f"- {published.date().isoformat()} | {title} | {link}")
+              except Exception as error:
+                  print(f"- Kaynak alınamadı: {type(error).__name__}")
+
+          def print_rss(name, url, limit):
+              global news_success
+              print(f"\n### {name}")
+              try:
+                  root = ET.fromstring(fetch(url))
+                  news_success += 1
+                  items = []
+                  for item in root.findall("./channel/item"):
+                      title = clean(item.findtext("title"))
+                      link = clean(item.findtext("link"))
+                      published = parse_date(item.findtext("pubDate"))
+                      if title and link and (published is None or published >= CUTOFF):
+                          items.append((published, title, link))
+                  items.sort(key=lambda row: row[0] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                  if not items:
+                      print("- Son 14 günde uygun kayıt bulunamadı.")
+                  for published, title, link in items[:limit]:
+                      date_text = published.date().isoformat() if published else "tarih-yok"
+                      print(f"- {date_text} | {title} | {link}")
+              except Exception as error:
+                  print(f"- Kaynak alınamadı: {type(error).__name__}")
+
+          print("# KODLA TOPLANAN GÜNCEL KAYNAKLAR")
+          print(f"Toplama zamanı (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}")
+          print(f"Kapsam başlangıcı (UTC): {CUTOFF.date().isoformat()}")
+
+          print("\n## RAKİP YOUTUBE AKIŞLARI")
+          channels = [
+              ("Selim Işık", "https://www.youtube.com/feeds/videos.xml?channel_id=UCtkQuUQcdgeP2GYMCrKjrcA"),
+              ("Deniz Sayman", "https://www.youtube.com/feeds/videos.xml?channel_id=UCzb4ZTp-BtNdkfeU4qJSF8g"),
+              ("Egemen Dişli", "https://www.youtube.com/feeds/videos.xml?user=egemendisli"),
+              ("Onur Güler - Gitar Dersi", "https://www.youtube.com/feeds/videos.xml?channel_id=UCCeXYHMDlGNT8hcMOKXDEZQ"),
+              ("Vehbi Can Uyaroğlu - Abi Bana Gitar Öğret", "https://www.youtube.com/feeds/videos.xml?channel_id=UCt2ReS-jMo_1bcBSYZIjwhg"),
+          ]
+          for channel_name, channel_url in channels:
+              print_youtube(channel_name, channel_url)
+
+          print("\n## TÜRKİYE GÜNDEM VE MÜZİK HABERLERİ")
+          print_rss(
+              "Google Trends Türkiye",
+              "https://trends.google.com/trending/rss?geo=TR",
+              20,
+          )
+          query = quote('gitar OR piyano OR "bas gitar" OR "müzik teorisi" OR "yeni şarkı" when:14d')
+          print_rss(
+              "Google Haberler - Müzik Eğitimi ve Yeni Şarkılar",
+              f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr",
+              15,
+          )
+
+          if youtube_success < 2 or news_success < 1:
+              print(
+                  f"Yetersiz kaynak: youtube={youtube_success}, haber={news_success}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+          PY
+
+          SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
+          if [ "$SOURCE_SIZE" -gt 20000 ]; then
+            head -c 20000 /tmp/source-data.txt > /tmp/source-data-limited.txt
+            mv /tmp/source-data-limited.txt /tmp/source-data.txt
+            SOURCE_SIZE=20000
+          fi
+
+          echo "Toplanan ve Claude'a gönderilecek veri: $SOURCE_SIZE karakter"
+
+      - name: Küçük veriyle tek Claude çağrısı yap
         shell: bash
         run: |
           set -euo pipefail
 
           DATE_TR=$(TZ=Europe/Istanbul date '+%d-%m-%Y')
-          TODAY_TR=$(TZ=Europe/Istanbul date '+%Y-%m-%d')
+          SOURCES=$(< /tmp/source-data.txt)
+          SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
 
           PROMPT=$(cat <<EOF
-          Bugünün Türkiye tarihi: $TODAY_TR.
+          Eren Müzik Atölyesi için aşağıdaki kodla toplanmış güncel verilerden haftalık
+          içerik raporu hazırla. Web araması yapma; yalnızca verilen kayıtlara dayan.
 
-          Eren Müzik Atölyesi için son 14 günü kapsayan haftalık içerik araştırması yap.
-          Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veriyor. YouTube kanalı,
-          rezervasyon alan web sitesi ve ileride dijital ürün satışı bulunuyor.
+          Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veriyor. Tek telefon,
+          elektro gitar, bas gitar, bas amfisi ve piyano kullanabiliyor. Mevcut olmayan
+          ekipman önerme.
 
-          Araştırma hedefleri:
-          1. Türkiye'de gitar, piyano, bas gitar ve müzik teorisi alanında son 14 günde
-             öne çıkan güncel konuları bul. Yeni şarkı/cover fırsatları, viral teknikler,
-             mevsimsel aramalar ve öğrenci sorularına öncelik ver.
-          2. Selim Işık, Deniz Sayman, Egemen Dişli, Onur Güler ve
-             Vehbi Can Uyaroğlu (Gitar_Dersleri) kanallarının yakın tarihli görünür
-             hareketlerini kontrol et. Bir bilgi bulunamazsa açıkça "bulunamadı" yaz.
-          3. Bulgulara dayanarak Eren'in mevcut imkânlarıyla çekebileceği 5-7 somut fikir üret.
-
-          Tasarruf ve doğruluk kuralları:
-          - En fazla 6 hedefli arama kullan; aynı amaca hizmet eden isimleri tek sorguda grupla.
-          - Yalnızca son 14 günle ilgili sonuçları rapora al; eski içeriği yeniymiş gibi sunma.
-          - İzlenme/performans verisi doğrulanmıyorsa "iyi performans gösteriyor" deme.
-          - Yayın tarihi, şarkı, akor, ton, BPM veya teknik bilgiyi uydurma.
-          - Her önemli güncel bulgunun yanında kaynak adını belirt.
-          - Arama sürecini anlatma; yalnızca nihai raporu yaz.
-          - Türkçe, kısa, somut ve aksiyon alınabilir yaz.
+          Doğruluk ve seçim kuralları:
+          - Kaydı olmayan rakip için açıkça "son 14 günde kayıt bulunamadı" yaz.
+          - İzlenme verisi yoksa bir videonun iyi performans gösterdiğini iddia etme.
+          - Genel Türkiye gündemindeki müzikle ilgisiz başlıkları kullanma.
+          - Şarkı, akor, ton, BPM veya yayın tarihi uydurma.
+          - Her güncel bulguda verilen kaynak bağlantısını koru.
+          - 5-7 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
+          - Türkçe, kısa ve aksiyon alınabilir yaz.
 
           Zorunlu çıktı biçimi:
           # Haftalık İçerik Araştırma Raporu - $DATE_TR
@@ -59,14 +183,17 @@ jobs:
           ## 2. RAKİP HAREKETLERİ
           ## 3. İÇERİK FİKİRLERİ
 
-          Her içerik fikrinde sırasıyla şunlar bulunsun:
+          Her fikirde:
           - Başlık önerisi
           - Enstrüman
           - Format (ders/cover/SSS)
           - Neden şimdi?
-          - Dayandığı bulgu
+          - Dayandığı bulgu ve kaynak bağlantısı
 
           ## 4. BU HAFTANIN KISA KARARI
+
+          KODLA TOPLANAN VERİLER:
+          $SOURCES
           EOF
           )
 
@@ -74,20 +201,7 @@ jobs:
             --arg prompt "$PROMPT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 3200,
-              tools: [
-                {
-                  type: "web_search_20260318",
-                  name: "web_search",
-                  max_uses: 6,
-                  response_inclusion: "excluded",
-                  user_location: {
-                    type: "approximate",
-                    country: "TR",
-                    timezone: "Europe/Istanbul"
-                  }
-                }
-              ],
+              max_tokens: 3000,
               messages: [
                 {
                   role: "user",
@@ -96,60 +210,14 @@ jobs:
               ]
             }')
 
-          call_claude() {
-            curl --fail-with-body -sS \
-              https://api.anthropic.com/v1/messages \
-              -H "x-api-key: $ANTHROPIC_API_KEY" \
-              -H "anthropic-version: 2023-06-01" \
-              -H "content-type: application/json" \
-              -d "$1"
-          }
+          RESPONSE=$(curl --fail-with-body -sS \
+            https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$REQUEST")
 
-          RESPONSE=$(call_claude "$REQUEST")
           STOP_REASON=$(jq -r '.stop_reason // empty' <<<"$RESPONSE")
-          TOTAL_INPUT=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
-          TOTAL_OUTPUT=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
-          TOTAL_SEARCHES=$(jq -r '.usage.server_tool_use.web_search_requests // 0' <<<"$RESPONSE")
-
-          # Uzun süren sunucu araması nadiren duraklarsa yalnızca bir kez devam ettir.
-          if [ "$STOP_REASON" = "pause_turn" ]; then
-            PAUSED_CONTENT=$(jq '.content' <<<"$RESPONSE")
-            REQUEST=$(jq -n \
-              --arg prompt "$PROMPT" \
-              --argjson paused "$PAUSED_CONTENT" \
-              '{
-                model: "claude-sonnet-4-6",
-                max_tokens: 3200,
-                tools: [
-                  {
-                    type: "web_search_20260318",
-                    name: "web_search",
-                    max_uses: 6,
-                    response_inclusion: "excluded",
-                    user_location: {
-                      type: "approximate",
-                      country: "TR",
-                      timezone: "Europe/Istanbul"
-                    }
-                  }
-                ],
-                messages: [
-                  {role: "user", content: $prompt},
-                  {role: "assistant", content: $paused}
-                ]
-              }')
-            RESPONSE=$(call_claude "$REQUEST")
-            STOP_REASON=$(jq -r '.stop_reason // empty' <<<"$RESPONSE")
-            TOTAL_INPUT=$((TOTAL_INPUT + $(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")))
-            TOTAL_OUTPUT=$((TOTAL_OUTPUT + $(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")))
-            TOTAL_SEARCHES=$((TOTAL_SEARCHES + $(jq -r '.usage.server_tool_use.web_search_requests // 0' <<<"$RESPONSE")))
-          fi
-
-          if [ "$STOP_REASON" = "pause_turn" ]; then
-            echo "Araştırma ikinci kez durakladı; kontrolsüz API döngüsü açılmadı."
-            exit 1
-          fi
-
           REPORT=$(jq -r \
             '[.content[] | select(.type == "text") | .text] | join("\n")' \
             <<<"$RESPONSE")
@@ -160,28 +228,16 @@ jobs:
             exit 1
           fi
 
-          printf '%s\n' "$REPORT" > /tmp/weekly-report.md
-
-          SOURCES=$(jq -r '
-            [
-              .content[]
-              | select(.type == "text")
-              | .citations[]?
-              | select(.url != null)
-              | "- [" + (.title // .url) + "](" + .url + ")"
-            ]
-            | unique
-            | .[]
-          ' <<<"$RESPONSE")
-
-          if [ -n "$SOURCES" ]; then
-            {
-              printf '\n## Kaynaklar\n\n'
-              printf '%s\n' "$SOURCES"
-            } >> /tmp/weekly-report.md
+          if [ "$STOP_REASON" != "end_turn" ]; then
+            echo "Claude raporu tamamlamadı: stop_reason=$STOP_REASON"
+            exit 1
           fi
 
-          echo "AI kullanım özeti: input=$TOTAL_INPUT output=$TOTAL_OUTPUT web_search=$TOTAL_SEARCHES"
+          printf '%s\n' "$REPORT" > /tmp/weekly-report.md
+
+          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")
+          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")
+          echo "AI kullanım özeti: source_chars=$SOURCE_SIZE input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
 
           gh issue create \
             --title "Haftalık İçerik Raporu - $DATE_TR" \
