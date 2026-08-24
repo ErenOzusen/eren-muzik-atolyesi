@@ -1,0 +1,332 @@
+name: Ham Video Teslim Kapısı
+
+"on":
+  workflow_dispatch:
+    inputs:
+      filming_package_issue:
+        description: "Çekim Paketi Issue numarası (örnek: 23)"
+        required: true
+        type: string
+      video_format:
+        description: "Teslim edilen çekim türü"
+        required: true
+        type: choice
+        options:
+          - Ana video (yatay)
+          - Shorts/Reels (dikey)
+          - Ana video ve Shorts/Reels
+      file_names:
+        description: "Yalnızca ham video dosya adları; bağlantı veya gizli bilgi yazma"
+        required: true
+        type: string
+      storage_location:
+        description: "Ham videoların özel olarak tutulduğu yer"
+        required: true
+        type: choice
+        options:
+          - Yerel cihaz
+          - ChatGPT'ye yüklenecek
+          - Google Drive (özel)
+          - Diğer özel depolama
+      storage_reference:
+        description: "İsteğe bağlı klasör/iş adı; özel bağlantı yazma"
+        required: false
+        type: string
+      notes:
+        description: "İsteğe bağlı kısa çekim notu; bağlantı veya gizli bilgi yazma"
+        required: false
+        type: string
+      sound_and_image_checked:
+        description: "Her dosyanın sesini ve görüntüsünü açıp kontrol ettim"
+        required: true
+        default: false
+        type: boolean
+      ready_for_editing:
+        description: "Bu teslimin kurgu kuyruğuna alınmasını onaylıyorum"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: raw-video-intake-${{ inputs.filming_package_issue }}
+  cancel-in-progress: false
+
+jobs:
+  register-raw-video-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      RUN_ACTOR: ${{ github.actor }}
+      PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
+      VIDEO_FORMAT: ${{ inputs.video_format }}
+      FILE_NAMES: ${{ inputs.file_names }}
+      STORAGE_LOCATION: ${{ inputs.storage_location }}
+      STORAGE_REFERENCE: ${{ inputs.storage_reference }}
+      NOTES: ${{ inputs.notes }}
+      SOUND_AND_IMAGE_CHECKED: ${{ inputs.sound_and_image_checked }}
+      READY_FOR_EDITING: ${{ inputs.ready_for_editing }}
+
+    steps:
+      - name: Eren'i ve teslim bilgilerini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
+            echo "Bu kapıyı yalnızca repo sahibi Eren çalıştırabilir."
+            exit 1
+          fi
+
+          if [[ ! "$PACKAGE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Çekim Paketi Issue numarası pozitif bir tam sayı olmalı."
+            exit 1
+          fi
+
+          if [[ "$SOUND_AND_IMAGE_CHECKED" != "true" ]]; then
+            echo "Teslimden önce her dosyanın sesi ve görüntüsü kontrol edilmeli."
+            exit 1
+          fi
+
+          if [[ "$READY_FOR_EDITING" != "true" ]]; then
+            echo "Kurgu kuyruğu onayı verilmedi; teslim kaydedilmedi."
+            exit 1
+          fi
+
+          if [[ -z "${FILE_NAMES//[[:space:]]/}" ]]; then
+            echo "En az bir ham video dosya adı gerekli."
+            exit 1
+          fi
+
+          if (( ${#FILE_NAMES} > 500 )); then
+            echo "Dosya adı alanı 500 karakteri aşamaz."
+            exit 1
+          fi
+
+          if (( ${#STORAGE_REFERENCE} > 160 )); then
+            echo "Depolama referansı 160 karakteri aşamaz."
+            exit 1
+          fi
+
+          if (( ${#NOTES} > 500 )); then
+            echo "Çekim notu 500 karakteri aşamaz."
+            exit 1
+          fi
+
+          PRIVATE_FIELDS="$FILE_NAMES
+          $STORAGE_REFERENCE
+          $NOTES"
+
+          if grep -Eiq '(https?://|www\.|drive\.google|dropbox\.|[?&](token|key|signature|auth)=)' \
+            <<< "$PRIVATE_FIELDS"; then
+            echo "Güvenlik nedeniyle bağlantı, erişim anahtarı veya imzalı URL kabul edilmez."
+            echo "Yalnızca dosya adı ve bağlantı içermeyen özel klasör referansı yaz."
+            exit 1
+          fi
+
+      - name: Çekim paketini ve Eren onayını doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$PACKAGE_NUMBER" \
+            --json title,body,url,state,labels > /tmp/package.json
+
+          PACKAGE_TITLE=$(jq -r '.title' /tmp/package.json)
+          PACKAGE_URL=$(jq -r '.url' /tmp/package.json)
+
+          if [[ "$PACKAGE_TITLE" != "Çekim Paketi - Nihai Senaryolar #"* ]]; then
+            echo "#$PACKAGE_NUMBER geçerli bir Çekim Paketi Issue'su değil."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "cekim-paketi")' \
+            /tmp/package.json > /dev/null; then
+            echo "Çekim Paketi Issue'sunda cekim-paketi etiketi bulunamadı."
+            exit 1
+          fi
+
+          FINAL_NUMBER=$(grep -oE 'Nihai Senaryolar #[0-9]+' <<< "$PACKAGE_TITLE" \
+            | grep -oE '[0-9]+' \
+            | head -n 1 \
+            || true)
+
+          if [[ -z "$FINAL_NUMBER" ]]; then
+            echo "Çekim paketinin kaynak Nihai Senaryolar numarası çözülemedi."
+            exit 1
+          fi
+
+          gh issue view "$FINAL_NUMBER" \
+            --json title,url,labels > /tmp/final.json
+
+          if ! jq -e '.labels | any(.name == "eren-onayli")' \
+            /tmp/final.json > /dev/null; then
+            echo "Kaynak Nihai Senaryolar Eren tarafından onaylanmamış."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "cekime-hazir")' \
+            /tmp/final.json > /dev/null; then
+            echo "Kaynak Nihai Senaryolar çekime hazır değil."
+            exit 1
+          fi
+
+          FINAL_URL=$(jq -r '.url' /tmp/final.json)
+
+          {
+            echo "PACKAGE_TITLE=$PACKAGE_TITLE"
+            echo "PACKAGE_URL=$PACKAGE_URL"
+            echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_URL=$FINAL_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Teslim kaydını güvenli biçimde hazırla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUN_DATETIME=$(TZ=Europe/Istanbul date '+%d.%m.%Y %H:%M')
+          INTAKE_TITLE="Ham Video Teslimi - Çekim Paketi #$PACKAGE_NUMBER"
+
+          escape_html() {
+            sed \
+              -e 's/&/\&amp;/g' \
+              -e 's/</\&lt;/g' \
+              -e 's/>/\&gt;/g'
+          }
+
+          SAFE_FILE_NAMES=$(printf '%s' "$FILE_NAMES" | escape_html)
+          SAFE_STORAGE_REFERENCE=$(printf '%s' "${STORAGE_REFERENCE:-Belirtilmedi}" | escape_html)
+          SAFE_NOTES=$(printf '%s' "${NOTES:-Not eklenmedi}" | escape_html)
+
+          METADATA_SHA=$(printf '%s\n' \
+            "$PACKAGE_NUMBER" \
+            "$VIDEO_FORMAT" \
+            "$FILE_NAMES" \
+            "$STORAGE_LOCATION" \
+            "$STORAGE_REFERENCE" \
+            "$NOTES" \
+            | sha256sum \
+            | awk '{print $1}')
+
+          {
+            echo "<!-- raw-video-intake-version: 1 -->"
+            echo "<!-- source-package-issue: #$PACKAGE_NUMBER -->"
+            echo "<!-- intake-metadata-sha256: $METADATA_SHA -->"
+            echo "# 📥 EREN MÜZİK ATÖLYESİ — HAM VİDEO TESLİMİ"
+            echo
+            echo "> **Durum:** 🟡 Kurgu bekliyor"
+            echo
+            echo "**Kaynak çekim paketi:** $PACKAGE_URL"
+            echo "**Kaynak onaylı senaryo:** $FINAL_URL"
+            echo "**Teslimi kaydeden:** @$RUN_ACTOR"
+            echo "**Teslim tarihi:** $RUN_DATETIME (Europe/Istanbul)"
+            echo
+            echo "## Teslim Bilgileri"
+            echo
+            echo "- **Video biçimi:** $VIDEO_FORMAT"
+            echo "- **Özel depolama yeri:** $STORAGE_LOCATION"
+            echo "- **Özel klasör/iş referansı:** $SAFE_STORAGE_REFERENCE"
+            echo "- **Ses ve görüntü kontrolü:** ✅ Tamamlandı"
+            echo "- **Kurgu kuyruğu onayı:** ✅ Verildi"
+            echo
+            echo "## Ham Video Dosyaları"
+            echo
+            echo "$SAFE_FILE_NAMES"
+            echo
+            echo "## Çekim Notu"
+            echo
+            echo "$SAFE_NOTES"
+            echo
+            echo "## Gizlilik Kuralı"
+            echo
+            echo "Bu herkese açık Issue'da ham video bağlantısı tutulmaz."
+            echo "Özel Drive/Dropbox bağlantılarını, erişim anahtarlarını veya imzalı URL'leri yorumlara ekleme."
+            echo
+            echo "## Sıradaki Aşama"
+            echo
+            echo "- [ ] Ham videolar özel kanaldan kurgu sistemine aktarıldı"
+            echo "- [ ] Kurgu taslağı oluşturuldu"
+            echo "- [ ] Altyazılar kontrol edildi"
+            echo "- [ ] Eren'in nihai yayın onayı alındı"
+          } > /tmp/intake-body.md
+
+          {
+            echo "INTAKE_TITLE=$INTAKE_TITLE"
+            echo "METADATA_SHA=$METADATA_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Kurgu bekleyen teslim Issue'sunu kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh label create "ham-video-teslim" \
+            --color "0052CC" \
+            --description "Ham video teslim bilgileri kaydedildi" \
+            --force
+
+          gh label create "kurgu-bekliyor" \
+            --color "FBCA04" \
+            --description "Ham videolar kurgu aşamasını bekliyor" \
+            --force
+
+          gh label create "ham-video-teslim-alindi" \
+            --color "0E8A16" \
+            --description "Çekim paketi için ham video teslimi alındı" \
+            --force
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$INTAKE_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title,labels \
+            --jq ".[] | select(.title == \"$INTAKE_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            if gh issue view "$EXISTING_NUMBER" --json labels --jq '.labels[].name' \
+              | grep -qx 'kurgu-tamamlandi'; then
+              echo "Bu çekim paketinin kurgusu tamamlanmış; mevcut teslim kaydı değiştirilemez."
+              exit 1
+            fi
+
+            gh issue edit "$EXISTING_NUMBER" \
+              --title "$INTAKE_TITLE" \
+              --body-file /tmp/intake-body.md \
+              --add-label "ham-video-teslim" \
+              --add-label "kurgu-bekliyor"
+            INTAKE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+            INTAKE_NUMBER="$EXISTING_NUMBER"
+            ACTION_TEXT="Mevcut teslim kaydı güncellendi"
+          else
+            INTAKE_URL=$(gh issue create \
+              --title "$INTAKE_TITLE" \
+              --body-file /tmp/intake-body.md \
+              --label "ham-video-teslim" \
+              --label "kurgu-bekliyor")
+            INTAKE_NUMBER=$(grep -oE '[0-9]+$' <<< "$INTAKE_URL")
+            ACTION_TEXT="Yeni teslim kaydı oluşturuldu"
+          fi
+
+          gh issue edit "$PACKAGE_NUMBER" --add-label "ham-video-teslim-alindi"
+          gh issue comment "$PACKAGE_NUMBER" \
+            --body "📥 Ham video teslim bilgileri kaydedildi ve kurgu kuyruğuna alındı: $INTAKE_URL"
+
+          {
+            echo "### Ham video teslim kapısı tamamlandı"
+            echo "- Kaynak çekim paketi: #$PACKAGE_NUMBER"
+            echo "- Kaynak nihai senaryo: #$FINAL_NUMBER"
+            echo "- Teslim kaydı: #$INTAKE_NUMBER"
+            echo "- İşlem: $ACTION_TEXT"
+            echo "- Durum: Kurgu bekliyor"
+            echo "- AI kullanımı: 0 token"
+            echo "- Ham video bağlantısı: GitHub'da tutulmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
