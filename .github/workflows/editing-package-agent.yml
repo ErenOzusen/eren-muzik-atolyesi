@@ -40,7 +40,7 @@ jobs:
       TEST_MODE: ${{ inputs.test_mode }}
       REQUESTED_PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
       REQUESTED_INTAKE_NUMBER: ${{ inputs.intake_issue }}
-      EDITING_PACKAGE_VERSION: "1"
+      EDITING_PACKAGE_VERSION: "2"
 
     steps:
       - name: Çalıştıranı ve çalışma modunu doğrula
@@ -354,7 +354,11 @@ jobs:
           8. Hızlandırma, yapay yakınlaştırma, yoğun geçiş veya dikkat dağıtan efekt kullanma.
           9. Ana video ile dikey kısa videoyu ayrı çıktı olarak planla.
           10. Yeni bilgi, pazarlama iddiası, kampanya, fiyat veya ekipman önerisi üretme.
-          11. Çıktı kısa, uygulanabilir ve en fazla yaklaşık 2.300 token olsun.
+          11. Çıktı kısa ve uygulanabilir olsun. Ana video tablosu en fazla 10 satır,
+              ekran yazıları en fazla 8 madde, ses planı en fazla 6 madde, dikey kurgu
+              en fazla 8 adım ve son kontrol listesi en fazla 10 madde içersin.
+          12. Aynı talimatı farklı bölümlerde tekrarlama. Kaynak metinleri uzun uzun
+              yeniden yazma; yalnızca kurgu kararını uygulamak için gereken kısa alıntıları kullan.
 
           ZORUNLU ÇIKTI BİÇİMİ:
           # ✂️ EREN MÜZİK ATÖLYESİ — KURGU PAKETİ
@@ -388,7 +392,7 @@ jobs:
             --arg test_mode "$TEST_MODE" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 2800,
+              max_tokens: 3600,
               temperature: 0.1,
               system: $system,
               messages: [
