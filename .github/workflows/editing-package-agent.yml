@@ -40,7 +40,7 @@ jobs:
       TEST_MODE: ${{ inputs.test_mode }}
       REQUESTED_PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
       REQUESTED_INTAKE_NUMBER: ${{ inputs.intake_issue }}
-      EDITING_PACKAGE_VERSION: "2"
+      EDITING_PACKAGE_VERSION: "3"
 
     steps:
       - name: Çalıştıranı ve çalışma modunu doğrula
@@ -359,6 +359,10 @@ jobs:
               en fazla 8 adım ve son kontrol listesi en fazla 10 madde içersin.
           12. Aynı talimatı farklı bölümlerde tekrarlama. Kaynak metinleri uzun uzun
               yeniden yazma; yalnızca kurgu kararını uygulamak için gereken kısa alıntıları kullan.
+          13. Kaynak ve dosya haritası en fazla 8 madde olsun. Tablo hücreleri en fazla
+              12 kelime, diğer maddeler tek cümle ve en fazla 16 kelime olsun.
+          14. Toplam çıktıyı 2.800 token altında hedefle. Konuşma metnini yeniden yazma;
+              giriş/çıkış işaretlerinde yalnızca en fazla 6 kelimelik kısa ifadeler kullan.
 
           ZORUNLU ÇIKTI BİÇİMİ:
           # ✂️ EREN MÜZİK ATÖLYESİ — KURGU PAKETİ
@@ -392,7 +396,7 @@ jobs:
             --arg test_mode "$TEST_MODE" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 3600,
+              max_tokens: 5000,
               temperature: 0.1,
               system: $system,
               messages: [
