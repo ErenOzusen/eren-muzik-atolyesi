@@ -195,8 +195,9 @@ jobs:
           - Tam 5 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
           - Her fikri en az bir gerçek kaynak kimliğiyle destekle.
           - Türkçe, kısa ve aksiyon alınabilir yaz; tekrar yapma.
-          - Toplam çıktı yaklaşık 1.300-1.700 token olsun.
-          - Trendleri en fazla 5 maddeyle, rakipleri kanal başına en fazla 1 maddeyle özetle.
+          - Rapor 900 kelimeyi geçmesin; giriş, sonuç tekrarı ve ayraç çizgileri ekleme.
+          - Trendleri en fazla 5 tek cümlelik maddeyle özetle; her madde en fazla 25 kelime olsun.
+          - Her rakibi tek cümlede özetle; her cümle en fazla 25 kelime olsun.
 
           Zorunlu çıktı biçimi:
           # Haftalık İçerik Araştırma Raporu - $DATE_TR
@@ -209,7 +210,7 @@ jobs:
           ### 💡 Fikir 4
           ### 💡 Fikir 5
 
-          Her fikirde yalnız şunlar olsun:
+          Her fikirde yalnız şunlar olsun; her alan tek cümle olsun:
           - Başlık
           - Enstrüman
           - Format
@@ -227,7 +228,7 @@ jobs:
             --arg prompt "$PROMPT" \
             '{
               model: "claude-sonnet-4-6",
-              max_tokens: 2200,
+              max_tokens: 2800,
               messages: [
                 {
                   role: "user",
