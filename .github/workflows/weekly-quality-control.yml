@@ -200,8 +200,10 @@ jobs:
 
           raw = Path("raw-report.md").read_text(encoding="utf-8").strip()
           raw = re.sub(
-              r"(?i)\bKISMI(?:\s+DOĞRU)?\b|\bKISMEN\s+DOĞRU\b",
-              "BELİRSİZ",
+              r"(?m)(\|\s*)(?:\*\*)?"
+              r"(?:KISMI(?:\s+DOĞRU)?|KISMEN\s+DOĞRU)"
+              r"(?:\*\*)?(\s*\|)",
+              r"\1BELİRSİZ\2",
               raw,
           )
           lines = raw.splitlines()
