@@ -269,6 +269,16 @@ jobs:
 
           echo "Kaynak özeti: provided=$PROVIDED_SOURCE_COUNT web=$WEB_SOURCE_COUNT total=$SOURCE_COUNT"
 
+          {
+            echo "### AI kullanım özeti"
+            echo "- script_chars: $SCRIPT_CHARS"
+            echo "- provided_sources: $PROVIDED_SOURCE_COUNT"
+            echo "- input_tokens: $INPUT_TOKENS"
+            echo "- output_tokens: $OUTPUT_TOKENS"
+            echo "- web_searches: $WEB_SEARCHES"
+            echo "- web_sources: $WEB_SOURCE_COUNT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           cp report-body.md final-report.md
 
           {
@@ -276,6 +286,7 @@ jobs:
             echo "## Kullanılan Kaynaklar"
             jq -r '.[] | "- [" + .title + "](" + .url + ")"' sources.json
             echo ""
+            echo "<!-- QC_AI_USAGE_V1 script_chars=$SCRIPT_CHARS provided_sources=$PROVIDED_SOURCE_COUNT input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=$WEB_SEARCHES web_sources=$WEB_SOURCE_COUNT -->"
             cat general-decision.txt
           } >> final-report.md
 
