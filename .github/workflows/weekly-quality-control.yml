@@ -64,7 +64,7 @@ jobs:
 
               "AMAÇ: Üç video senaryosunun yayın kararını etkileyen gerçek bilgi iddialarını doğrula; kanca, akış, hedef kitle, süre ve CTA kalitesini kısaca değerlendir. Pedagojik genellemeler, kişisel görüşler ve pazarlama ifadeleri için web araması yapma. Yalnızca yanlış olması çekimi veya güvenilirliği etkileyebilecek doğrulanabilir gerçekleri araştır. Üç senaryodaki kritik iddiaları mümkünse tek bir toplu aramayla doğrula; yalnızca ilk sonuç yetmezse yeni arama yap.\n\n" +
 
-              "KAYNAK KURALI: Öncelik resmi sanatçı ve eser kaynakları, üniversiteler, müzik okulları ve güvenilir uzman eğitim kaynaklarıdır. Kaynağı belirsiz blogları tek başına kesin kanıt sayma. Kaynaklar çelişirse BELİRSİZ yaz. Kaynak uydurma. İncelediğin kaynağın adını tabloda belirt; bağlantılar sistem tarafından raporun sonuna eklenecek.\n\n" +
+              "KAYNAK KURALI: Öncelik resmi sanatçı ve eser kaynakları, üniversiteler, müzik okulları ve güvenilir uzman eğitim kaynaklarıdır. Kaynağı belirsiz blogları tek başına kesin kanıt sayma. Kaynaklar çelişirse BELİRSİZ yaz. Kaynak uydurma. Web ile doğruladığın her iddianın gerekçesine doğal web citation ekle ve kaynağın adını tabloda belirt; bağlantılar sistem tarafından raporun sonuna da eklenecek.\n\n" +
 
               "MÜZİK KURALI: Orijinal ton, ilk duyulan akor, tüm akorlar, capo şekilleri, gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyonu birbirinden ayır. Akor, nota, perde ve rifflerin müzikal uyumunu kontrol et. Daha hassas bir ifade bulunması mevcut cümleyi otomatik olarak yanlış yapmaz. Bas gitarın ritim, armoni ve melodiyle ilişkili olabileceğini kabul et. Fiziksel taşınabilirlik ile yükseltilmiş ses ihtiyacını karıştırma. Maliyet iddialarını güncel ve karşılaştırılabilir fiyat olmadan doğrulanmış sayma.\n\n" +
 
@@ -78,7 +78,7 @@ jobs:
               {
                 type: "web_search_20260209",
                 name: "web_search",
-                max_uses: 3
+                max_uses: 2
               }
             ],
             messages: [
@@ -178,7 +178,16 @@ jobs:
           Path("general-decision.txt").write_text(decision + "\n", encoding="utf-8")
           PY
 
-          SOURCE_COUNT="$(jq '[.content[]? | select(.type == "text") | .citations[]? | select(.url != null)] | length' response.json)"
+          jq '[
+            .. | objects |
+            select(
+              (.type? == "web_search_result_location" or .type? == "web_search_result") and
+              (.url? != null)
+            ) |
+            {title: (.title // .url), url}
+          ] | unique_by(.url)' response.json > sources.json
+
+          SOURCE_COUNT="$(jq 'length' sources.json)"
 
           if [ "$SOURCE_COUNT" -lt 1 ]; then
             echo "Doğrulama kaynağı bulunmadı; kaynak göstermeyen rapor yayımlanmayacak."
@@ -190,7 +199,7 @@ jobs:
           {
             echo ""
             echo "## Kullanılan Kaynaklar"
-            jq -r '[.content[]? | select(.type == "text") | .citations[]? | select(.url != null) | {title, url}] | unique_by(.url)[] | "- [" + (.title // .url) + "](" + .url + ")"' response.json
+            jq -r '.[] | "- [" + .title + "](" + .url + ")"' sources.json
             echo ""
             cat general-decision.txt
           } >> final-report.md
