@@ -1,0 +1,214 @@
+name: Sistem Durum ve Maliyet Ajanı
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Salt-okunur güvenli test modu"
+        required: true
+        default: true
+        type: boolean
+      root_issue:
+        description: "En son YouTube Yayın Paketi Issue numarası"
+        required: true
+        default: "27"
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: system-status-cost-agent
+  cancel-in-progress: false
+
+jobs:
+  create-system-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      RUN_ACTOR: ${{ github.actor }}
+      TEST_MODE: ${{ inputs.test_mode }}
+      ROOT_ISSUE: ${{ inputs.root_issue }}
+      AUDIT_VERSION: "1"
+
+    steps:
+      - name: Çalıştıranı ve girdileri doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
+            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" != "true" && "$TEST_MODE" != "false" ]]; then
+            echo "test_mode yalnızca true veya false olabilir."
+            exit 1
+          fi
+
+          if [[ ! "$ROOT_ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Geçerli bir kök Issue numarası gerekli."
+            exit 1
+          fi
+
+      - name: Issue kayıtlarını salt okunur olarak al
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue list \
+            --state all \
+            --limit 200 \
+            --json number,title,body,url,state,labels,createdAt,updatedAt \
+            > /tmp/issues.json
+
+          if ! jq -e --argjson number "$ROOT_ISSUE" \
+            '.[] | select(.number == $number)' /tmp/issues.json > /tmp/root.json; then
+            echo "Kök Issue bulunamadı."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "youtube-yayin-paketi")' \
+            /tmp/root.json > /dev/null; then
+            echo "Kök Issue bir YouTube Yayın Paketi değil."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! jq -e '.labels | any(.name == "sistem-testi")' \
+              /tmp/root.json > /dev/null; then
+              echo "Test modu yalnızca sistem-testi etiketli kök paketle çalışır."
+              exit 1
+            fi
+          else
+            if jq -e '.labels | any(.name == "sistem-testi")' \
+              /tmp/root.json > /dev/null; then
+              echo "Gerçek rapor modu sistem testi paketiyle çalışamaz."
+              exit 1
+            fi
+          fi
+
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Sistem durum ve maliyet raporunu üret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/build_system_audit.py \
+            --issues-json /tmp/issues.json \
+            --root-issue "$ROOT_ISSUE" \
+            --output /tmp/system-audit.md \
+            --test-mode "$TEST_MODE"
+
+          if [[ ! -s /tmp/system-audit.md ]]; then
+            echo "Sistem durum raporu boş üretildi."
+            exit 1
+          fi
+
+          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-7]\.' /tmp/system-audit.md)
+          if [[ "$SECTION_COUNT" -ne 7 ]]; then
+            echo "Sistem raporunda tam olarak yedi bölüm bulunmalı."
+            exit 1
+          fi
+
+          if ! grep -Fq 'Raporun AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması' \
+            /tmp/system-audit.md; then
+            echo "Sıfır-token rapor kaydı eksik."
+            exit 1
+          fi
+
+          OUTPUT_CHARS=$(wc -c < /tmp/system-audit.md)
+          echo "AUDIT_OUTPUT_CHARS=$OUTPUT_CHARS" >> "$GITHUB_ENV"
+
+          {
+            echo "### Sistem durum ve maliyet ajanı özeti"
+            echo "- test_mode: $TEST_MODE"
+            echo "- root_issue: #$ROOT_ISSUE"
+            echo "- ai_input_tokens: 0"
+            echo "- ai_output_tokens: 0"
+            echo "- web_searches: 0"
+            echo "- source_issues_modified: 0"
+            echo "- output_chars: $OUTPUT_CHARS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Raporu ayrı Issue olarak kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            REPORT_TITLE="TEST Sistem Durum ve Maliyet Raporu - Zincir #$ROOT_ISSUE"
+          else
+            REPORT_TITLE="Sistem Durum ve Maliyet Raporu - Zincir #$ROOT_ISSUE"
+          fi
+
+          {
+            echo "<!-- system-audit-version: $AUDIT_VERSION -->"
+            echo "<!-- SYSTEM_AUDIT_USAGE_V1 test=$TEST_MODE input=0 output=0 web_search=0 source_changes=0 output_chars=$AUDIT_OUTPUT_CHARS -->"
+            cat /tmp/system-audit.md
+          } > /tmp/system-audit-issue.md
+
+          gh label create "sistem-durum-raporu" \
+            --color "0052CC" \
+            --description "Ajan zinciri, doğrulanabilir kullanım ve güvenlik özeti" \
+            --force
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            gh label create "sistem-testi" \
+              --color "BFD4F2" \
+              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
+              --force
+            REPORT_LABELS=("sistem-durum-raporu" "sistem-testi")
+          else
+            REPORT_LABELS=("sistem-durum-raporu")
+          fi
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$REPORT_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$REPORT_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --title "$REPORT_TITLE" \
+              --body-file /tmp/system-audit-issue.md \
+              --add-label "${REPORT_LABELS[0]}"
+            if [[ "$TEST_MODE" == "true" ]]; then
+              gh issue edit "$EXISTING_NUMBER" --add-label "${REPORT_LABELS[1]}"
+            fi
+            REPORT_NUMBER="$EXISTING_NUMBER"
+            REPORT_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          else
+            if [[ "$TEST_MODE" == "true" ]]; then
+              REPORT_URL=$(gh issue create \
+                --title "$REPORT_TITLE" \
+                --body-file /tmp/system-audit-issue.md \
+                --label "${REPORT_LABELS[0]}" \
+                --label "${REPORT_LABELS[1]}")
+            else
+              REPORT_URL=$(gh issue create \
+                --title "$REPORT_TITLE" \
+                --body-file /tmp/system-audit-issue.md \
+                --label "${REPORT_LABELS[0]}")
+            fi
+            REPORT_NUMBER=$(grep -oE '[0-9]+$' <<< "$REPORT_URL")
+          fi
+
+          {
+            echo "### Sistem durum ve maliyet raporu kaydedildi"
+            echo "- Kök paket: #$ROOT_ISSUE"
+            echo "- Rapor: #$REPORT_NUMBER"
+            echo "- AI tokenı: 0"
+            echo "- Kaynak Issue değişikliği: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
