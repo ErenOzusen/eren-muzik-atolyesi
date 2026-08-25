@@ -77,6 +77,17 @@
       "report_max_words": 900,
       "source_char_limit": 12000,
       "max_model_output": 2800
+    },
+    "script": {
+      "idea_count": 3,
+      "target_min_words": 400,
+      "target_max_words": 500,
+      "validation_min_words": 300,
+      "validation_max_words": 650,
+      "shorts_min_seconds": 30,
+      "shorts_max_seconds": 60,
+      "ideas_char_limit": 12000,
+      "max_model_output": 4800
     }
   },
   "approval": {
