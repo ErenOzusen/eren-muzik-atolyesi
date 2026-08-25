@@ -40,7 +40,7 @@ jobs:
       TEST_MODE: ${{ inputs.test_mode }}
       REQUESTED_PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
       REQUESTED_INTAKE_NUMBER: ${{ inputs.intake_issue }}
-      EDITING_PACKAGE_VERSION: "3"
+      EDITING_PACKAGE_VERSION: "4"
 
     steps:
       - name: Çalıştıranı ve çalışma modunu doğrula
@@ -363,6 +363,8 @@ jobs:
               12 kelime, diğer maddeler tek cümle ve en fazla 16 kelime olsun.
           14. Toplam çıktıyı 2.800 token altında hedefle. Konuşma metnini yeniden yazma;
               giriş/çıkış işaretlerinde yalnızca en fazla 6 kelimelik kısa ifadeler kullan.
+          15. Kaynak nihai senaryo Eren tarafından onaylanmıştır. "Eren\'in onayı bekleniyor",
+              "onay gelmeden" veya onayın eksik olduğunu söyleyen hiçbir durum cümlesi yazma.
 
           ZORUNLU ÇIKTI BİÇİMİ:
           # ✂️ EREN MÜZİK ATÖLYESİ — KURGU PAKETİ
@@ -489,6 +491,12 @@ jobs:
           if grep -Eiq '(videoyu|görüntüyü|ham videoyu)[[:space:]]+(izledim|inceledim)' \
             /tmp/editing-package.md; then
             echo "Ajan ham videoyu izlemiş gibi yanlış iddia üretti."
+            exit 1
+          fi
+
+          if grep -Eiq 'onay[ıi]?[[:space:]]+bekleniyor|onay[[:space:]]+gelmeden|senaryo[[:space:]]+durumu.*bekleniyor' \
+            /tmp/editing-package.md; then
+            echo "Ajan, onaylı kaynak için yanlış onay durumu üretti."
             exit 1
           fi
 
