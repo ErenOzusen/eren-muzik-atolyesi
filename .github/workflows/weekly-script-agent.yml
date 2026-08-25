@@ -2,6 +2,12 @@ name: Haftalık Senaryo Ajanı
 
 on:
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı yapmadan merkezi profil bağlantısını test et"
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   script-writer:
@@ -16,9 +22,146 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/validate_business_config.py \
+            --config .github/config/business-profile.json \
+            --output /tmp/business-profile-validation.md \
+            --test-mode true
+
+          PROFILE_PATH=.github/config/business-profile.json
+          BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE_PATH")
+          OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE_PATH")
+          BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE_PATH")
+          SERVICES_TEXT=$(jq -r '.offer.services | join(", ")' "$PROFILE_PATH")
+          EQUIPMENT_TEXT=$(jq -r '.offer.available_equipment | join(", ")' "$PROFILE_PATH")
+          CONTENT_TOPICS_TEXT=$(jq -r '.content.content_topics | join(", ")' "$PROFILE_PATH")
+          PRIMARY_PLATFORM=$(jq -r '.content.primary_platform' "$PROFILE_PATH")
+          SECONDARY_FORMATS_TEXT=$(jq -r '.content.secondary_formats | join(", ")' "$PROFILE_PATH")
+          PRIMARY_CTA=$(jq -r '.offer.primary_cta' "$PROFILE_PATH")
+          DEFAULT_MODEL=$(jq -r '.cost_control.default_model' "$PROFILE_PATH")
+          SCRIPT_IDEA_COUNT=$(jq -r '.content.script.idea_count' "$PROFILE_PATH")
+          SCRIPT_TARGET_MIN_WORDS=$(jq -r '.content.script.target_min_words' "$PROFILE_PATH")
+          SCRIPT_TARGET_MAX_WORDS=$(jq -r '.content.script.target_max_words' "$PROFILE_PATH")
+          SCRIPT_VALIDATION_MIN_WORDS=$(jq -r '.content.script.validation_min_words' "$PROFILE_PATH")
+          SCRIPT_VALIDATION_MAX_WORDS=$(jq -r '.content.script.validation_max_words' "$PROFILE_PATH")
+          SHORTS_MIN_SECONDS=$(jq -r '.content.script.shorts_min_seconds' "$PROFILE_PATH")
+          SHORTS_MAX_SECONDS=$(jq -r '.content.script.shorts_max_seconds' "$PROFILE_PATH")
+          IDEAS_CHAR_LIMIT=$(jq -r '.content.script.ideas_char_limit' "$PROFILE_PATH")
+          SCRIPT_MAX_MODEL_OUTPUT=$(jq -r '.content.script.max_model_output' "$PROFILE_PATH")
+          PROFILE_FILE_SHA=$(sha256sum "$PROFILE_PATH" | awk '{print $1}')
+
+          {
+            echo "BRAND_NAME=$BRAND_NAME"
+            echo "OWNER_NAME=$OWNER_NAME"
+            echo "BUSINESS_TIMEZONE=$BUSINESS_TIMEZONE"
+            echo "SERVICES_TEXT=$SERVICES_TEXT"
+            echo "EQUIPMENT_TEXT=$EQUIPMENT_TEXT"
+            echo "CONTENT_TOPICS_TEXT=$CONTENT_TOPICS_TEXT"
+            echo "PRIMARY_PLATFORM=$PRIMARY_PLATFORM"
+            echo "SECONDARY_FORMATS_TEXT=$SECONDARY_FORMATS_TEXT"
+            echo "PRIMARY_CTA=$PRIMARY_CTA"
+            echo "DEFAULT_MODEL=$DEFAULT_MODEL"
+            echo "SCRIPT_IDEA_COUNT=$SCRIPT_IDEA_COUNT"
+            echo "SCRIPT_TARGET_MIN_WORDS=$SCRIPT_TARGET_MIN_WORDS"
+            echo "SCRIPT_TARGET_MAX_WORDS=$SCRIPT_TARGET_MAX_WORDS"
+            echo "SCRIPT_VALIDATION_MIN_WORDS=$SCRIPT_VALIDATION_MIN_WORDS"
+            echo "SCRIPT_VALIDATION_MAX_WORDS=$SCRIPT_VALIDATION_MAX_WORDS"
+            echo "SHORTS_MIN_SECONDS=$SHORTS_MIN_SECONDS"
+            echo "SHORTS_MAX_SECONDS=$SHORTS_MAX_SECONDS"
+            echo "IDEAS_CHAR_LIMIT=$IDEAS_CHAR_LIMIT"
+            echo "SCRIPT_MAX_MODEL_OUTPUT=$SCRIPT_MAX_MODEL_OUTPUT"
+            echo "PROFILE_FILE_SHA=$PROFILE_FILE_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Senaryo ajanı profil bağlantısını sıfır-token ile test et
+        if: ${{ env.TEST_MODE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPORT_TITLE="TEST Merkezi Profil Bağlantısı - Haftalık Senaryo Ajanı"
+          {
+            echo "<!-- PROFILE_BINDING_USAGE_V1 agent=weekly-script test=true input=0 output=0 web_search=0 source_issue_read=0 profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ✅ Haftalık Senaryo Ajanı merkezi işletme profiline güvenle bağlandı."
+            echo
+            echo "# 🔗 SENARYO AJANI PROFİL BAĞLANTI TESTİ"
+            echo
+            echo "- **Marka:** $BRAND_NAME"
+            echo "- **İşletme sahibi:** $OWNER_NAME"
+            echo "- **Hizmetler:** $SERVICES_TEXT"
+            echo "- **Mevcut ekipman:** $EQUIPMENT_TEXT"
+            echo "- **İçerik konuları:** $CONTENT_TOPICS_TEXT"
+            echo "- **Birincil platform:** $PRIMARY_PLATFORM"
+            echo "- **İkincil biçimler:** $SECONDARY_FORMATS_TEXT"
+            echo "- **Ana çağrı:** $PRIMARY_CTA"
+            echo "- **Senaryo sayısı:** $SCRIPT_IDEA_COUNT"
+            echo "- **Hedef uzunluk:** $SCRIPT_TARGET_MIN_WORDS–$SCRIPT_TARGET_MAX_WORDS kelime"
+            echo "- **Doğrulama aralığı:** $SCRIPT_VALIDATION_MIN_WORDS–$SCRIPT_VALIDATION_MAX_WORDS kelime"
+            echo "- **Shorts süresi:** $SHORTS_MIN_SECONDS–$SHORTS_MAX_SECONDS saniye"
+            echo "- **Fikir veri sınırı:** $IDEAS_CHAR_LIMIT karakter"
+            echo "- **Çıktı token bütçesi:** $SCRIPT_MAX_MODEL_OUTPUT"
+            echo "- **Model:** $DEFAULT_MODEL"
+            echo "- **Saat dilimi:** $BUSINESS_TIMEZONE"
+            echo "- **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı"
+            echo "- **Kaynak Issue okuma:** 0"
+            echo "- **Gerçek senaryo Issue'su:** Oluşturulmadı"
+            echo
+            echo "> Bu test yalnızca profil bağlantısını doğrular; haftalık raporu okumaz, Claude çağırmaz ve gerçek senaryo üretmez."
+          } > /tmp/script-profile-binding-test.md
+
+          gh label create "profil-baglantisi" \
+            --color "0E8A16" \
+            --description "Ajanın merkezi işletme profili bağlantısı" \
+            --force
+          gh label create "sistem-testi" \
+            --color "BFD4F2" \
+            --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
+            --force
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$REPORT_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$REPORT_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --body-file /tmp/script-profile-binding-test.md \
+              --add-label "profil-baglantisi" \
+              --add-label "sistem-testi"
+            REPORT_NUMBER="$EXISTING_NUMBER"
+          else
+            REPORT_URL=$(gh issue create \
+              --title "$REPORT_TITLE" \
+              --body-file /tmp/script-profile-binding-test.md \
+              --label "profil-baglantisi" \
+              --label "sistem-testi")
+            REPORT_NUMBER=$(grep -oE '[0-9]+$' <<< "$REPORT_URL")
+          fi
+
+          {
+            echo "### Senaryo ajanı merkezi profil bağlantısı doğrulandı"
+            echo "- Marka: $BRAND_NAME"
+            echo "- Test raporu: #$REPORT_NUMBER"
+            echo "- AI tokenı: 0"
+            echo "- Kaynak Issue okuma: 0"
+            echo "- Gerçek senaryo: oluşturulmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Son haftalık raporu al
+        if: ${{ env.TEST_MODE != 'true' }}
         id: report
         shell: bash
         run: |
@@ -46,6 +189,7 @@ jobs:
           echo "Kaynak rapor: Issue #$ISSUE_NUMBER"
 
       - name: İlk 3 fikri ve kanıt paketini kodla ayıkla
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -53,6 +197,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json
+          import os
           import re
 
           report = json.loads(Path("/tmp/report.json").read_text(encoding="utf-8"))
@@ -67,15 +212,17 @@ jobs:
               raise SystemExit("İÇERİK FİKİRLERİ bölümü bulunamadı.")
 
           section = section_match.group(1).strip()
+          idea_count = int(os.environ["SCRIPT_IDEA_COUNT"])
+          ideas_char_limit = int(os.environ["IDEAS_CHAR_LIMIT"])
           idea_matches = list(
               re.finditer(r"(?mi)^###\s*(?:💡\s*)?Fikir\s+([1-9])\b.*$", section)
           )
 
-          if len(idea_matches) < 3:
-              raise SystemExit("İlk üç fikir eksiksiz bulunamadı.")
+          if len(idea_matches) < idea_count:
+              raise SystemExit(f"İlk {idea_count} fikir eksiksiz bulunamadı.")
 
           blocks = []
-          for index, match in enumerate(idea_matches[:3]):
+          for index, match in enumerate(idea_matches[:idea_count]):
               end = idea_matches[index + 1].start() if index + 1 < len(idea_matches) else len(section)
               blocks.append(section[match.start():end].strip())
 
@@ -134,17 +281,18 @@ jobs:
           )
 
           size = len(selected.encode("utf-8"))
-          if size < 300 or size > 12000:
+          if size < 300 or size > ideas_char_limit:
               raise SystemExit(f"Ayıklanan fikir verisi güvenli sınır dışında: {size} bayt")
 
           source_count = sum(len(item["sources"]) for item in evidence)
           print(
-              f"Claude'a gönderilecek ilk 3 fikir: {size} bayt; "
-              f"QC kanıtı: 3 bulgu, {source_count} kaynak"
+              f"Claude'a gönderilecek ilk {idea_count} fikir: {size} bayt; "
+              f"QC kanıtı: {idea_count} bulgu, {source_count} kaynak"
           )
           PY
 
       - name: Claude ile tek çağrıda 3 senaryo üret
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -152,25 +300,33 @@ jobs:
           IDEAS="$(< /tmp/top-3-ideas.txt)"
           IDEA_CHARS="$(wc -c < /tmp/top-3-ideas.txt)"
 
-          PROMPT=$(cat <<'EOF'
-          Sen Eren Müzik Atölyesi için çalışan profesyonel video senaryo yazarısın.
-          Verilen ilk üç içerik fikrinin her biri için çekime hazır bir video senaryosu yaz.
+          PROMPT=$(cat <<EOF
+          Sen $BRAND_NAME için çalışan profesyonel video senaryo yazarısın.
+          Verilen ilk $SCRIPT_IDEA_COUNT içerik fikrinin her biri için çekime hazır bir video senaryosu yaz.
 
-          Eren'in mevcut imkânları: telefon, elektro gitar, bas gitar, bas amfisi ve piyano.
-          Bu listede olmayan kamera, enstrüman veya ekipman gerektirme.
+          Merkezi işletme profili:
+          - İşletme sahibi ve anlatıcı: $OWNER_NAME
+          - Hizmetler: $SERVICES_TEXT
+          - Mevcut ekipman: $EQUIPMENT_TEXT
+          - İçerik konuları: $CONTENT_TOPICS_TEXT
+          - Birincil platform: $PRIMARY_PLATFORM
+          - İkincil biçimler: $SECONDARY_FORMATS_TEXT
+          - Ana çağrı: $PRIMARY_CTA
+
+          Yalnız bu profile uygun senaryolar üret. Listede olmayan hizmet veya ekipman gerektirme.
 
           Kurallar:
-          - Üç senaryoyu da tek cevapta eksiksiz tamamla.
+          - $SCRIPT_IDEA_COUNT senaryoyu da tek cevapta eksiksiz tamamla.
           - Sırayı değiştirme: Senaryo 1 = Fikir 1, Senaryo 2 = Fikir 2, Senaryo 3 = Fikir 3.
-          - Her senaryo yaklaşık 400-500 kelime olsun.
+          - Her senaryo yaklaşık $SCRIPT_TARGET_MIN_WORDS-$SCRIPT_TARGET_MAX_WORDS kelime olsun.
           - Güçlü ve kısa bir açılış kancası kullan.
           - Ana akış konuşma metni olarak doğrudan çekilebilir olsun.
           - Gereksiz kamera açıklaması, uzun teori ve tekrar kullanma.
-          - Kaynak veride bulunmayan akor, BPM, ton, nota, perde veya teknik bilgi uydurma.
-          - Kesin doğrulama gerektiren müzik iddiasını gerçekmiş gibi ekleme.
-          - 30-60 saniyelik Shorts kesiti ana senaryodan bağımsız anlaşılabilsin.
-          - Türkçe, doğal ve Eren'in ağzından konuşulabilir yaz.
-          - Çıktının tamamını yaklaşık 4.000 token altında tut.
+          - Kaynak veride bulunmayan ürün, hizmet, fiyat, sayı veya teknik bilgi uydurma.
+          - Kesin doğrulama gerektiren iddiayı gerçekmiş gibi ekleme.
+          - $SHORTS_MIN_SECONDS-$SHORTS_MAX_SECONDS saniyelik kısa video kesiti ana senaryodan bağımsız anlaşılabilsin.
+          - Türkçe, doğal ve $OWNER_NAME tarafından konuşulabilir yaz.
+          - Çıktının tamamını belirlenen $SCRIPT_MAX_MODEL_OUTPUT token bütçesi içinde tut.
 
           Her senaryoda aşağıdaki biçimi aynen kullan:
 
@@ -192,9 +348,11 @@ jobs:
           REQUEST="$(jq -n \
             --arg prompt "$PROMPT" \
             --arg ideas "$IDEAS" \
+            --arg model "$DEFAULT_MODEL" \
+            --argjson max_tokens "$SCRIPT_MAX_MODEL_OUTPUT" \
             '{
-              model: "claude-sonnet-4-6",
-              max_tokens: 4800,
+              model: $model,
+              max_tokens: $max_tokens,
               messages: [
                 {
                   role: "user",
@@ -233,13 +391,18 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json
+          import os
           import re
 
           text = Path("/tmp/scripts-raw.txt").read_text(encoding="utf-8").strip()
-          headings = list(re.finditer(r"(?mi)^## Senaryo ([123]):\s*.+$", text))
+          scenario_count = int(os.environ["SCRIPT_IDEA_COUNT"])
+          validation_min_words = int(os.environ["SCRIPT_VALIDATION_MIN_WORDS"])
+          validation_max_words = int(os.environ["SCRIPT_VALIDATION_MAX_WORDS"])
+          headings = list(re.finditer(r"(?mi)^## Senaryo ([1-9]):\s*.+$", text))
+          expected_headings = [str(number) for number in range(1, scenario_count + 1)]
 
-          if [match.group(1) for match in headings] != ["1", "2", "3"]:
-              raise SystemExit("Üç senaryo başlığı eksik, tekrarlı veya sırasız.")
+          if [match.group(1) for match in headings] != expected_headings:
+              raise SystemExit(f"{scenario_count} senaryo başlığı eksik, tekrarlı veya sırasız.")
 
           if "QC_KANIT_V1" in text:
               raise SystemExit("Model çıktısı ayrılmış QC kanıt işaretini içeriyor.")
@@ -272,7 +435,7 @@ jobs:
                       )
 
               word_count = len(re.findall(r"\b\w+\b", block, flags=re.UNICODE))
-              if word_count < 300 or word_count > 650:
+              if word_count < validation_min_words or word_count > validation_max_words:
                   raise SystemExit(
                       f"Senaryo {scenario_number} güvenli uzunluk dışında: {word_count} kelime"
                   )
@@ -295,19 +458,33 @@ jobs:
 
           final_text = "\n\n".join(completed_blocks).strip() + "\n"
           Path("/tmp/scripts.txt").write_text(final_text, encoding="utf-8")
-          print(f"Üç senaryoya doğrulanmış araştırma kanıt paketi eklendi: {len(evidence)} paket")
+          print(f"{scenario_count} senaryoya doğrulanmış araştırma kanıt paketi eklendi: {len(evidence)} paket")
           PY
 
+          {
+            echo "SCRIPT_AI_INPUT=$INPUT_TOKENS"
+            echo "SCRIPT_AI_OUTPUT=$OUTPUT_TOKENS"
+            echo "SCRIPT_IDEA_CHARS=$IDEA_CHARS"
+          } >> "$GITHUB_ENV"
+
       - name: Senaryoları GitHub Issue olarak oluştur
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
+        env:
+          SOURCE_ISSUE_NUMBER: ${{ steps.report.outputs.issue_number }}
         run: |
           set -euo pipefail
 
-          DATE="$(TZ=Europe/Istanbul date '+%d-%m-%Y')"
+          DATE="$(TZ="$BUSINESS_TIMEZONE" date '+%d-%m-%Y')"
+
+          {
+            echo "<!-- AGENT_USAGE_V1 agent=weekly-script model=$DEFAULT_MODEL input=$SCRIPT_AI_INPUT output=$SCRIPT_AI_OUTPUT web_search=0 idea_chars=$SCRIPT_IDEA_CHARS source_issue=$SOURCE_ISSUE_NUMBER profile_sha=$PROFILE_FILE_SHA -->"
+            cat /tmp/scripts.txt
+          } > /tmp/scripts-issue.txt
 
           gh issue create \
             --repo "$GH_REPO" \
             --title "Haftalık Senaryolar - $DATE" \
-            --body-file /tmp/scripts.txt
+            --body-file /tmp/scripts-issue.txt
 
           echo "Haftalık senaryolar başarıyla oluşturuldu."
