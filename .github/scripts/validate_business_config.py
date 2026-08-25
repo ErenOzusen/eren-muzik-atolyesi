@@ -69,6 +69,7 @@ def validate(profile: dict[str, Any]) -> list[str]:
     offer = profile.get("offer") if isinstance(profile.get("offer"), dict) else {}
     content = profile.get("content") if isinstance(profile.get("content"), dict) else {}
     research = content.get("research") if isinstance(content.get("research"), dict) else {}
+    script = content.get("script") if isinstance(content.get("script"), dict) else {}
     approval = profile.get("approval") if isinstance(profile.get("approval"), dict) else {}
     cost = profile.get("cost_control") if isinstance(profile.get("cost_control"), dict) else {}
     assets = profile.get("assets") if isinstance(profile.get("assets"), dict) else {}
@@ -160,6 +161,40 @@ def validate(profile: dict[str, Any]) -> list[str]:
         errors,
     )
 
+    require(script.get("idea_count") == 3, "Senaryo ajanı sözleşmesi için fikir sayısı tam olarak 3 olmalı.", errors)
+    require(
+        isinstance(script.get("target_min_words"), int)
+        and isinstance(script.get("target_max_words"), int)
+        and 200 <= script["target_min_words"] <= script["target_max_words"] <= 800,
+        "Senaryo hedef uzunluğu 200–800 kelime aralığında ve sıralı olmalı.",
+        errors,
+    )
+    require(
+        isinstance(script.get("validation_min_words"), int)
+        and isinstance(script.get("validation_max_words"), int)
+        and 150 <= script["validation_min_words"] <= script.get("target_min_words", 0)
+        and script.get("target_max_words", 10_000) <= script["validation_max_words"] <= 1000,
+        "Senaryo doğrulama aralığı hedef kelime aralığını kapsamalı.",
+        errors,
+    )
+    require(
+        isinstance(script.get("shorts_min_seconds"), int)
+        and isinstance(script.get("shorts_max_seconds"), int)
+        and 15 <= script["shorts_min_seconds"] < script["shorts_max_seconds"] <= 90,
+        "Shorts süresi 15–90 saniye aralığında ve sıralı olmalı.",
+        errors,
+    )
+    require(
+        isinstance(script.get("ideas_char_limit"), int) and 1000 <= script["ideas_char_limit"] <= 12000,
+        "Senaryo fikir veri sınırı 1.000–12.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(script.get("max_model_output"), int) and 2000 <= script["max_model_output"] <= 6000,
+        "Senaryo çıktı token bütçesi 2.000–6.000 olmalı.",
+        errors,
+    )
+
     require(approval.get("required") is True, "İşletme sahibi onayı zorunlu olmalı.", errors)
     require(nonempty_text(approval.get("production_command"), 3, 80), "Gerçek onay komutu gerekli.", errors)
     require(nonempty_text(approval.get("test_command"), 3, 80), "Test onay komutu gerekli.", errors)
@@ -210,6 +245,7 @@ def main() -> None:
     offer = profile["offer"]
     content = profile["content"]
     research = content["research"]
+    script = content["script"]
     approval = profile["approval"]
     cost = profile["cost_control"]
     assets = profile["assets"]
@@ -256,6 +292,9 @@ def main() -> None:
 - **Rakip YouTube akışı:** {len(research['youtube_channels'])} kanal
 - **Haftalık fikir sayısı:** {research['idea_count']}
 - **Araştırma çıktı bütçesi:** {research['max_model_output']} token
+- **Haftalık senaryo sayısı:** {script['idea_count']}
+- **Senaryo hedef uzunluğu:** {script['target_min_words']}–{script['target_max_words']} kelime
+- **Senaryo çıktı bütçesi:** {script['max_model_output']} token
 - **Ana çağrı:** {offer['primary_cta']}
 - **Rezervasyon bağlantısı:** {offer['reservation_url']}
 
