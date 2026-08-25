@@ -1,0 +1,349 @@
+name: YouTube Yayın Hazırlık Ajanı
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Yüklemesiz güvenli test modu"
+        required: true
+        default: true
+        type: boolean
+      thumbnail_package_issue:
+        description: "Thumbnail Paketi Issue numarası (test örneği: 26)"
+        required: true
+        default: "26"
+        type: string
+      thumbnail_choice:
+        description: "Eren'in thumbnail seçimi (testte PENDING kalabilir)"
+        required: true
+        default: "PENDING"
+        type: choice
+        options:
+          - PENDING
+          - A
+          - B
+          - C
+      reservation_url:
+        description: "Açıklamada kullanılacak ders/rezervasyon bağlantısı"
+        required: true
+        default: "https://eren-muzik-atolyesi.vercel.app"
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: youtube-publication-package-agent
+  cancel-in-progress: false
+
+jobs:
+  create-youtube-publication-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      RUN_ACTOR: ${{ github.actor }}
+      TEST_MODE: ${{ inputs.test_mode }}
+      THUMBNAIL_NUMBER: ${{ inputs.thumbnail_package_issue }}
+      THUMBNAIL_CHOICE: ${{ inputs.thumbnail_choice }}
+      RESERVATION_URL: ${{ inputs.reservation_url }}
+      YOUTUBE_PACKAGE_VERSION: "1"
+
+    steps:
+      - name: Çalıştıranı ve girdileri doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
+            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" != "true" && "$TEST_MODE" != "false" ]]; then
+            echo "test_mode yalnızca true veya false olabilir."
+            exit 1
+          fi
+
+          if [[ ! "$THUMBNAIL_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Geçerli bir Thumbnail Paketi Issue numarası gerekli."
+            exit 1
+          fi
+
+          if [[ ! "$THUMBNAIL_CHOICE" =~ ^(PENDING|A|B|C)$ ]]; then
+            echo "Thumbnail seçimi yalnızca PENDING, A, B veya C olabilir."
+            exit 1
+          fi
+
+          if [[ ! "$RESERVATION_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "Rezervasyon bağlantısı geçerli bir https adresi olmalı."
+            exit 1
+          fi
+
+      - name: Kaynak thumbnail paketini ve senaryoyu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$THUMBNAIL_NUMBER" \
+            --json title,body,url,state,labels > /tmp/thumbnail.json
+
+          THUMBNAIL_TITLE=$(jq -r '.title' /tmp/thumbnail.json)
+          THUMBNAIL_URL=$(jq -r '.url' /tmp/thumbnail.json)
+          jq -r '.body' /tmp/thumbnail.json > /tmp/thumbnail.md
+
+          if ! jq -e '.labels | any(.name == "thumbnail-paketi")' \
+            /tmp/thumbnail.json > /dev/null; then
+            echo "Kaynak Issue bir Thumbnail Paketi değil."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! jq -e '.labels | any(.name == "sistem-testi")' \
+              /tmp/thumbnail.json > /dev/null; then
+              echo "Test modu yalnızca sistem-testi etiketli paketle çalışır."
+              exit 1
+            fi
+            if [[ "$THUMBNAIL_TITLE" != "TEST Thumbnail Paketi - Altyazı Paketi #"* ]]; then
+              echo "Test modu için geçerli TEST Thumbnail Paketi başlığı gerekli."
+              exit 1
+            fi
+          else
+            if jq -e '.labels | any(.name == "sistem-testi")' \
+              /tmp/thumbnail.json > /dev/null; then
+              echo "Gerçek mod sistem testi paketiyle çalışamaz."
+              exit 1
+            fi
+            if [[ "$THUMBNAIL_CHOICE" == "PENDING" ]]; then
+              echo "Gerçek yayın paketi için Eren'in thumbnail seçimi gerekli."
+              exit 1
+            fi
+          fi
+
+          FINAL_NUMBER=$(sed -nE \
+            's#^- \*\*Kaynak onaylı senaryo:\*\* .*?/issues/([0-9]+).*$#\1#p' \
+            /tmp/thumbnail.md \
+            | head -n 1)
+
+          if [[ -z "$FINAL_NUMBER" ]]; then
+            echo "Thumbnail paketinin kaynak Nihai Senaryo numarası çözülemedi."
+            exit 1
+          fi
+
+          gh issue view "$FINAL_NUMBER" \
+            --json title,body,url,labels > /tmp/final.json
+
+          FINAL_URL=$(jq -r '.url' /tmp/final.json)
+          jq -r '.body' /tmp/final.json > /tmp/final.md
+
+          if ! jq -e '.labels | any(.name == "eren-onayli")' \
+            /tmp/final.json > /dev/null; then
+            echo "Kaynak Nihai Senaryo Eren tarafından onaylanmamış."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "cekime-hazir")' \
+            /tmp/final.json > /dev/null; then
+            echo "Kaynak Nihai Senaryo çekime hazır değil."
+            exit 1
+          fi
+
+          SOURCE_SHA=$(
+            {
+              cat /tmp/final.md /tmp/thumbnail.md
+              echo "$THUMBNAIL_CHOICE"
+              echo "$RESERVATION_URL"
+            } \
+              | sed '/<!--/,/-->/d' \
+              | sha256sum \
+              | awk '{print $1}'
+          )
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            YOUTUBE_TITLE="TEST YouTube Yayın Paketi - Thumbnail Paketi #$THUMBNAIL_NUMBER"
+          else
+            YOUTUBE_TITLE="YouTube Yayın Paketi - Thumbnail Paketi #$THUMBNAIL_NUMBER"
+          fi
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$YOUTUBE_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$YOUTUBE_TITLE\") | .number" \
+            | head -n 1)
+
+          SKIP_YOUTUBE=false
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue view "$EXISTING_NUMBER" --json body > /tmp/existing-youtube.json
+            EXISTING_BODY=$(jq -r '.body' /tmp/existing-youtube.json)
+            if grep -Fq "youtube-source-sha256: $SOURCE_SHA" <<< "$EXISTING_BODY" \
+              && grep -Fq "youtube-package-version: $YOUTUBE_PACKAGE_VERSION" \
+                <<< "$EXISTING_BODY"; then
+              SKIP_YOUTUBE=true
+              echo "Bu kaynaklar için güncel YouTube yayın paketi zaten mevcut: #$EXISTING_NUMBER"
+            fi
+          fi
+
+          {
+            echo "THUMBNAIL_URL=$THUMBNAIL_URL"
+            echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_URL=$FINAL_URL"
+            echo "SOURCE_SHA=$SOURCE_SHA"
+            echo "YOUTUBE_TITLE=$YOUTUBE_TITLE"
+            echo "EXISTING_NUMBER=$EXISTING_NUMBER"
+            echo "SKIP_YOUTUBE=$SKIP_YOUTUBE"
+          } >> "$GITHUB_ENV"
+
+      - name: Kaynak kodu al
+        if: env.SKIP_YOUTUBE != 'true'
+        uses: actions/checkout@v4
+
+      - name: YouTube yayın paketini üret ve doğrula
+        if: env.SKIP_YOUTUBE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/build_youtube_package.py \
+            --final /tmp/final.md \
+            --thumbnail /tmp/thumbnail.md \
+            --output /tmp/youtube-package.md \
+            --final-url "$FINAL_URL" \
+            --thumbnail-url "$THUMBNAIL_URL" \
+            --thumbnail-choice "$THUMBNAIL_CHOICE" \
+            --reservation-url "$RESERVATION_URL" \
+            --test-mode "$TEST_MODE"
+
+          if [[ ! -s /tmp/youtube-package.md ]]; then
+            echo "YouTube yayın paketi boş üretildi."
+            exit 1
+          fi
+
+          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-8]\.' /tmp/youtube-package.md)
+          if [[ "$SECTION_COUNT" -ne 8 ]]; then
+            echo "YouTube yayın paketinde tam olarak sekiz bölüm bulunmalı."
+            exit 1
+          fi
+
+          if ! grep -Fq 'AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması' \
+            /tmp/youtube-package.md; then
+            echo "Sıfır-token kullanım kaydı eksik."
+            exit 1
+          fi
+
+          if ! grep -Fq "YouTube'a video yükleme:** Yapılmadı" \
+            /tmp/youtube-package.md; then
+            echo "Yükleme güvenlik kaydı eksik."
+            exit 1
+          fi
+
+          if ! grep -Fq 'Görünürlük:** Ayarlanmadı' /tmp/youtube-package.md; then
+            echo "Görünürlük güvenlik kaydı eksik."
+            exit 1
+          fi
+
+          OUTPUT_CHARS=$(wc -c < /tmp/youtube-package.md)
+          echo "YOUTUBE_OUTPUT_CHARS=$OUTPUT_CHARS" >> "$GITHUB_ENV"
+
+          {
+            echo "### YouTube yayın hazırlık ajanı özeti"
+            echo "- test_mode: $TEST_MODE"
+            echo "- ai_input_tokens: 0"
+            echo "- ai_output_tokens: 0"
+            echo "- web_searches: 0"
+            echo "- youtube_api_calls: 0"
+            echo "- uploads: 0"
+            echo "- publications: 0"
+            echo "- output_chars: $OUTPUT_CHARS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: YouTube yayın paketini Issue olarak kaydet
+        if: env.SKIP_YOUTUBE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "<!-- youtube-package-version: $YOUTUBE_PACKAGE_VERSION -->"
+            echo "<!-- youtube-source-sha256: $SOURCE_SHA -->"
+            echo "<!-- YOUTUBE_USAGE_V1 test=$TEST_MODE input=0 output=0 web_search=0 api_calls=0 uploads=0 publications=0 output_chars=$YOUTUBE_OUTPUT_CHARS -->"
+            cat /tmp/youtube-package.md
+          } > /tmp/youtube-issue-body.md
+
+          gh label create "youtube-yayin-paketi" \
+            --color "D93F0B" \
+            --description "YouTube metadata ve yayın öncesi kontrol paketi" \
+            --force
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            gh label create "sistem-testi" \
+              --color "BFD4F2" \
+              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
+              --force
+            ISSUE_LABELS=("youtube-yayin-paketi" "sistem-testi")
+          else
+            gh label create "eren-yayin-onayi-bekliyor" \
+              --color "FBCA04" \
+              --description "YouTube yükleme ve yayın için Eren'in açık onayını bekliyor" \
+              --force
+            gh label create "youtube-yayin-paketi-hazir" \
+              --color "0E8A16" \
+              --description "YouTube yayın hazırlık paketi tamamlandı" \
+              --force
+            ISSUE_LABELS=("youtube-yayin-paketi" "eren-yayin-onayi-bekliyor")
+          fi
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --title "$YOUTUBE_TITLE" \
+              --body-file /tmp/youtube-issue-body.md \
+              --add-label "${ISSUE_LABELS[0]}" \
+              --add-label "${ISSUE_LABELS[1]}"
+            YOUTUBE_NUMBER="$EXISTING_NUMBER"
+            YOUTUBE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          else
+            YOUTUBE_URL=$(gh issue create \
+              --title "$YOUTUBE_TITLE" \
+              --body-file /tmp/youtube-issue-body.md \
+              --label "${ISSUE_LABELS[0]}" \
+              --label "${ISSUE_LABELS[1]}")
+            YOUTUBE_NUMBER=$(grep -oE '[0-9]+$' <<< "$YOUTUBE_URL")
+          fi
+
+          if [[ "$TEST_MODE" == "false" ]]; then
+            gh issue edit "$THUMBNAIL_NUMBER" --add-label "youtube-yayin-paketi-hazir"
+            gh issue comment "$THUMBNAIL_NUMBER" \
+              --body "▶️ YouTube yayın hazırlık paketi oluşturuldu: $YOUTUBE_URL"
+          fi
+
+          {
+            echo "### YouTube yayın paketi oluşturuldu"
+            echo "- Test modu: $TEST_MODE"
+            echo "- Kaynak thumbnail paketi: #$THUMBNAIL_NUMBER"
+            echo "- Kaynak nihai senaryo: #$FINAL_NUMBER"
+            echo "- Yayın paketi: #$YOUTUBE_NUMBER"
+            echo "- AI tokenı: 0"
+            echo "- YouTube API çağrısı: 0"
+            echo "- Video yükleme: yapılmadı"
+            echo "- Yayın: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Güncel YouTube yayın paketi zaten varsa özeti yaz
+        if: env.SKIP_YOUTUBE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          YOUTUBE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          echo "### Güncel YouTube yayın paketi zaten mevcut" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Test modu: $TEST_MODE" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Kaynak thumbnail paketi: #$THUMBNAIL_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Paket: $YOUTUBE_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- AI tokenı: 0" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Video yükleme: yapılmadı" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Yayın: yapılmadı" >> "$GITHUB_STEP_SUMMARY"
