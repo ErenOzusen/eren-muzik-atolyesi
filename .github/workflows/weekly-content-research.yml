@@ -4,7 +4,13 @@ on:
   schedule:
     # Her Pazartesi Türkiye saatiyle 08:00 (UTC 05:00)
     - cron: '0 5 * * 1'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı yapmadan merkezi profil bağlantısını test et"
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   weekly-research:
@@ -19,9 +25,146 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/validate_business_config.py \
+            --config .github/config/business-profile.json \
+            --output /tmp/business-profile-validation.md \
+            --test-mode true
+
+          PROFILE_PATH=.github/config/business-profile.json
+          BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE_PATH")
+          OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE_PATH")
+          BUSINESS_CATEGORY=$(jq -r '.business.category' "$PROFILE_PATH")
+          BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE_PATH")
+          SERVICES_TEXT=$(jq -r '.offer.services | join(", ")' "$PROFILE_PATH")
+          EQUIPMENT_TEXT=$(jq -r '.offer.available_equipment | join(", ")' "$PROFILE_PATH")
+          CONTENT_TOPICS_TEXT=$(jq -r '.content.content_topics | join(", ")' "$PROFILE_PATH")
+          PRIMARY_PLATFORM=$(jq -r '.content.primary_platform' "$PROFILE_PATH")
+          SECONDARY_FORMATS_TEXT=$(jq -r '.content.secondary_formats | join(", ")' "$PROFILE_PATH")
+          PRIMARY_CTA=$(jq -r '.offer.primary_cta' "$PROFILE_PATH")
+          RESERVATION_URL=$(jq -r '.offer.reservation_url' "$PROFILE_PATH")
+          DEFAULT_MODEL=$(jq -r '.cost_control.default_model' "$PROFILE_PATH")
+          LOOKBACK_DAYS=$(jq -r '.content.research.lookback_days' "$PROFILE_PATH")
+          RESEARCH_CHANNEL_COUNT=$(jq -r '.content.research.youtube_channels | length' "$PROFILE_PATH")
+          IDEA_COUNT=$(jq -r '.content.research.idea_count' "$PROFILE_PATH")
+          REPORT_MAX_WORDS=$(jq -r '.content.research.report_max_words' "$PROFILE_PATH")
+          SOURCE_CHAR_LIMIT=$(jq -r '.content.research.source_char_limit' "$PROFILE_PATH")
+          MAX_OUTPUT_TOKENS=$(jq -r '.content.research.max_model_output' "$PROFILE_PATH")
+          PROFILE_FILE_SHA=$(sha256sum "$PROFILE_PATH" | awk '{print $1}')
+
+          {
+            echo "BRAND_NAME=$BRAND_NAME"
+            echo "OWNER_NAME=$OWNER_NAME"
+            echo "BUSINESS_CATEGORY=$BUSINESS_CATEGORY"
+            echo "BUSINESS_TIMEZONE=$BUSINESS_TIMEZONE"
+            echo "SERVICES_TEXT=$SERVICES_TEXT"
+            echo "EQUIPMENT_TEXT=$EQUIPMENT_TEXT"
+            echo "CONTENT_TOPICS_TEXT=$CONTENT_TOPICS_TEXT"
+            echo "PRIMARY_PLATFORM=$PRIMARY_PLATFORM"
+            echo "SECONDARY_FORMATS_TEXT=$SECONDARY_FORMATS_TEXT"
+            echo "PRIMARY_CTA=$PRIMARY_CTA"
+            echo "RESERVATION_URL=$RESERVATION_URL"
+            echo "DEFAULT_MODEL=$DEFAULT_MODEL"
+            echo "LOOKBACK_DAYS=$LOOKBACK_DAYS"
+            echo "RESEARCH_CHANNEL_COUNT=$RESEARCH_CHANNEL_COUNT"
+            echo "IDEA_COUNT=$IDEA_COUNT"
+            echo "REPORT_MAX_WORDS=$REPORT_MAX_WORDS"
+            echo "SOURCE_CHAR_LIMIT=$SOURCE_CHAR_LIMIT"
+            echo "MAX_OUTPUT_TOKENS=$MAX_OUTPUT_TOKENS"
+            echo "PROFILE_FILE_SHA=$PROFILE_FILE_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Merkezi profil bağlantısını sıfır-token ile test et
+        if: ${{ env.TEST_MODE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPORT_TITLE="TEST Merkezi Profil Bağlantısı - Haftalık Araştırma Ajanı"
+          {
+            echo "<!-- PROFILE_BINDING_USAGE_V1 agent=weekly-research test=true input=0 output=0 web_search=0 profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ✅ Haftalık Araştırma Ajanı merkezi işletme profiline güvenle bağlandı."
+            echo
+            echo "# 🔗 MERKEZİ PROFİL BAĞLANTI TESTİ"
+            echo
+            echo "- **Marka:** $BRAND_NAME"
+            echo "- **İşletme sahibi:** $OWNER_NAME"
+            echo "- **Faaliyet alanı:** $BUSINESS_CATEGORY"
+            echo "- **Hizmetler:** $SERVICES_TEXT"
+            echo "- **Mevcut ekipman:** $EQUIPMENT_TEXT"
+            echo "- **İçerik konuları:** $CONTENT_TOPICS_TEXT"
+            echo "- **Birincil platform:** $PRIMARY_PLATFORM"
+            echo "- **İkincil biçimler:** $SECONDARY_FORMATS_TEXT"
+            echo "- **Araştırma dönemi:** Son $LOOKBACK_DAYS gün"
+            echo "- **Rakip YouTube akışı:** $RESEARCH_CHANNEL_COUNT kanal"
+            echo "- **Üretilecek fikir:** $IDEA_COUNT"
+            echo "- **Rapor sınırı:** $REPORT_MAX_WORDS kelime"
+            echo "- **Kaynak veri sınırı:** $SOURCE_CHAR_LIMIT karakter"
+            echo "- **Çıktı token bütçesi:** $MAX_OUTPUT_TOKENS"
+            echo "- **Model:** $DEFAULT_MODEL"
+            echo "- **Saat dilimi:** $BUSINESS_TIMEZONE"
+            echo "- **Ana çağrı:** $PRIMARY_CTA"
+            echo "- **Rezervasyon:** $RESERVATION_URL"
+            echo "- **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı"
+            echo "- **Web araması:** 0"
+            echo "- **Gerçek haftalık rapor:** Oluşturulmadı"
+            echo
+            echo "> Bu test yalnızca profil bağlantısını doğrular; kaynak toplamaz, Claude çağırmaz ve üretim Issue'su oluşturmaz."
+          } > /tmp/profile-binding-test.md
+
+          gh label create "profil-baglantisi" \
+            --color "0E8A16" \
+            --description "Ajanın merkezi işletme profili bağlantısı" \
+            --force
+          gh label create "sistem-testi" \
+            --color "BFD4F2" \
+            --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
+            --force
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$REPORT_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$REPORT_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --body-file /tmp/profile-binding-test.md \
+              --add-label "profil-baglantisi" \
+              --add-label "sistem-testi"
+            REPORT_NUMBER="$EXISTING_NUMBER"
+          else
+            REPORT_URL=$(gh issue create \
+              --title "$REPORT_TITLE" \
+              --body-file /tmp/profile-binding-test.md \
+              --label "profil-baglantisi" \
+              --label "sistem-testi")
+            REPORT_NUMBER=$(grep -oE '[0-9]+$' <<< "$REPORT_URL")
+          fi
+
+          {
+            echo "### Merkezi profil bağlantısı doğrulandı"
+            echo "- Ajan: Haftalık Araştırma Ajanı"
+            echo "- Marka: $BRAND_NAME"
+            echo "- Test raporu: #$REPORT_NUMBER"
+            echo "- AI tokenı: 0"
+            echo "- Üretim raporu: oluşturulmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Güncel kaynakları kodla topla
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -29,14 +172,22 @@ jobs:
           python3 - <<'PY' > /tmp/source-data.txt
           from datetime import datetime, timedelta, timezone
           from email.utils import parsedate_to_datetime
+          from pathlib import Path
           from urllib.parse import quote
           from urllib.request import Request, urlopen
           import json
           import sys
           import xml.etree.ElementTree as ET
 
-          CUTOFF = datetime.now(timezone.utc) - timedelta(days=14)
-          USER_AGENT = "Mozilla/5.0 (compatible; ErenMuzikResearch/2.0)"
+          profile = json.loads(
+              Path(".github/config/business-profile.json").read_text(encoding="utf-8")
+          )
+          business = profile["business"]
+          content = profile["content"]
+          research = content["research"]
+          lookback_days = research["lookback_days"]
+          CUTOFF = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+          USER_AGENT = f"Mozilla/5.0 (compatible; {business['github_owner']}Research/3.0)"
           youtube_success = 0
           news_success = 0
           sources = {}
@@ -86,7 +237,7 @@ jobs:
                           recent.append((published, title, link))
                   recent.sort(reverse=True)
                   if not recent:
-                      print("- Son 14 günde RSS akışında yeni video bulunamadı.")
+                      print(f"- Son {lookback_days} günde RSS akışında yeni video bulunamadı.")
                   for published, title, link in recent[:3]:
                       print(f"- {published.date().isoformat()} | {title} | {source_ref(link)}")
               except Exception as error:
@@ -110,7 +261,7 @@ jobs:
                       reverse=True,
                   )
                   if not items:
-                      print("- Son 14 günde uygun kayıt bulunamadı.")
+                      print(f"- Son {lookback_days} günde uygun kayıt bulunamadı.")
                   for published, title, link in items[:limit]:
                       date_text = published.date().isoformat() if published else "tarih-yok"
                       print(f"- {date_text} | {title} | {source_ref(link)}")
@@ -122,30 +273,30 @@ jobs:
           print(f"Kapsam başlangıcı (UTC): {CUTOFF.date().isoformat()}")
 
           print("\n## RAKİP YOUTUBE AKIŞLARI")
-          channels = [
-              ("Selim Işık", "https://www.youtube.com/feeds/videos.xml?channel_id=UCtkQuUQcdgeP2GYMCrKjrcA"),
-              ("Deniz Sayman", "https://www.youtube.com/feeds/videos.xml?channel_id=UCzb4ZTp-BtNdkfeU4qJSF8g"),
-              ("Egemen Dişli", "https://www.youtube.com/feeds/videos.xml?user=egemendisli"),
-              ("Onur Güler - Gitar Dersi", "https://www.youtube.com/feeds/videos.xml?channel_id=UCCeXYHMDlGNT8hcMOKXDEZQ"),
-              ("Vehbi Can Uyaroğlu - Abi Bana Gitar Öğret", "https://www.youtube.com/feeds/videos.xml?channel_id=UCt2ReS-jMo_1bcBSYZIjwhg"),
-          ]
-          for channel_name, channel_url in channels:
-              print_youtube(channel_name, channel_url)
+          for channel in research["youtube_channels"]:
+              print_youtube(channel["name"], channel["feed_url"])
 
-          print("\n## TÜRKİYE GÜNDEM VE MÜZİK HABERLERİ")
+          country = research["news_country"]
+          language = research["news_language"]
+          print(f"\n## {country} GÜNDEM VE SEKTÖR HABERLERİ")
           print_rss(
-              "Google Trends Türkiye",
-              "https://trends.google.com/trending/rss?geo=TR",
+              f"Google Trends {country}",
+              research["trend_feed_url"],
               10,
           )
-          query = quote('gitar OR piyano OR "bas gitar" OR "müzik teorisi" OR "yeni şarkı" when:14d')
+          query_terms = content["content_topics"] + research["news_extra_terms"]
+          query_parts = [f'"{term}"' if " " in term else term for term in query_terms]
+          query = quote(" OR ".join(query_parts) + f" when:{lookback_days}d")
           print_rss(
-              "Google Haberler - Müzik Eğitimi ve Yeni Şarkılar",
-              f"https://news.google.com/rss/search?q={query}&hl=tr&gl=TR&ceid=TR:tr",
+              f"Google Haberler - {business['category']}",
+              f"https://news.google.com/rss/search?q={query}&hl={language}&gl={country}&ceid={country}:{language}",
               10,
           )
 
-          if youtube_success < 2 or news_success < 1:
+          if (
+              youtube_success < research["minimum_youtube_feeds"]
+              or news_success < research["minimum_news_feeds"]
+          ):
               print(
                   f"Yetersiz kaynak: youtube={youtube_success}, haber={news_success}",
                   file=sys.stderr,
@@ -158,44 +309,54 @@ jobs:
 
           SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
           SOURCE_COUNT=$(jq 'length' /tmp/source-map.json)
-          if [ "$SOURCE_SIZE" -gt 12000 ]; then
-            head -c 12000 /tmp/source-data.txt > /tmp/source-data-limited.txt
+          if [ "$SOURCE_SIZE" -gt "$SOURCE_CHAR_LIMIT" ]; then
+            head -c "$SOURCE_CHAR_LIMIT" /tmp/source-data.txt > /tmp/source-data-limited.txt
             mv /tmp/source-data-limited.txt /tmp/source-data.txt
-            SOURCE_SIZE=12000
+            SOURCE_SIZE="$SOURCE_CHAR_LIMIT"
           fi
           echo "Claude'a gönderilecek temiz veri: $SOURCE_SIZE karakter, $SOURCE_COUNT kaynak"
 
       - name: Kısa kaynak kodlarıyla tek Claude çağrısı yap
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          DATE_TR=$(TZ=Europe/Istanbul date '+%d-%m-%Y')
+          DATE_TR=$(TZ="$BUSINESS_TIMEZONE" date '+%d-%m-%Y')
           SOURCES=$(< /tmp/source-data.txt)
           SOURCE_SIZE=$(wc -c < /tmp/source-data.txt)
           SOURCE_COUNT=$(jq 'length' /tmp/source-map.json)
 
           PROMPT=$(cat <<EOF
-          Eren Müzik Atölyesi için aşağıdaki kodla toplanmış güncel verilerden haftalık
+          $BRAND_NAME için aşağıdaki kodla toplanmış güncel verilerden haftalık
           içerik raporu hazırla. Web araması yapma; yalnızca verilen kayıtlara dayan.
 
-          Eren; gitar, piyano, bas gitar ve müzik teorisi dersleri veriyor. Tek telefon,
-          elektro gitar, bas gitar, bas amfisi ve piyano kullanabiliyor. Mevcut olmayan
-          ekipman önerme.
+          Merkezi işletme profili:
+          - İşletme sahibi: $OWNER_NAME
+          - Faaliyet alanı: $BUSINESS_CATEGORY
+          - Hizmetler: $SERVICES_TEXT
+          - Mevcut ekipman: $EQUIPMENT_TEXT
+          - İçerik konuları: $CONTENT_TOPICS_TEXT
+          - Birincil platform: $PRIMARY_PLATFORM
+          - İkincil biçimler: $SECONDARY_FORMATS_TEXT
+          - Ana çağrı: $PRIMARY_CTA
+          - Rezervasyon: $RESERVATION_URL
+
+          Yalnız bu profile uygun fikirler üret. Mevcut olmayan hizmet veya ekipman önerme.
 
           Kaynaklar gerçek URL yerine [S01], [S02] biçiminde kısa kimliklerle gösterilir.
           İlgili iddianın sonunda yalnız verilen kaynak kimliğini aynen kullan. URL yazma,
           kaynak kimliği uydurma veya kimliğin biçimini değiştirme.
 
           Doğruluk ve seçim kuralları:
-          - Kaydı olmayan rakip için açıkça "son 14 günde kayıt bulunamadı" yaz.
+          - Kaydı olmayan rakip için açıkça "son $LOOKBACK_DAYS günde kayıt bulunamadı" yaz.
           - İzlenme verisi yoksa bir videonun iyi performans gösterdiğini iddia etme.
-          - Genel Türkiye gündemindeki müzikle ilgisiz başlıkları kullanma.
-          - Şarkı, akor, ton, BPM, arama hacmi veya yayın tarihi uydurma.
-          - Tam 5 somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
+          - Genel gündemdeki $BUSINESS_CATEGORY alanıyla ilgisiz başlıkları kullanma.
+          - Ürün, hizmet, fiyat, sayı, arama hacmi veya yayın tarihi uydurma.
+          - Tam $IDEA_COUNT somut fikir üret; en güçlü 3 fikri ilk sıraya koy.
           - Her fikri en az bir gerçek kaynak kimliğiyle destekle.
           - Türkçe, kısa ve aksiyon alınabilir yaz; tekrar yapma.
-          - Rapor 900 kelimeyi geçmesin; giriş, sonuç tekrarı ve ayraç çizgileri ekleme.
+          - Rapor $REPORT_MAX_WORDS kelimeyi geçmesin; giriş, sonuç tekrarı ve ayraç çizgileri ekleme.
           - Trendleri en fazla 5 tek cümlelik maddeyle özetle; her madde en fazla 25 kelime olsun.
           - Her rakibi tek cümlede özetle; her cümle en fazla 25 kelime olsun.
 
@@ -212,7 +373,7 @@ jobs:
 
           Her fikirde yalnız şunlar olsun; her alan tek cümle olsun:
           - Başlık
-          - Enstrüman
+          - İlgili hizmet/konu
           - Format
           - Neden şimdi?
           - Dayandığı bulgu ve kaynak kimliği
@@ -226,9 +387,11 @@ jobs:
 
           REQUEST=$(jq -n \
             --arg prompt "$PROMPT" \
+            --arg model "$DEFAULT_MODEL" \
+            --argjson max_tokens "$MAX_OUTPUT_TOKENS" \
             '{
-              model: "claude-sonnet-4-6",
-              max_tokens: 2800,
+              model: $model,
+              max_tokens: $max_tokens,
               messages: [
                 {
                   role: "user",
@@ -312,8 +475,13 @@ jobs:
               handle.write(restored.rstrip() + "\n")
           PY
 
+          {
+            echo "<!-- AGENT_USAGE_V1 agent=weekly-research model=$DEFAULT_MODEL input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0 source_chars=$SOURCE_SIZE source_count=$SOURCE_COUNT profile_sha=$PROFILE_FILE_SHA -->"
+            cat /tmp/weekly-report.md
+          } > /tmp/weekly-report-issue.md
+
           gh issue create \
             --title "Haftalık İçerik Raporu - $DATE_TR" \
-            --body-file /tmp/weekly-report.md
+            --body-file /tmp/weekly-report-issue.md
 
           echo "Haftalık içerik raporu başarıyla oluşturuldu."
