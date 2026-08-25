@@ -1,0 +1,177 @@
+name: Marka ve İşletme Yapılandırma Ajanı
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Mevcut ajanları değiştirmeyen güvenli test"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: business-config-agent
+  cancel-in-progress: false
+
+jobs:
+  validate-business-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      RUN_ACTOR: ${{ github.actor }}
+      TEST_MODE: ${{ inputs.test_mode }}
+      CONFIG_VERSION: "1"
+
+    steps:
+      - name: Çalıştıranı doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
+            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" != "true" && "$TEST_MODE" != "false" ]]; then
+            echo "test_mode yalnızca true veya false olabilir."
+            exit 1
+          fi
+
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: İşletme profilini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/validate_business_config.py \
+            --config .github/config/business-profile.json \
+            --output /tmp/business-config-report.md \
+            --test-mode "$TEST_MODE"
+
+          CONFIG_OWNER=$(jq -r '.business.github_owner' .github/config/business-profile.json)
+          BRAND_NAME=$(jq -r '.business.brand_name' .github/config/business-profile.json)
+          CONFIG_SHA=$(sha256sum .github/config/business-profile.json | awk '{print $1}')
+
+          if [[ "$CONFIG_OWNER" != "$REPOSITORY_OWNER" ]]; then
+            echo "Profildeki GitHub sahibi repo sahibiyle eşleşmiyor."
+            exit 1
+          fi
+
+          if [[ ! -s /tmp/business-config-report.md ]]; then
+            echo "Yapılandırma raporu boş üretildi."
+            exit 1
+          fi
+
+          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-7]\.' /tmp/business-config-report.md)
+          if [[ "$SECTION_COUNT" -ne 7 ]]; then
+            echo "Yapılandırma raporunda tam olarak yedi bölüm bulunmalı."
+            exit 1
+          fi
+
+          if ! grep -Fq 'Bu doğrulamanın AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması' \
+            /tmp/business-config-report.md; then
+            echo "Sıfır-token doğrulama kaydı eksik."
+            exit 1
+          fi
+
+          OUTPUT_CHARS=$(wc -c < /tmp/business-config-report.md)
+          {
+            echo "BRAND_NAME=$BRAND_NAME"
+            echo "CONFIG_SHA=$CONFIG_SHA"
+            echo "CONFIG_OUTPUT_CHARS=$OUTPUT_CHARS"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "### İşletme profili doğrulandı"
+            echo "- brand: $BRAND_NAME"
+            echo "- owner: $CONFIG_OWNER"
+            echo "- ai_input_tokens: 0"
+            echo "- ai_output_tokens: 0"
+            echo "- web_searches: 0"
+            echo "- existing_agents_changed: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Yapılandırma raporunu ayrı Issue olarak kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            REPORT_TITLE="TEST Marka Yapılandırma Raporu - $BRAND_NAME"
+          else
+            REPORT_TITLE="Marka Yapılandırma Raporu - $BRAND_NAME"
+          fi
+
+          {
+            echo "<!-- business-config-version: $CONFIG_VERSION -->"
+            echo "<!-- business-config-file-sha256: $CONFIG_SHA -->"
+            echo "<!-- BUSINESS_CONFIG_USAGE_V1 test=$TEST_MODE input=0 output=0 web_search=0 existing_agent_changes=0 output_chars=$CONFIG_OUTPUT_CHARS -->"
+            cat /tmp/business-config-report.md
+          } > /tmp/business-config-issue.md
+
+          gh label create "marka-yapilandirma" \
+            --color "5319E7" \
+            --description "Merkezi marka ve işletme profili doğrulama raporu" \
+            --force
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            gh label create "sistem-testi" \
+              --color "BFD4F2" \
+              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
+              --force
+            REPORT_LABELS=("marka-yapilandirma" "sistem-testi")
+          else
+            REPORT_LABELS=("marka-yapilandirma")
+          fi
+
+          EXISTING_NUMBER=$(gh issue list \
+            --state all \
+            --search "\"$REPORT_TITLE\" in:title" \
+            --limit 20 \
+            --json number,title \
+            --jq ".[] | select(.title == \"$REPORT_TITLE\") | .number" \
+            | head -n 1)
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" \
+              --title "$REPORT_TITLE" \
+              --body-file /tmp/business-config-issue.md \
+              --add-label "${REPORT_LABELS[0]}"
+            if [[ "$TEST_MODE" == "true" ]]; then
+              gh issue edit "$EXISTING_NUMBER" --add-label "${REPORT_LABELS[1]}"
+            fi
+            REPORT_NUMBER="$EXISTING_NUMBER"
+          else
+            if [[ "$TEST_MODE" == "true" ]]; then
+              REPORT_URL=$(gh issue create \
+                --title "$REPORT_TITLE" \
+                --body-file /tmp/business-config-issue.md \
+                --label "${REPORT_LABELS[0]}" \
+                --label "${REPORT_LABELS[1]}")
+            else
+              REPORT_URL=$(gh issue create \
+                --title "$REPORT_TITLE" \
+                --body-file /tmp/business-config-issue.md \
+                --label "${REPORT_LABELS[0]}")
+            fi
+            REPORT_NUMBER=$(grep -oE '[0-9]+$' <<< "$REPORT_URL")
+          fi
+
+          {
+            echo "### Marka yapılandırma raporu kaydedildi"
+            echo "- Marka: $BRAND_NAME"
+            echo "- Rapor: #$REPORT_NUMBER"
+            echo "- AI tokenı: 0"
+            echo "- Mevcut ajan değişikliği: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
