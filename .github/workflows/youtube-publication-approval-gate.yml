@@ -1,0 +1,181 @@
+name: Eren Son Yayın Onay Kapısı
+
+"on":
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: youtube-publication-approval-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve-publication:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      (startsWith(github.event.issue.title, 'YouTube Yayın Paketi') ||
+      startsWith(github.event.issue.title, 'TEST YouTube Yayın Paketi'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Eren'in son yayın onayını doğrula ve kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$ISSUE_NUMBER" \
+            --json title,body,url,state,labels > /tmp/youtube-package.json
+
+          ISSUE_TITLE=$(jq -r '.title' /tmp/youtube-package.json)
+          ISSUE_URL=$(jq -r '.url' /tmp/youtube-package.json)
+          jq -r '.body' /tmp/youtube-package.json > /tmp/youtube-package.md
+
+          if ! jq -e '.labels | any(.name == "youtube-yayin-paketi")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Issue bir YouTube Yayın Paketi değil; işlem yapılmadı."
+            exit 0
+          fi
+
+          RAW_COMMENT=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
+          NORMALIZED_COMMENT=$(printf '%s' "$RAW_COMMENT" \
+            | tr '[:lower:]' '[:upper:]' \
+            | tr -d '[:space:]')
+
+          IS_TEST=false
+          if jq -e '.labels | any(.name == "sistem-testi")' \
+            /tmp/youtube-package.json > /dev/null; then
+            IS_TEST=true
+          fi
+
+          if [[ "$IS_TEST" == "true" ]]; then
+            if [[ "$NORMALIZED_COMMENT" != "TESTONAYLIYORUM" ]]; then
+              echo "Test paketi yalnızca TEST ONAYLIYORUM komutunu kabul eder."
+              exit 0
+            fi
+
+            if [[ "$ISSUE_TITLE" != "TEST YouTube Yayın Paketi - Thumbnail Paketi #"* ]]; then
+              echo "Test paketi başlığı güvenlik kuralıyla eşleşmiyor."
+              exit 1
+            fi
+
+            if ! grep -Eq \
+              'YOUTUBE_USAGE_V1 test=true .*uploads=0 publications=0' \
+              /tmp/youtube-package.md; then
+              echo "Test paketinde sıfır-yükleme ve sıfır-yayın kanıtı bulunamadı."
+              exit 1
+            fi
+
+            if ! grep -Fq "**YouTube'a video yükleme:** Yapılmadı" \
+              /tmp/youtube-package.md; then
+              echo "Test paketinde yükleme yapılmadığı kaydı bulunamadı."
+              exit 1
+            fi
+
+            if jq -e '.labels | any(.name == "test-yayin-onayli")' \
+              /tmp/youtube-package.json > /dev/null; then
+              echo "Bu test yayın paketi daha önce Eren tarafından onaylanmış."
+              exit 0
+            fi
+
+            gh label create "test-yayin-onayli" \
+              --color "BFD4F2" \
+              --description "Yüklemesiz yayın onay kapısı testi başarıyla geçti" \
+              --force
+
+            gh issue edit "$ISSUE_NUMBER" --add-label "test-yayin-onayli"
+
+            gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          ## 🧪 Test yayın onayı kaydedildi
+
+          Eren'in `TEST ONAYLIYORUM` komutu doğrulandı.
+
+          **Test sonucu:** Onay kapısı geçti  
+          **Video yükleme:** Yapılmadı  
+          **YouTube yayını:** Yapılmadı  
+          **Üretim etiketi:** Değiştirilmedi
+          MESSAGE
+          )"
+
+            {
+              echo "### Test yayın onayı kaydedildi"
+              echo "- Issue: $ISSUE_URL"
+              echo "- Video yükleme: yapılmadı"
+              echo "- YouTube yayını: yapılmadı"
+              echo "- Eklenen etiket: test-yayin-onayli"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [[ "$NORMALIZED_COMMENT" != "ONAYLIYORUM" ]]; then
+            echo "Yorum gerçek yayın onay komutu değil; işlem yapılmadı."
+            exit 0
+          fi
+
+          if [[ "$ISSUE_TITLE" != "YouTube Yayın Paketi - Thumbnail Paketi #"* ]]; then
+            echo "Gerçek yayın paketi başlığı güvenlik kuralıyla eşleşmiyor."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Gerçek paket Eren'in yayın onayını bekleyen durumda değil."
+            exit 1
+          fi
+
+          if ! grep -Fq \
+            '<!-- YOUTUBE_REVIEW_READY_V1 video=1 srt=1 thumbnail=1 public=0 -->' \
+            /tmp/youtube-package.md; then
+            echo "Video, SRT ve thumbnail hazır / herkese açık yayın yapılmadı kanıtı eksik."
+            exit 1
+          fi
+
+          if jq -e '.labels | any(.name == "eren-yayin-onayli")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Bu yayın paketi daha önce Eren tarafından onaylanmış."
+            exit 0
+          fi
+
+          gh label create "eren-yayin-onayli" \
+            --color "0E8A16" \
+            --description "YouTube yayın paketi Eren tarafından son kez onaylandı" \
+            --force
+
+          gh label create "yayina-hazir" \
+            --color "1D76DB" \
+            --description "Bütün medya dosyaları ve Eren onayıyla yayına hazır" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "eren-yayin-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$ISSUE_NUMBER" \
+            --add-label "eren-yayin-onayli" \
+            --add-label "yayina-hazir"
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          ## ✅ Eren'in son yayın onayı kaydedildi
+
+          Video, zamanlanmış SRT ve thumbnail hazırlık kanıtları doğrulandı. Eren'in açık `ONAYLIYORUM` komutu kaydedildi.
+
+          **Durum:** Yayına hazır  
+          **Otomatik yayın:** Bu onay kapısı yayın yapmaz  
+          **Sıradaki aşama:** Ayrı yayın ajanının güvenlik kontrolleri
+          MESSAGE
+          )"
+
+          {
+            echo "### Eren'in son yayın onayı kaydedildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Durum: yayına hazır"
+            echo "- Otomatik yayın: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
