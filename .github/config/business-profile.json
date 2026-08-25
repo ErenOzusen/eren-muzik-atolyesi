@@ -40,7 +40,44 @@
       "Piyano",
       "Bas gitar",
       "Müzik teorisi"
-    ]
+    ],
+    "research": {
+      "lookback_days": 14,
+      "youtube_channels": [
+        {
+          "name": "Selim Işık",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCtkQuUQcdgeP2GYMCrKjrcA"
+        },
+        {
+          "name": "Deniz Sayman",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCzb4ZTp-BtNdkfeU4qJSF8g"
+        },
+        {
+          "name": "Egemen Dişli",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?user=egemendisli"
+        },
+        {
+          "name": "Onur Güler - Gitar Dersi",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCCeXYHMDlGNT8hcMOKXDEZQ"
+        },
+        {
+          "name": "Vehbi Can Uyaroğlu - Abi Bana Gitar Öğret",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCt2ReS-jMo_1bcBSYZIjwhg"
+        }
+      ],
+      "trend_feed_url": "https://trends.google.com/trending/rss?geo=TR",
+      "news_extra_terms": [
+        "yeni şarkı"
+      ],
+      "news_country": "TR",
+      "news_language": "tr",
+      "minimum_youtube_feeds": 2,
+      "minimum_news_feeds": 1,
+      "idea_count": 5,
+      "report_max_words": 900,
+      "source_char_limit": 12000,
+      "max_model_output": 2800
+    }
   },
   "approval": {
     "required": true,
