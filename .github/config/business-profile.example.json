@@ -29,7 +29,28 @@
     ],
     "content_topics": [
       "KONU 1"
-    ]
+    ],
+    "research": {
+      "lookback_days": 14,
+      "youtube_channels": [
+        {
+          "name": "ÖRNEK RAKİP KANALI",
+          "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=KANAL_KIMLIGI"
+        }
+      ],
+      "trend_feed_url": "https://trends.google.com/trending/rss?geo=TR",
+      "news_extra_terms": [
+        "SEKTÖRE ÖZEL EK TERİM"
+      ],
+      "news_country": "TR",
+      "news_language": "tr",
+      "minimum_youtube_feeds": 1,
+      "minimum_news_feeds": 1,
+      "idea_count": 5,
+      "report_max_words": 900,
+      "source_char_limit": 12000,
+      "max_model_output": 2800
+    }
   },
   "approval": {
     "required": true,
