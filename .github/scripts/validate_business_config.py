@@ -68,6 +68,7 @@ def validate(profile: dict[str, Any]) -> list[str]:
     business = profile.get("business") if isinstance(profile.get("business"), dict) else {}
     offer = profile.get("offer") if isinstance(profile.get("offer"), dict) else {}
     content = profile.get("content") if isinstance(profile.get("content"), dict) else {}
+    research = content.get("research") if isinstance(content.get("research"), dict) else {}
     approval = profile.get("approval") if isinstance(profile.get("approval"), dict) else {}
     cost = profile.get("cost_control") if isinstance(profile.get("cost_control"), dict) else {}
     assets = profile.get("assets") if isinstance(profile.get("assets"), dict) else {}
@@ -93,6 +94,71 @@ def validate(profile: dict[str, Any]) -> list[str]:
     require(nonempty_unique_list(content.get("secondary_formats")), "En az bir ikincil içerik biçimi gerekli.", errors)
     require(nonempty_unique_list(content.get("video_formats")), "En az bir video oranı gerekli.", errors)
     require(nonempty_unique_list(content.get("content_topics")), "En az bir içerik konusu gerekli.", errors)
+
+    require(
+        isinstance(research.get("lookback_days"), int) and 1 <= research["lookback_days"] <= 30,
+        "Araştırma geriye bakış süresi 1–30 gün olmalı.",
+        errors,
+    )
+    youtube_channels = research.get("youtube_channels")
+    require(
+        isinstance(youtube_channels, list) and 1 <= len(youtube_channels) <= 20,
+        "Araştırma için 1–20 YouTube kanalı gerekli.",
+        errors,
+    )
+    if isinstance(youtube_channels, list):
+        valid_channels = all(
+            isinstance(channel, dict)
+            and set(channel) == {"name", "feed_url"}
+            and nonempty_text(channel.get("name"), 2, 100)
+            and isinstance(channel.get("feed_url"), str)
+            and bool(
+                re.fullmatch(
+                    r"https://www\.youtube\.com/feeds/videos\.xml\?(?:channel_id|user)=[A-Za-z0-9_-]+",
+                    channel["feed_url"],
+                )
+            )
+            for channel in youtube_channels
+        )
+        require(valid_channels, "YouTube araştırma kanalları ad ve geçerli RSS adresi içermeli.", errors)
+        if valid_channels:
+            names = [channel["name"].strip().casefold() for channel in youtube_channels]
+            urls = [channel["feed_url"] for channel in youtube_channels]
+            require(len(names) == len(set(names)), "YouTube kanal adları benzersiz olmalı.", errors)
+            require(len(urls) == len(set(urls)), "YouTube RSS adresleri benzersiz olmalı.", errors)
+    require(
+        isinstance(research.get("trend_feed_url"), str)
+        and bool(re.fullmatch(r"https://[^\s]+", research["trend_feed_url"])),
+        "Trend RSS adresi https olmalı.",
+        errors,
+    )
+    require(nonempty_unique_list(research.get("news_extra_terms")), "En az bir ek haber arama terimi gerekli.", errors)
+    require(bool(re.fullmatch(r"[A-Z]{2}", str(research.get("news_country", "")))), "Haber ülke kodu TR biçiminde olmalı.", errors)
+    require(bool(re.fullmatch(r"[a-z]{2}", str(research.get("news_language", "")))), "Haber dil kodu tr biçiminde olmalı.", errors)
+    channel_count = len(youtube_channels) if isinstance(youtube_channels, list) else 0
+    require(
+        isinstance(research.get("minimum_youtube_feeds"), int)
+        and 1 <= research["minimum_youtube_feeds"] <= channel_count,
+        "Minimum başarılı YouTube akışı kanal sayısını aşamaz.",
+        errors,
+    )
+    require(research.get("minimum_news_feeds") == 1, "Minimum başarılı haber akışı tam olarak 1 olmalı.", errors)
+    require(research.get("idea_count") == 5, "Araştırma ajanı sözleşmesi için fikir sayısı tam olarak 5 olmalı.", errors)
+    require(
+        isinstance(research.get("report_max_words"), int) and 500 <= research["report_max_words"] <= 1500,
+        "Araştırma raporu kelime sınırı 500–1500 olmalı.",
+        errors,
+    )
+    require(
+        isinstance(research.get("source_char_limit"), int) and 4000 <= research["source_char_limit"] <= 20000,
+        "Araştırma kaynak sınırı 4.000–20.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(research.get("max_model_output"), int) and 1000 <= research["max_model_output"] <= 4000,
+        "Araştırma çıktı token bütçesi 1.000–4.000 olmalı.",
+        errors,
+    )
 
     require(approval.get("required") is True, "İşletme sahibi onayı zorunlu olmalı.", errors)
     require(nonempty_text(approval.get("production_command"), 3, 80), "Gerçek onay komutu gerekli.", errors)
@@ -143,6 +209,7 @@ def main() -> None:
     business = profile["business"]
     offer = profile["offer"]
     content = profile["content"]
+    research = content["research"]
     approval = profile["approval"]
     cost = profile["cost_control"]
     assets = profile["assets"]
@@ -159,7 +226,7 @@ def main() -> None:
 
 # ⚙️ {business['brand_name']} — MARKA VE İŞLETME YAPILANDIRMA RAPORU
 
-> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Bu ilk aşamada mevcut ajanlar henüz merkezi profile geçirilmedi.
+> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma Ajanı merkezi profile bağlıdır; diğer ajanların kontrollü geçişi sürüyor.
 
 ## 1. İşletme Kimliği
 
@@ -185,6 +252,10 @@ def main() -> None:
 - **İkincil biçimler:** {', '.join(content['secondary_formats'])}
 - **Video oranları:** {', '.join(content['video_formats'])}
 - **İçerik konuları:** {', '.join(content['content_topics'])}
+- **Araştırma dönemi:** Son {research['lookback_days']} gün
+- **Rakip YouTube akışı:** {len(research['youtube_channels'])} kanal
+- **Haftalık fikir sayısı:** {research['idea_count']}
+- **Araştırma çıktı bütçesi:** {research['max_model_output']} token
 - **Ana çağrı:** {offer['primary_cta']}
 - **Rezervasyon bağlantısı:** {offer['reservation_url']}
 
@@ -216,9 +287,10 @@ def main() -> None:
 - **Merkezi işletme profili:** ✅ Hazır
 - **Kopyalanabilir boş şablon:** ✅ Hazır
 - **Secret bilgilerin profilden ayrılması:** ✅ Doğrulandı
-- **Mevcut ajanların profile bağlanması:** ⏳ Sıradaki aşama
+- **Haftalık Araştırma Ajanının profile bağlanması:** ✅ Hazır
+- **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
-- Ajanlar profile bağlanana kadar mevcut Eren Müzik Atölyesi iş akışları aynı biçimde çalışmaya devam eder.
+- Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
 
     if len(re.findall(r"(?m)^## [1-7]\.", output)) != 7:
