@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+"""Build a source-grounded thumbnail brief without calling an AI model."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import re
+from pathlib import Path
+
+
+NUMBER_WORDS = (
+    "bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|yirmi|otuz|"
+    "kırk|elli|altmış"
+)
+
+
+def read_text(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def remove_comments(text: str) -> str:
+    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+
+
+def extract_bold_field(text: str, field: str) -> str:
+    match = re.search(rf"(?m)^\*\*{re.escape(field)}:\*\*\s*(.+?)\s*$", text)
+    if not match:
+        raise SystemExit(f"Nihai senaryoda {field} alanı bulunamadı.")
+    return match.group(1).strip()
+
+
+def extract_script_section(text: str, name: str) -> str:
+    match = re.search(
+        rf"(?ms)^\*\*\[{re.escape(name)}\]\*\*\s*\n(.*?)(?=^---\s*$|\Z)",
+        text,
+    )
+    if not match:
+        raise SystemExit(f"Nihai senaryoda [{name}] bölümü bulunamadı.")
+    section = re.sub(r"[*`]", "", match.group(1))
+    return re.sub(r"\s+", " ", section).strip()
+
+
+def words(text: str) -> list[str]:
+    return re.findall(r"[0-9A-Za-zÇĞİÖŞÜçğıöşüÂâÎîÛû]+", text)
+
+
+def turkish_upper(text: str) -> str:
+    return text.translate(str.maketrans({"i": "İ", "ı": "I"})).upper()
+
+
+def limit_words(text: str, limit: int = 5, from_end: bool = False) -> str:
+    tokens = words(text)
+    if not tokens:
+        raise SystemExit("Kapak yazısı üretmek için kaynak kelime bulunamadı.")
+    selected = tokens[-limit:] if from_end and len(tokens) > limit else tokens[:limit]
+    result = turkish_upper(" ".join(selected))
+    if text.strip().endswith("?") and not result.endswith("?"):
+        result += "?"
+    return result
+
+
+def build_copy_options(title: str, final_source: str) -> tuple[str, str, str, str | None]:
+    if "?" in title:
+        question, benefit = title.split("?", 1)
+        question_copy = limit_words(question.strip() + "?")
+        benefit_copy = limit_words(benefit.strip() or title, from_end=False)
+    else:
+        question_copy = limit_words(title)
+        benefit_copy = limit_words(title, from_end=True)
+
+    duration_match = re.search(
+        rf"(?i)\b((?:{NUMBER_WORDS})(?:\s+(?:{NUMBER_WORDS}))?|\d+)\s+dakika\b",
+        final_source,
+    )
+    duration = duration_match.group(0) if duration_match else None
+    if duration:
+        daily = bool(re.search(r"(?i)\bher gün\b", final_source))
+        routine_copy = limit_words(("Her gün " if daily else "") + duration)
+    else:
+        routine_copy = limit_words(extract_script_section(final_source, "KANCA"))
+
+    copies = [question_copy, benefit_copy, routine_copy]
+    if len(set(copies)) != 3:
+        raise SystemExit("Üç benzersiz kapak yazısı kaynak metinden üretilemedi.")
+    if any(len(words(copy)) > 5 for copy in copies):
+        raise SystemExit("Kapak yazısı beş kelime sınırını aştı.")
+    return question_copy, benefit_copy, routine_copy, duration
+
+
+def detect_subject(title: str) -> str:
+    lowered = title.casefold()
+    for keyword, label in (
+        ("piyano", "piyano"),
+        ("bas gitar", "bas gitar"),
+        ("gitar", "gitar"),
+        ("müzik teori", "müzik teorisi"),
+        ("armoni", "armoni"),
+    ):
+        if keyword in lowered:
+            return label
+    return "videonun ana konusu"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--final", required=True)
+    parser.add_argument("--subtitle", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--final-url", required=True)
+    parser.add_argument("--subtitle-url", required=True)
+    parser.add_argument("--test-mode", choices=("true", "false"), required=True)
+    args = parser.parse_args()
+
+    final_source = remove_comments(read_text(args.final))
+    subtitle_source = remove_comments(read_text(args.subtitle))
+    seo_title = extract_bold_field(final_source, "SEO Başlığı")
+    hook = extract_script_section(final_source, "KANCA")
+    option_a, option_b, option_c, duration = build_copy_options(seo_title, final_source)
+    subject = detect_subject(seo_title)
+    source_sha = hashlib.sha256(
+        (final_source + "\n" + subtitle_source).encode("utf-8")
+    ).hexdigest()
+
+    number_hint = "Üç küçük 1–2–3 işaretiyle yöntem sayısını destekle." if re.search(
+        r"\b3\b|\büç\b", seo_title, flags=re.IGNORECASE
+    ) else "Tek bir güçlü görsel odak kullan; ek rozet ekleme."
+    timer_hint = (
+        f"Kaynakta geçen “{duration}” ifadesini küçük bir zaman simgesiyle destekle."
+        if duration
+        else "Kaynakta süre vaadi olmadığı için saat veya sayaç kullanma."
+    )
+    status = (
+        "🧪 Videosuz sistem testi — gerçek kapak görseli veya yayın kaydı değildir"
+        if args.test_mode == "true"
+        else "🎨 Thumbnail hazırlık paketi — görsel üretimi ve Eren onayı bekleniyor"
+    )
+
+    output = f"""> **Durum:** {status}
+
+# 🖼️ EREN MÜZİK ATÖLYESİ — THUMBNAIL HAZIRLIK PAKETİ
+
+> Bu paket yalnızca tasarım brifidir. Görsel üretilmedi, dosya yüklenmedi ve yayın işlemi yapılmadı.
+
+## 1. Kaynak ve Güvenlik Durumu
+
+- **Kaynak altyazı paketi:** {args.subtitle_url}
+- **Kaynak onaylı senaryo:** {args.final_url}
+- **SEO başlığı:** {seo_title}
+- **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması, 0 görsel üretimi
+- **İddia koruması:** Kapak yazıları yalnızca onaylı başlık ve senaryodaki ifadelerden türetildi
+- **Yayın durumu:** Eren seçim yapmadan görsel üretilemez veya yayınlanamaz
+
+## 2. Seçenek A — Arama Niyeti
+
+### Seçenek A
+
+- **Kapak yazısı:** `{option_a}`
+- **Kompozisyon:** Eren solda; {subject} sağda ve net biçimde görünür. Yüz ifadesi merak uyandırır ama abartılı olmaz.
+- **Görsel hiyerarşi:** Yazı en büyük unsur, yüz ikinci, {subject} üçüncü unsur.
+- **Amaç:** İzleyicinin başlıktaki temel soruyu bir bakışta anlaması.
+
+## 3. Seçenek B — Yöntem/Fayda
+
+### Seçenek B
+
+- **Kapak yazısı:** `{option_b}`
+- **Kompozisyon:** Eren ve {subject} aynı karede; sade arka plan ve güçlü ön plan ayrımı kullan.
+- **Sayı desteği:** {number_hint}
+- **Amaç:** Videonun öğretici ve uygulanabilir yapısını göstermek.
+
+## 4. Seçenek C — Rutin/Süre
+
+### Seçenek C
+
+- **Kapak yazısı:** `{option_c}`
+- **Kompozisyon:** {subject.capitalize()} yakın planı ana görsel; Eren daha küçük ikincil odak olabilir.
+- **Süre desteği:** {timer_hint}
+- **Amaç:** Kaynakta gerçekten bulunan uygulanabilir rutin veya kancayı öne çıkarmak.
+
+## 5. Ortak Tasarım Kuralları
+
+- Kapak yazısı en fazla 5 kelime olmalı; mobil ekranda küçültmeden okunmalı.
+- Tek ana fikir, tek yüz ifadesi ve tek görsel odak kullanılmalı.
+- Yüksek kontrastlı koyu/açık ayrımı ve yalnızca bir marka vurgu rengi kullanılmalı.
+- SEO başlığı kapakta bütünüyle tekrarlanmamalı.
+- Kaynakta bulunmayan sonuç, süre, yüzde, öğrenci sayısı veya başarı vaadi eklenmemeli.
+- Logo kullanılacaksa küçük tutulmalı; yazı ve yüzün önüne geçmemeli.
+
+## 6. Gerekli Görsel Malzeme
+
+- [ ] Yatay kadrajda Eren’in net yüz fotoğrafı
+- [ ] {subject.capitalize()} net görünen yakın veya orta plan fotoğrafı
+- [ ] Seçenekler için yazısız temiz arka plan karesi
+- [ ] Işık, kadraj ve netlik kontrolü
+- [ ] Kullanılacak bütün görsellerin Eren’e ait veya kullanım izni alınmış olması
+
+## 7. Eren’in Seçim ve Son Kontrol Listesi
+
+- [ ] Seçenek A, B ve C mobil boyutta karşılaştırıldı mı?
+- [ ] Kapak yazısı videonun gerçek içeriğiyle birebir uyumlu mu?
+- [ ] Kaynakta olmayan bir vaat veya sayı var mı?
+- [ ] Yüz, enstrüman ve yazı birbirini kapatıyor mu?
+- [ ] Türkçe karakterler ve marka adı doğru mu?
+- [ ] Eren seçimini `KAPAK A`, `KAPAK B` veya `KAPAK C` olarak verdi mi?
+- [ ] Seçilen kapak Eren’in son onayı olmadan yüklenmedi mi?
+"""
+
+    if len(re.findall(r"(?m)^## [1-7]\.", output)) != 7:
+        raise SystemExit("Thumbnail paketinde tam olarak yedi bölüm bulunmalı.")
+    if len(re.findall(r"(?m)^### Seçenek [ABC]$", output)) != 3:
+        raise SystemExit("Thumbnail paketinde tam olarak üç seçenek bulunmalı.")
+    if re.search(r"\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->", output):
+        raise SystemExit("Thumbnail paketinde zaman kodu bulunamaz.")
+
+    Path(args.output).write_text(output.strip() + "\n", encoding="utf-8")
+    print(
+        f"thumbnail_package_ok subject={subject!r} source_sha={source_sha} "
+        f"copies={option_a!r}|{option_b!r}|{option_c!r}"
+    )
+
+
+if __name__ == "__main__":
+    main()
