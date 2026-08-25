@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "business": {
+    "brand_name": "ÖRNEK MARKA ADI",
+    "owner_display_name": "İŞLETME SAHİBİ",
+    "github_owner": "GITHUB_KULLANICI_ADI",
+    "category": "FAALİYET ALANI",
+    "language": "tr-TR",
+    "timezone": "Europe/Istanbul"
+  },
+  "offer": {
+    "services": [
+      "HİZMET 1"
+    ],
+    "available_equipment": [
+      "MEVCUT EKİPMAN 1"
+    ],
+    "reservation_url": "https://ORNEK-HTTPS-ADRESI.example",
+    "primary_cta": "ANA ÇAĞRI METNİ"
+  },
+  "content": {
+    "primary_platform": "YouTube",
+    "secondary_formats": [
+      "YouTube Shorts"
+    ],
+    "video_formats": [
+      "16:9",
+      "9:16"
+    ],
+    "content_topics": [
+      "KONU 1"
+    ]
+  },
+  "approval": {
+    "required": true,
+    "production_command": "ONAYLIYORUM",
+    "test_command": "TEST ONAYLIYORUM",
+    "allow_publication_without_owner_approval": false
+  },
+  "cost_control": {
+    "prefer_no_ai_when_deterministic": true,
+    "default_model": "claude-sonnet-4-6",
+    "web_search_only_when_required": true,
+    "usage_marker_required": true
+  },
+  "assets": {
+    "logo_path": null,
+    "brand_colors": [],
+    "notes": "Logo ve marka renkleri hazır olduğunda ekleyin."
+  }
+}
