@@ -58,6 +58,7 @@ jobs:
           echo "CORRECTION_MAX_FINAL_CHECK_CHARS=$(jq -r '.content.correction.max_final_check_chars' "$PROFILE")" >> "$GITHUB_ENV"
           echo "CORRECTION_MAX_TOTAL_INPUT_CHARS=$(jq -r '.content.correction.max_total_input_chars' "$PROFILE")" >> "$GITHUB_ENV"
           echo "CORRECTION_MAX_MODEL_OUTPUT=$(jq -r '.content.correction.max_model_output' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_DOMAIN_RULE_COUNT=$(jq -r '.content.correction.domain_rules | length' "$PROFILE")" >> "$GITHUB_ENV"
           echo "CORRECTION_DOMAIN_RULES_TEXT=$(jq -r '.content.correction.domain_rules | join("; ")' "$PROFILE")" >> "$GITHUB_ENV"
           echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')" >> "$GITHUB_ENV"
 
@@ -83,7 +84,7 @@ jobs:
             echo "- **Senaryo sayısı:** $CORRECTION_SCENARIO_COUNT"
             echo "- **Toplam kaynak sınırı:** $CORRECTION_MAX_TOTAL_INPUT_CHARS karakter"
             echo "- **Model / çıktı bütçesi:** $DEFAULT_MODEL / $CORRECTION_MAX_MODEL_OUTPUT token"
-            echo "- **Sektörel düzeltme kuralı:** $(awk -F';' '{print NF}' <<< "$CORRECTION_DOMAIN_RULES_TEXT")"
+            echo "- **Sektörel düzeltme kuralı:** $CORRECTION_DOMAIN_RULE_COUNT"
             echo "- **AI kullanımı:** 0 giriş, 0 çıkış tokenı; 0 web araması"
             echo "- **Kaynak Issue okuma:** 0"
             echo "- **Gerçek nihai senaryo:** Oluşturulmadı veya değiştirilmedi"
