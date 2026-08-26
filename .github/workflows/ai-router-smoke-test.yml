@@ -1,0 +1,118 @@
+name: AI Router Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      live_test:
+        description: "Gerçek AI çağrısı yap (kapalıysa 0 token)"
+        required: true
+        default: false
+        type: boolean
+      provider_order:
+        description: "Opsiyonel sıra: anthropic,openai,deepseek,qwen"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  router-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
+      PROVIDER_ORDER: ${{ inputs.provider_order }}
+      LIVE_TEST: ${{ inputs.live_test }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Router dosyalarını sıfır-token doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('.github/config/ai-router.json')
+          config = json.loads(path.read_text(encoding='utf-8'))
+          assert config['schema_version'] == 1
+          order = config['routing']['default_order']
+          assert order == ['anthropic', 'openai', 'deepseek', 'qwen']
+          providers = config['providers']
+          assert set(order) <= set(providers)
+          for name in order:
+              assert providers[name]['api_style'] in {'anthropic_messages', 'openai_chat'}
+          print('AI router yapılandırması geçerli. AI kullanımı: 0 token.')
+          PY
+
+          {
+            echo "### AI Router — Sıfır Token Doğrulaması"
+            echo "- Python derleme: ✅"
+            echo "- Router config: ✅"
+            echo "- Varsayılan sıra: Anthropic → OpenAI → DeepSeek → Qwen"
+            echo "- AI kullanımı: 0 token"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Canlı fallback testi için küçük prompt hazırla
+        if: ${{ inputs.live_test == true }}
+        shell: bash
+        run: |
+          cat > /tmp/router-prompt.txt <<'EOF'
+          Yalnızca şu metni yaz: AI_ROUTER_OK
+          EOF
+
+      - name: Canlı provider/fallback testi
+        if: ${{ inputs.live_test == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXTRA_ARGS=()
+          if [[ -n "$PROVIDER_ORDER" ]]; then
+            EXTRA_ARGS+=(--provider-order "$PROVIDER_ORDER")
+          fi
+
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --prompt-file /tmp/router-prompt.txt \
+            --output-file /tmp/router-output.txt \
+            --meta-file /tmp/router-meta.json \
+            --max-tokens 80 \
+            --primary-model claude-sonnet-4-6 \
+            "${EXTRA_ARGS[@]}"
+
+          PROVIDER=$(jq -r '.provider' /tmp/router-meta.json)
+          MODEL=$(jq -r '.model' /tmp/router-meta.json)
+          INPUT=$(jq -r '.input_tokens // 0' /tmp/router-meta.json)
+          OUTPUT=$(jq -r '.output_tokens // 0' /tmp/router-meta.json)
+          RESULT=$(tr -d '\r\n' < /tmp/router-output.txt)
+
+          if [[ "$RESULT" != *"AI_ROUTER_OK"* ]]; then
+            echo "Router beklenen smoke-test yanıtını üretmedi: $RESULT"
+            exit 1
+          fi
+
+          {
+            echo "### AI Router — Canlı Test"
+            echo "- Sonuç: ✅"
+            echo "- Kullanılan provider: $PROVIDER"
+            echo "- Kullanılan model: $MODEL"
+            echo "- Giriş tokenı: $INPUT"
+            echo "- Çıkış tokenı: $OUTPUT"
+            echo "- Eksik API anahtarı/model olan sağlayıcılar otomatik atlandı."
+          } >> "$GITHUB_STEP_SUMMARY"
