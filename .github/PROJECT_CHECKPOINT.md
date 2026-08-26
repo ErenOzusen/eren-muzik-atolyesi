@@ -29,7 +29,7 @@ Workflow: `.github/workflows/eren-approval-gate.yml`
 - `duzeltme-gerekiyor` varsa gerçek onayı reddediyor.
 - `TEST ONAYLIYORUM` 0-token testidir ve Issue/etiket değiştirmez.
 - 0-token test başarıyla geçti.
-- Job filtresi artık yalnız `ONAYLIYORUM` veya `TEST ONAYLIYORUM` yorumlarında runner açıyor; ilgisiz yorumlar job başlamadan eleniyor.
+- Job filtresi yalnız `ONAYLIYORUM` veya `TEST ONAYLIYORUM` yorumlarında runner açıyor; ilgisiz yorumlar job başlamadan eleniyor.
 
 ### 2. Eski onay geçersizleştirme
 
@@ -49,145 +49,120 @@ Workflow: `.github/workflows/approval-invalidation-gate.yml`
 
 Workflow: `.github/workflows/eren-production-selection-gate.yml`
 
-Amaç: Düzeltme Ajanı 3 nihai senaryo ürettiği için Çekim Paketi Ajanının hangi senaryoyu kullanacağını tahmin etmesini engellemek.
-
 Komutlar:
-
-- `SEÇ 1`
-- `SEÇ 2`
-- `SEÇ 3`
-- Test için: `TEST SEÇ 1/2/3`
+- `SEÇ 1/2/3`
+- `TEST SEÇ 1/2/3`
 
 Gerçek seçimde:
-
-- Önce `eren-onayli + cekime-hazir` zorunlu.
+- `eren-onayli + cekime-hazir` zorunlu.
 - `duzeltme-gerekiyor` varsa seçim yapılamaz.
-- Seçim `uretime-secildi` ve tam bir `uretim-senaryo-N` etiketiyle kaydedilir.
-- Yorum içine deterministik handoff işareti yazılır:
-  `<!-- FILMING_HANDOFF_V1 issue=N scenario=S -->`
-- Böylece kaynak Issue numarası ve senaryo birbirine kriptografik olmayan ama açık ve deterministik bir sözleşmeyle bağlanır.
+- `uretime-secildi` ve tam bir `uretim-senaryo-N` etiketi kaydedilir.
+- Yorum içine `<!-- FILMING_HANDOFF_V1 issue=N scenario=S -->` handoff işareti yazılır.
 - `SEÇ N` tek başına Çekim Paketi Ajanını veya Claude'u başlatmaz.
-- Job filtresi artık yalnız geçerli `SEÇ N / TEST SEÇ N` yorumlarında runner açıyor.
-- 0-token seçim kapısı testi başarıyla geçti.
+- Job filtresi yalnız geçerli seçim komutlarında runner açar.
+- 0-token seçim testi geçti.
 
 ### 5. Çekim Handoff Güvenlik Kapısı
 
 Workflow: `.github/workflows/filming-handoff-gate.yml`
 
-Amaç: Eren'in seçtiği senaryonun yanlış Issue veya yanlış senaryo ile Çekim Paketi Ajanına aktarılmasını engellemek.
+Test komutları:
+- `TEST HANDOFF 1/2/3`: yalnız handoff doğrulaması, sonraki ajan başlamaz.
+- `TEST ÇEKİMİ BAŞLAT 1/2/3`: handoff doğrulaması + Çekim Paketi Ajanına `test_mode=true` workflow dispatch.
 
-Test komutu:
-
-- `TEST HANDOFF 1/2/3`
-
-Gerçek üretim başlatma komutu:
-
-- `ÇEKİMİ BAŞLAT 1`
-- `ÇEKİMİ BAŞLAT 2`
-- `ÇEKİMİ BAŞLAT 3`
+Gerçek üretim komutları:
+- `ÇEKİMİ BAŞLAT 1/2/3`
 
 Güvenlikler:
-
-- Yalnız merkezi profildeki yetkili GitHub sahibi yorum komutu verebilir.
-- Issue numarası ve beklenen senaryo açıkça çözülür.
-- Hedef Issue mutlaka `Nihai Senaryolar` olmalıdır.
-- Beklenen senaryo başlığı kaynak Issue içinde bulunmalıdır.
-- Test modunda yalnız `sistem-testi` kabul edilir.
-- Test modunda AI çağrısı, Issue/etiket değişikliği veya sonraki ajan tetikleme yoktur.
-- Gerçek modda Issue açık olmalıdır.
-- `sistem-testi` gerçek üretime giremez.
-- `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
-- `duzeltme-gerekiyor` varsa aktarım reddedilir.
-- Tam olarak bir `uretim-senaryo-1/2/3` etiketi zorunludur.
-- Komuttaki senaryo ile etiket senaryosu birebir eşleşmelidir.
-- Seçim Kapısının `FILMING_HANDOFF_V1` işareti zorunludur.
-- Yalnız tüm kontroller geçip Eren ayrıca `ÇEKİMİ BAŞLAT N` dediğinde Çekim Paketi Ajanı exact Issue + exact senaryo girdileriyle dispatch edilir.
-
-Doğrulanmış testler:
-
-- Issue #37 / Senaryo 2 ile `TEST HANDOFF 2` çalıştırıldı.
-- Handoff Run #1: SUCCESS.
-- Yeni explicit-start mantığı sonrasında Handoff Run #2: SUCCESS.
-- Run #2'de `Çekim Paketi Ajanını kesin handoff ile başlat` adımı beklendiği gibi `skipped`.
-- AI kullanımı: 0 token.
-- Gerçek üretim: yok.
+- Yalnız merkezi profildeki yetkili GitHub sahibi komut verebilir.
+- Exact Issue numarası ve senaryo çözülür.
+- Hedef mutlaka `Nihai Senaryolar` olmalıdır.
+- Testte yalnız `sistem-testi` kabul edilir.
+- Gerçek modda Issue açık olmalı; `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
+- `duzeltme-gerekiyor` gerçek aktarımı bloklar.
+- Tam olarak bir `uretim-senaryo-1/2/3` etiketi gerekir.
+- Komuttaki senaryo, etiket ve `FILMING_HANDOFF_V1` marker birebir uyuşmalıdır.
+- `TEST ÇEKİMİ BAŞLAT N`, gerçek Claude çağrısı açmadan dispatch hattını test eder.
+- `ÇEKİMİ BAŞLAT N`, yalnız bütün gerçek üretim kontrolleri geçerse exact Issue + exact senaryo ile Çekim Paketi Ajanını başlatır.
 
 ### 6. Çekim Paketi Ajanı — deterministik kaynak devralma
 
 Workflow: `.github/workflows/filming-package-agent-v3.yml.yml`
-
 Paket sürümü: `6`
 
-Güncel güvenlikler:
-
 - Varsayılan `test_mode=true`.
-- Test modunda Claude/API çağrısı yok.
-- Test modunda gerçek Issue veya etiket değişikliği yok.
+- Test modunda Claude/API, Issue oluşturma ve etiket değişikliği yok.
 - Gerçek üretimde artık 'en güncel uygun Issue' aranmaz.
-- Gerçek üretimde `source_issue_number` zorunludur.
-- Gerçek üretimde `source_scenario` zorunludur.
-- Exact kaynak Issue açılır ve doğrulanır.
-- Issue açık olmalıdır.
-- `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
-- Tam olarak bir `uretim-senaryo-1/2/3` etiketi zorunludur.
-- Input senaryo ile etiket senaryosu eşleşmek zorundadır.
-- `sistem-testi` gerçek üretim kaynağı olamaz.
-- `duzeltme-gerekiyor` varsa durur.
-- Kaynak Issue yorumlarında exact `FILMING_HANDOFF_V1 issue=N scenario=S` işareti zorunludur.
-- 3 senaryolu Nihai Issue'dan yalnız seçilen tek senaryo Python ile deterministik olarak ayıklanır.
-- Yalnız bu tek senaryo modele gönderilir; gereksiz token tüketimi önlenir.
-- Aynı kaynak gövde + paket sürümü + senaryo için güncel paket zaten varsa yeniden AI çağrısı yapılmaz.
+- `source_issue_number` ve `source_scenario` zorunludur.
+- Exact kaynak Issue + açık state + güvenlik etiketleri + tek seçim etiketi + handoff marker doğrulanır.
+- Yalnız seçilmiş tek senaryo Python ile deterministik ayıklanır.
+- Yalnız bu tek senaryo modele gider.
+- Aynı kaynak gövde + paket sürümü + senaryo için güncel paket varsa AI yeniden çağrılmaz.
 
-### 7. Eski Çekim Paketi 0-token testi
+## Doğrulanmış 0-token çekim testleri
 
-Önceki Run #3:
+### A. Yerel Çekim Paketi testi
+Run #3:
+- SUCCESS
+- `TEST_MODE=true`, senaryo 2
+- Senaryo ayıklama başarılı
+- Claude/API: skipped
+- Issue/etiket yazma: skipped
+- 0 AI token
 
-- `SUCCESS`
-- `TEST_MODE=true`
-- `TEST_SCENARIO=2`
-- Seçilen senaryo deterministik olarak doğru ayıklandı.
-- Claude isteği hazırlama: skipped
-- Claude/API çağrısı: skipped
-- Issue oluşturma: skipped
-- Gerçek etiket değişikliği: yok
-- AI maliyeti: 0 token
-- Web araması: 0
+### B. Handoff regresyon testi
+Issue #37 / senaryo 2:
+- `TEST HANDOFF 2`
+- Handoff Run #1: SUCCESS
+- Handoff Run #2: SUCCESS
+- Gerçek Çekim Paketi dispatch adımı testte skipped
+- 0 AI token
 
-## Mevcut eski gerçek kayıt
+### C. Uçtan uca workflow_dispatch testi — TAMAMLANDI
+Komut: `TEST ÇEKİMİ BAŞLAT 2`
+Kaynak: sistem testi Issue #37
 
-Issue #22 eski sistemden gelen tek senaryolu gerçek Nihai Senaryo kaydıdır.
-Onun Çekim Paketi #23 zaten daha önce oluşturulmuştur.
-Bu kayıt tekrar çalıştırılmayacak; gereksiz token harcanmayacak.
+Sonuç:
+- Handoff Kapısı başarılı oldu.
+- Handoff Kapısı, Çekim Paketi Ajanını `test_mode=true`, `test_issue_number=37`, `test_scenario=2` ile gerçekten workflow_dispatch üzerinden başlattı.
+- Çekim Paketi Ajanı Run #4 — run id `33011714337`: SUCCESS.
+- `Seçilmiş nihai senaryoyu güvenli biçimde bul ve ayıkla`: SUCCESS.
+- `Tek senaryoluk telefonla çekim isteğini hazırla`: SKIPPED.
+- `Tek senaryoluk çekim paketini oluştur ve doğrula` / Anthropic API: SKIPPED.
+- `Çekim paketini Issue olarak kaydet`: SKIPPED.
+- Eski paket kontrol/yazma adımı: SKIPPED.
+- Gerçek Issue/etiket değişikliği: yok.
+- AI maliyeti: 0 token.
+
+Bu test ile `Eren komutu → Handoff Kapısı → workflow_dispatch → Çekim Paketi Ajanı → güvenli test-mode ayıklama` sözleşmesi uçtan uca doğrulandı.
 
 ## Yeni gerçek üretim akışı
 
 `3 Nihai Senaryo`
 → Eren `ONAYLIYORUM`
-→ Eren `SEÇ 1 / SEÇ 2 / SEÇ 3`
+→ Eren `SEÇ N`
 → seçim etiketi + handoff marker
-→ Eren `ÇEKİMİ BAŞLAT 1 / 2 / 3`
+→ Eren `ÇEKİMİ BAŞLAT N`
 → Handoff Kapısı exact Issue + exact senaryoyu doğrular
-→ yalnız seçilen tek senaryo
-→ Çekim Paketi Ajanı
-→ yalnız burada gerekli olduğunda Claude çağrısı
+→ Çekim Paketi Ajanı exact girdilerle başlar
+→ yalnız seçilen tek senaryo modele gönderilir
+→ yalnız burada gerektiğinde Claude çağrısı yapılır
 
-Önemli: `SEÇ N` AI harcaması başlatmaz. Gerçek Çekim Paketi AI çağrısı ancak Eren ayrıca `ÇEKİMİ BAŞLAT N` komutunu verdiğinde açılır.
+Önemli: `ONAYLIYORUM` ve `SEÇ N` AI harcaması başlatmaz. AI harcaması ancak Eren açıkça `ÇEKİMİ BAŞLAT N` dediğinde ve bütün güvenlik kontrolleri geçtiğinde açılır.
 
-## Bu turdaki commitler
+## Bu turdaki önemli commitler
 
 - `72401500ce45231864d2d35cb69d8d1ce44e2705` — deterministik seçim handoff marker
-- `ac480bbc05fe13a62385a732fa50074280c9cab4` — 0-token handoff test komutu
 - `733beee50f95dc197aa659eb7644abd8757e412e` — Çekim Paketi Ajanında exact Issue/senaryo zorunluluğu
 - `4064963413197ff47d0429b1efec2762c00786c5` — explicit `ÇEKİMİ BAŞLAT N` kapısı
-- `75f4814a33e1c70a26e09bd989f7ec518546c7b3` — Onay Kapısında ilgisiz yorumları job öncesi eleme
-- `1f03eb63aecf297b37b15936621048992a3dc4ef` — Seçim Kapısında ilgisiz yorumları job öncesi eleme
+- `75f4814a33e1c70a26e09bd989f7ec518546c7b3` — Onay Kapısı ilgisiz yorum filtresi
+- `1f03eb63aecf297b37b15936621048992a3dc4ef` — Seçim Kapısı ilgisiz yorum filtresi
+- `e6ccb65132d1633ca439786f2422cce88c42a95d` — `TEST ÇEKİMİ BAŞLAT N` 0-token workflow_dispatch test yolu
 
 ## Tam burada durduk
 
-Çekim hattının güvenli devralma mimarisi tamamlandı ve 0-token regresyon testi geçti.
+**Çekim hattının deterministik, kontrollü ve 0-token test edilebilir devralma/dispatch mimarisi tamamlandı.**
 
-Bir sonraki mantıklı adım:
+Bir sonraki mantıklı aşama:
 
-**Gerçek AI çağrısı yapmadan, `ÇEKİMİ BAŞLAT N → workflow_dispatch → Çekim Paketi Ajanı` dispatch sözleşmesini dry-run/test modunda uçtan uca doğrulayacak bir test yolu eklemek.**
-
-Bunun ardından çoklu AI Router / provider fallback mimarisi, mevcut güvenlik kapılarını bozmadan entegre edilebilir.
+**Mevcut `.github/workflows/ai-router-smoke-test.yml` ve ilgili router yapılarını inceleyip, mevcut güvenlik kapılarını bozmadan çoklu AI provider/fallback katmanını önce 0-token konfigürasyon testiyle doğrulamak.**
