@@ -1,0 +1,134 @@
+name: Çekim Handoff Güvenlik Kapısı
+
+"on":
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Nihai Senaryolar Issue numarası"
+        required: true
+        type: string
+      scenario:
+        description: "Beklenen seçilmiş senaryo: 1, 2 veya 3"
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+      test_mode:
+        description: "Yalnız doğrulama; AI/Issue değişikliği yok"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: filming-handoff-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  validate-handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+      EXPECTED_SCENARIO: ${{ inputs.scenario }}
+      TEST_MODE: ${{ inputs.test_mode }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Issue ve seçim sözleşmesini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Issue numarası geçersiz: $ISSUE_NUMBER"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SCENARIO" =~ ^[123]$ ]]; then
+            echo "Senaryo yalnız 1, 2 veya 3 olabilir."
+            exit 1
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,url,labels,state > /tmp/issue.json
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          URL=$(jq -r '.url // ""' /tmp/issue.json)
+          STATE=$(jq -r '.state // ""' /tmp/issue.json)
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+
+          if [[ "$TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Issue Nihai Senaryolar değil: $TITLE"
+            exit 1
+          fi
+
+          if ! grep -Eiq "^##[[:space:]]+SENARYO[[:space:]]+$EXPECTED_SCENARIO([^0-9]|$)" /tmp/body.md; then
+            echo "Beklenen SENARYO $EXPECTED_SCENARIO kaynak Issue içinde bulunamadı."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! grep -qx 'sistem-testi' /tmp/labels.txt; then
+              echo "Test modu yalnız sistem-testi etiketli Issue üzerinde çalışabilir."
+              exit 1
+            fi
+            {
+              echo "### Çekim handoff kapısı — 0-token test başarılı"
+              echo "- Kaynak: $URL"
+              echo "- Issue: $ISSUE_NUMBER"
+              echo "- Beklenen senaryo: $EXPECTED_SCENARIO"
+              echo "- AI kullanımı: 0 token"
+              echo "- Web araması: 0"
+              echo "- Issue/etiket değişikliği: yok"
+              echo "- Çekim Paketi Ajanı: otomatik başlatılmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if grep -qx 'sistem-testi' /tmp/labels.txt; then
+            echo "Sistem testi gerçek üretim handoff'una giremez."
+            exit 1
+          fi
+
+          for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
+            if ! grep -qx "$REQUIRED" /tmp/labels.txt; then
+              echo "Gerçek handoff için zorunlu etiket eksik: $REQUIRED"
+              exit 1
+            fi
+          done
+
+          if grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt; then
+            echo "Düzeltme gereken içerik çekime devredilemez."
+            exit 1
+          fi
+
+          mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/labels.txt || true)
+          if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
+            echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
+            exit 1
+          fi
+
+          ACTUAL_SCENARIO="${SELECTION_LABELS[0]##*-}"
+          if [[ "$ACTUAL_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
+            echo "Handoff uyuşmazlığı: beklenen=$EXPECTED_SCENARIO etiket=$ACTUAL_SCENARIO"
+            exit 1
+          fi
+
+          {
+            echo "### Çekim handoff kapısı — üretim doğrulaması başarılı"
+            echo "- Kaynak: $URL"
+            echo "- Issue: $ISSUE_NUMBER"
+            echo "- Senaryo: $ACTUAL_SCENARIO"
+            echo "- State: $STATE"
+            echo "- AI kullanımı: 0 token"
+            echo "- Çekim Paketi Ajanı: otomatik başlatılmadı"
+            echo "- Sonraki güvenli adım: Çekim Paketi Ajanını bu Issue numarasıyla açıkça çalıştırmak"
+          } >> "$GITHUB_STEP_SUMMARY"
