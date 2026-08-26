@@ -25,6 +25,7 @@ name: Çekim Handoff Güvenlik Kapısı
       - created
 
 permissions:
+  actions: write
   contents: read
   issues: read
 
@@ -39,7 +40,8 @@ jobs:
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request == null &&
        startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
-       startsWith(github.event.comment.body, 'TEST HANDOFF '))
+       (startsWith(github.event.comment.body, 'TEST HANDOFF ') ||
+        startsWith(github.event.comment.body, 'ÇEKİMİ BAŞLAT ')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -55,6 +57,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          START_FILMING=false
           if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
             PROFILE=.github/config/business-profile.json
             EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
@@ -63,17 +66,23 @@ jobs:
             NORMALIZED=$(printf '%s' "$RAW_COMMENT" | tr '[:lower:]' '[:upper:]' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s/[[:space:]]+/ /g')
 
             if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
-              echo "Handoff testi yalnız yetkili işletme sahibi tarafından başlatılabilir: $COMMENT_AUTHOR"
+              echo "Handoff komutu yalnız yetkili işletme sahibi tarafından verilebilir: $COMMENT_AUTHOR"
               exit 1
             fi
-            if [[ ! "$NORMALIZED" =~ ^TEST[[:space:]]+HANDOFF[[:space:]]+([123])$ ]]; then
-              echo "Yorum geçerli TEST HANDOFF komutu değil."
+
+            if [[ "$NORMALIZED" =~ ^TEST[[:space:]]+HANDOFF[[:space:]]+([123])$ ]]; then
+              EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
+              TEST_MODE=true
+            elif [[ "$NORMALIZED" =~ ^ÇEKİMİ[[:space:]]+BAŞLAT[[:space:]]+([123])$ ]]; then
+              EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
+              TEST_MODE=false
+              START_FILMING=true
+            else
+              echo "Yorum geçerli handoff komutu değil."
               exit 1
             fi
 
             ISSUE_NUMBER="${{ github.event.issue.number }}"
-            EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
-            TEST_MODE=true
           else
             ISSUE_NUMBER="${{ inputs.issue_number }}"
             EXPECTED_SCENARIO="${{ inputs.scenario }}"
@@ -84,6 +93,7 @@ jobs:
             echo "ISSUE_NUMBER=$ISSUE_NUMBER"
             echo "EXPECTED_SCENARIO=$EXPECTED_SCENARIO"
             echo "TEST_MODE=$TEST_MODE"
+            echo "START_FILMING=$START_FILMING"
           } >> "$GITHUB_ENV"
 
       - name: Issue ve seçim sözleşmesini doğrula
@@ -130,11 +140,15 @@ jobs:
               echo "- AI kullanımı: 0 token"
               echo "- Web araması: 0"
               echo "- Issue/etiket değişikliği: yok"
-              echo "- Çekim Paketi Ajanı: otomatik başlatılmadı"
+              echo "- Çekim Paketi Ajanı: başlatılmadı"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
+          if [[ "$STATE" != "OPEN" ]]; then
+            echo "Gerçek üretim yalnız açık Nihai Senaryolar Issue'sundan başlatılabilir: state=$STATE"
+            exit 1
+          fi
           if grep -qx 'sistem-testi' /tmp/labels.txt; then
             echo "Sistem testi gerçek üretim handoff'una giremez."
             exit 1
@@ -164,13 +178,52 @@ jobs:
             exit 1
           fi
 
+          gh issue view "$ISSUE_NUMBER" --comments --json comments \
+            --jq '.comments[].body // ""' > /tmp/comments.txt
+          HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
+          if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
+            echo "Seçim Kapısının geçerli handoff işareti bulunamadı."
+            exit 1
+          fi
+
           {
             echo "### Çekim handoff kapısı — üretim doğrulaması başarılı"
             echo "- Kaynak: $URL"
             echo "- Issue: $ISSUE_NUMBER"
             echo "- Senaryo: $ACTUAL_SCENARIO"
             echo "- State: $STATE"
-            echo "- AI kullanımı: 0 token"
-            echo "- Çekim Paketi Ajanı: otomatik başlatılmadı"
-            echo "- Sonraki güvenli adım: Çekim Paketi Ajanını bu Issue numarasıyla açıkça çalıştırmak"
+            echo "- AI kullanımı (kapı): 0 token"
+            echo "- Seçim Kapısı işareti: doğrulandı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Çekim Paketi Ajanını kesin handoff ile başlat
+        if: env.TEST_MODE != 'true' && env.START_FILMING == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg issue "$ISSUE_NUMBER" \
+            --arg scenario "$EXPECTED_SCENARIO" \
+            '{
+              ref: "main",
+              inputs: {
+                test_mode: false,
+                source_issue_number: $issue,
+                source_scenario: $scenario
+              }
+            }' > /tmp/dispatch.json
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GH_REPO/actions/workflows/filming-package-agent-v3.yml.yml/dispatches" \
+            --input /tmp/dispatch.json
+
+          {
+            echo "### Çekim Paketi Ajanı başlatıldı"
+            echo "- Kesin kaynak Issue: #$ISSUE_NUMBER"
+            echo "- Kesin senaryo: $EXPECTED_SCENARIO"
+            echo "- Başlatma komutu: Eren tarafından açıkça verildi"
+            echo "- Bu kapıda AI kullanımı: 0 token"
           } >> "$GITHUB_STEP_SUMMARY"
