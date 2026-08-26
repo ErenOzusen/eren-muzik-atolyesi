@@ -3,7 +3,8 @@
 
 The router keeps agent workflows independent from a single LLM vendor.
 It tries configured providers in order, skips providers without credentials/model
-configuration, and falls back on retryable API failures or unusable responses.
+configuration, and falls back on API failures, unusable responses, or outputs
+that fail an optional deterministic quality contract.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+from output_contract import load_contract, validate_text
 
 
 def load_json(path: str) -> dict[str, Any]:
@@ -127,17 +130,17 @@ def call_openai_chat(
 
     status, data = request_json(
         endpoint,
-        {
+        api_key=api_key if False else {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        {
+        payload={
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
             "stream": False,
         },
-        timeout,
+        timeout=timeout,
     )
     text = ""
     finish_reason = None
@@ -170,6 +173,12 @@ def usable(result: dict[str, Any]) -> bool:
     return True
 
 
+def quality_errors(text: str, contract: dict[str, Any] | None) -> list[str]:
+    if contract is None:
+        return []
+    return validate_text(text, contract)
+
+
 def error_message(result: dict[str, Any]) -> str:
     error = result.get("raw_error")
     if isinstance(error, dict):
@@ -197,6 +206,11 @@ def main() -> None:
     parser.add_argument("--max-tokens", required=True, type=int)
     parser.add_argument("--primary-model", default="")
     parser.add_argument("--provider-order", default="")
+    parser.add_argument(
+        "--quality-contract",
+        default="",
+        help="Opsiyonel yerel JSON çıktı sözleşmesi. Başarısız aday reddedilir ve sıradaki provider denenir.",
+    )
     args = parser.parse_args()
 
     config = load_json(args.config)
@@ -208,6 +222,11 @@ def main() -> None:
     retry_statuses = set(routing.get("retry_http_statuses") or [408, 429, 500, 502, 503, 504])
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
     system_prompt = Path(args.system_file).read_text(encoding="utf-8") if args.system_file else ""
+
+    try:
+        contract = load_contract(args.quality_contract) if args.quality_contract else None
+    except Exception as exc:
+        raise SystemExit(f"Kalite sözleşmesi yüklenemedi: {exc}") from exc
 
     attempts: list[dict[str, Any]] = []
 
@@ -264,7 +283,16 @@ def main() -> None:
         }
 
         if usable(result):
+            errors = quality_errors(result["text"], contract)
+            if errors:
+                attempt["status"] = "rejected_quality"
+                attempt["reason"] = "quality_contract_failed"
+                attempt["quality_errors"] = errors[:20]
+                attempts.append(attempt)
+                continue
+
             attempt["status"] = "success"
+            attempt["quality_contract"] = "passed" if contract is not None else "not_requested"
             attempts.append(attempt)
             Path(args.output_file).write_text(result["text"].strip() + "\n", encoding="utf-8")
             total_input_tokens, total_output_tokens = usage_totals(attempts)
@@ -276,6 +304,8 @@ def main() -> None:
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
                 "stop_reason": result.get("stop_reason"),
+                "quality_contract": args.quality_contract or None,
+                "quality_passed": True if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
                 "attempts": attempts,
@@ -299,6 +329,8 @@ def main() -> None:
             {
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
+                "quality_contract": args.quality_contract or None,
+                "quality_passed": False if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
                 "attempts": attempts,
@@ -308,7 +340,7 @@ def main() -> None:
         ) + "\n",
         encoding="utf-8",
     )
-    print("Hiçbir yapılandırılmış AI sağlayıcısı kullanılabilir çıktı üretemedi.", file=sys.stderr)
+    print("Hiçbir yapılandırılmış AI sağlayıcısı kullanılabilir ve kaliteli çıktı üretemedi.", file=sys.stderr)
     print(json.dumps(attempts, ensure_ascii=False, indent=2), file=sys.stderr)
     raise SystemExit(1)
 
