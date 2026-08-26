@@ -2,8 +2,8 @@
 """Zero-network tests for the AI provider router.
 
 These tests exercise provider ordering, credential/model skipping, system prompt
-preservation and fallback without calling any external AI API, so they consume
-0 AI tokens.
+preservation, API fallback, and quality-contract fallback without calling any
+external AI API, so they consume 0 AI tokens.
 """
 
 from __future__ import annotations
@@ -22,6 +22,36 @@ if spec is None or spec.loader is None:
     raise RuntimeError("ai_router.py yüklenemedi")
 ai_router = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ai_router)
+
+CONTRACT_PATH = ROUTER_PATH.parent.parent / "config" / "contracts" / "filming-package.json"
+
+
+def good_filming_package() -> str:
+    return """# 🎥 EREN MÜZİK ATÖLYESİ — TELEFONLA ÇEKİM PAKETİ
+
+## 1. Çekimden Önce Ortak Hazırlık
+Telefonu hazırla. Pil, depolama ve Rahatsız Etmeyin ayarını kontrol et. Sessiz odada kısa deneme kaydı al.
+
+## 2. Oda ve Telefon Yerleşimi
+Pencere önde olsun. Telefonu güvenli bir yüzeye sabitle ve düşme kontrolü yap.
+
+## 3. Seçilen Senaryo Çekim Planı
+Sıra | Bölüm | Telefon/Kadraj | Eren'in Yapacağı | Ses/Işık | Kontrol
+--- | --- | --- | --- | --- | ---
+1 | Kanca | Yatay yakın plan | Metni söyle | Pencere ışığı | Ses patlamıyor
+2 | Gösterim | Eller ve gitar | Bölümü çal | Sessiz oda | Kadraj temiz
+3 | CTA | Orta plan | CTA'yı söyle | Aynı ışık | Metin tam
+
+## 4. Shorts/Reels Dikey Çekimi
+Aynı kancayı ayrıca dikey çek. Telefonu güvenli biçimde yeniden konumlandır.
+
+## 5. En Verimli Çekim Sırası
+Önce tüm yatay planları, ardından dikey planı çek. Telefon konumunu gereksiz yere değiştirme.
+
+## 6. Çekim Sonu Dosya Kontrolü
+Dosyaları aç, ses ve görüntüyü kontrol et. Eksik kayıt varsa yalnız o bölümü yeniden çek.
+
+""" + ("Kontrol notu. " * 30)
 
 
 class RouterUnitTests(unittest.TestCase):
@@ -114,20 +144,7 @@ class RouterUnitTests(unittest.TestCase):
         self.assertEqual(ai_router.usage_totals(attempts), (220, 25))
 
     def test_provider_order_and_fallback_can_be_simulated_without_network(self) -> None:
-        config = {
-            "routing": {
-                "default_order": ["anthropic", "openai", "deepseek", "qwen"],
-                "timeout_seconds": 5,
-                "retry_http_statuses": [429, 500, 599],
-            },
-            "providers": {
-                "anthropic": {"api_style": "anthropic_messages"},
-                "openai": {"api_style": "openai_chat"},
-                "deepseek": {"api_style": "openai_chat"},
-                "qwen": {"api_style": "openai_chat"},
-            },
-        }
-        order = config["routing"]["default_order"]
+        order = ["anthropic", "openai", "deepseek", "qwen"]
         fixtures = {
             "anthropic": {"http_status": 429, "text": "", "stop_reason": None},
             "openai": {"http_status": 200, "text": "AI_ROUTER_OK", "stop_reason": "stop"},
@@ -144,6 +161,55 @@ class RouterUnitTests(unittest.TestCase):
 
         self.assertEqual(attempts, ["anthropic", "openai"])
         self.assertEqual(winner, "openai")
+
+    def test_quality_failure_falls_through_to_next_provider_without_network(self) -> None:
+        contract = ai_router.load_contract(str(CONTRACT_PATH))
+        order = ["anthropic", "openai"]
+        fixtures = {
+            "anthropic": {
+                "http_status": 200,
+                "text": "Teknik olarak cevap geldi ama çekim paketi biçimi yanlış.",
+                "stop_reason": "end_turn",
+                "input_tokens": 90,
+                "output_tokens": 20,
+            },
+            "openai": {
+                "http_status": 200,
+                "text": good_filming_package(),
+                "stop_reason": "stop",
+                "input_tokens": 100,
+                "output_tokens": 70,
+            },
+        }
+        attempts = []
+        winner = None
+        for provider_name in order:
+            result = fixtures[provider_name]
+            attempt = {
+                "provider": provider_name,
+                "input_tokens": result["input_tokens"],
+                "output_tokens": result["output_tokens"],
+            }
+            if not ai_router.usable(result):
+                attempt["status"] = "failed"
+                attempts.append(attempt)
+                continue
+            errors = ai_router.quality_errors(result["text"], contract)
+            if errors:
+                attempt["status"] = "rejected_quality"
+                attempts.append(attempt)
+                continue
+            attempt["status"] = "success"
+            attempts.append(attempt)
+            winner = provider_name
+            break
+
+        self.assertEqual([item["status"] for item in attempts], ["rejected_quality", "success"])
+        self.assertEqual(winner, "openai")
+        self.assertEqual(ai_router.usage_totals(attempts), (190, 90))
+
+    def test_quality_contract_is_backward_compatible_when_not_requested(self) -> None:
+        self.assertEqual(ai_router.quality_errors("Herhangi bir kullanılabilir çıktı", None), [])
 
     def test_real_config_has_unique_known_provider_order(self) -> None:
         config_path = ROUTER_PATH.parent.parent / "config" / "ai-router.json"
