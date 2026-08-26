@@ -50,6 +50,20 @@ def resolve_model(name: str, provider: dict[str, Any], primary_model: str) -> st
     return default_model.strip() if isinstance(default_model, str) else ""
 
 
+def resolve_quality_contract(
+    explicit_path: str,
+    output_file: str,
+    routing: dict[str, Any],
+) -> str:
+    if explicit_path.strip():
+        return explicit_path.strip()
+    mappings = routing.get("quality_contracts_by_output")
+    if not isinstance(mappings, dict):
+        return ""
+    candidate = mappings.get(Path(output_file).name)
+    return candidate.strip() if isinstance(candidate, str) else ""
+
+
 def request_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -222,9 +236,10 @@ def main() -> None:
     retry_statuses = set(routing.get("retry_http_statuses") or [408, 429, 500, 502, 503, 504])
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
     system_prompt = Path(args.system_file).read_text(encoding="utf-8") if args.system_file else ""
+    contract_path = resolve_quality_contract(args.quality_contract, args.output_file, routing)
 
     try:
-        contract = load_contract(args.quality_contract) if args.quality_contract else None
+        contract = load_contract(contract_path) if contract_path else None
     except Exception as exc:
         raise SystemExit(f"Kalite sözleşmesi yüklenemedi: {exc}") from exc
 
@@ -261,7 +276,7 @@ def main() -> None:
             else:
                 attempts.append({"provider": provider_name, "status": "skipped", "reason": "unsupported_api_style"})
                 continue
-        except Exception as exc:  # keep fallback alive on provider-specific surprises
+        except Exception as exc:
             result = {
                 "http_status": 599,
                 "text": "",
@@ -304,7 +319,7 @@ def main() -> None:
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
                 "stop_reason": result.get("stop_reason"),
-                "quality_contract": args.quality_contract or None,
+                "quality_contract": contract_path or None,
                 "quality_passed": True if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
@@ -319,8 +334,6 @@ def main() -> None:
         attempts.append(attempt)
         status = int(result.get("http_status") or 0)
         if status not in retry_statuses and status not in {200, 599}:
-            # Authentication/config errors should not retry the same provider, but
-            # the next configured provider is still allowed to run.
             pass
 
     total_input_tokens, total_output_tokens = usage_totals(attempts)
@@ -329,7 +342,7 @@ def main() -> None:
             {
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
-                "quality_contract": args.quality_contract or None,
+                "quality_contract": contract_path or None,
                 "quality_passed": False if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
