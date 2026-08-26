@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "routing": {
+    "default_order": [
+      "anthropic",
+      "openai",
+      "deepseek",
+      "qwen"
+    ],
+    "timeout_seconds": 120,
+    "retry_http_statuses": [408, 409, 429, 500, 502, 503, 504]
+  },
+  "providers": {
+    "anthropic": {
+      "api_style": "anthropic_messages",
+      "endpoint": "https://api.anthropic.com/v1/messages",
+      "secret_env": "ANTHROPIC_API_KEY",
+      "model_env": "ANTHROPIC_MODEL",
+      "use_primary_model_as_default": true
+    },
+    "openai": {
+      "api_style": "openai_chat",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "secret_env": "OPENAI_API_KEY",
+      "model_env": "OPENAI_MODEL"
+    },
+    "deepseek": {
+      "api_style": "openai_chat",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "secret_env": "DEEPSEEK_API_KEY",
+      "model_env": "DEEPSEEK_MODEL",
+      "default_model": "deepseek-v4-pro"
+    },
+    "qwen": {
+      "api_style": "openai_chat",
+      "endpoint_env": "QWEN_CHAT_ENDPOINT",
+      "default_endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "secret_env": "DASHSCOPE_API_KEY",
+      "model_env": "QWEN_MODEL",
+      "default_model": "qwen3.8-max"
+    }
+  }
+}
