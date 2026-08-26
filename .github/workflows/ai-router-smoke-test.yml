@@ -17,8 +17,11 @@ on:
     paths:
       - ".github/workflows/ai-router-smoke-test.yml"
       - ".github/config/ai-router.json"
+      - ".github/config/contracts/**"
       - ".github/scripts/ai_router.py"
       - ".github/scripts/test_ai_router.py"
+      - ".github/scripts/output_contract.py"
+      - ".github/scripts/test_output_contract.py"
 
 jobs:
   router-smoke-test:
@@ -44,42 +47,54 @@ jobs:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
 
-      - name: Router dosyalarını ve fallback mantığını sıfır-token doğrula
+      - name: Router ve kalite fallback mantığını sıfır-token doğrula
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 -m py_compile .github/scripts/ai_router.py .github/scripts/test_ai_router.py
+          python3 -m py_compile \
+            .github/scripts/ai_router.py \
+            .github/scripts/test_ai_router.py \
+            .github/scripts/output_contract.py \
+            .github/scripts/test_output_contract.py
           python3 .github/scripts/test_ai_router.py
+          python3 .github/scripts/test_output_contract.py
 
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          path = Path('.github/config/ai-router.json')
-          config = json.loads(path.read_text(encoding='utf-8'))
-          assert config['schema_version'] == 1
-          order = config['routing']['default_order']
+          router = json.loads(Path('.github/config/ai-router.json').read_text(encoding='utf-8'))
+          assert router['schema_version'] == 1
+          order = router['routing']['default_order']
           assert order == ['anthropic', 'openai', 'deepseek', 'qwen']
           assert len(order) == len(set(order))
-          providers = config['providers']
+          providers = router['providers']
           assert set(order) <= set(providers)
           for name in order:
               provider = providers[name]
               assert provider['api_style'] in {'anthropic_messages', 'openai_chat'}
               endpoint = provider.get('endpoint') or provider.get('default_endpoint', '')
               assert endpoint.startswith('https://')
-          print('AI router yapılandırması ve fallback testleri geçerli. AI kullanımı: 0 token.')
+
+          contract = json.loads(Path('.github/config/contracts/filming-package.json').read_text(encoding='utf-8'))
+          assert contract['schema_version'] == 1
+          assert len(contract['required_regex']) >= 8
+          assert len(contract['forbidden_regex']) >= 2
+          print('Router + çıktı kalite sözleşmesi geçerli. AI kullanımı: 0 token.')
           PY
 
           {
             echo "### AI Router — Sıfır Token Doğrulaması"
             echo "- Python derleme: ✅"
             echo "- Router config: ✅"
-            echo "- Provider sıra testi: ✅"
-            echo "- Simüle Anthropic hata → OpenAI fallback: ✅"
+            echo "- Provider sıra/fallback testi: ✅"
+            echo "- System prompt koruma testi: ✅"
             echo "- Boş/truncated/filtered çıktı bloklama: ✅"
-            echo "- HTTPS endpoint kontrolü: ✅"
+            echo "- Çekim paketi kalite sözleşmesi: ✅"
+            echo "- Eksik bölüm reddi: ✅"
+            echo "- Yasak/eski onay metni reddi: ✅"
+            echo "- Fazladan senaryo başlığı reddi: ✅"
             echo "- Varsayılan sıra: Anthropic → OpenAI → DeepSeek → Qwen"
             echo "- Harici AI isteği: 0"
             echo "- AI kullanımı: 0 token"
