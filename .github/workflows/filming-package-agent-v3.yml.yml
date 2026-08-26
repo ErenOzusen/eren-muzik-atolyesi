@@ -21,6 +21,14 @@ name: Çekim Paketi Ajanı
           - "1"
           - "2"
           - "3"
+      source_issue_number:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin Nihai Senaryolar Issue numarası"
+        required: false
+        type: string
+      source_scenario:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin senaryo numarası: 1, 2 veya 3"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -39,10 +47,12 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      PACKAGE_VERSION: "5"
+      PACKAGE_VERSION: "6"
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
       TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '' }}
       TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
+      SOURCE_ISSUE_NUMBER: ${{ inputs.source_issue_number || '' }}
+      SOURCE_SCENARIO: ${{ inputs.source_scenario || '' }}
 
     steps:
       - name: Kaynak kodu al
@@ -53,6 +63,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          EXPECTED_SCENARIO=""
           if [[ "$TEST_MODE" == "true" ]]; then
             FINAL_NUMBER="$TEST_ISSUE_NUMBER"
             if [[ -z "$FINAL_NUMBER" ]]; then
@@ -77,19 +88,15 @@ jobs:
               exit 1
             fi
           else
-            FINAL_NUMBER=$(gh issue list \
-              --state open \
-              --label "eren-onayli" \
-              --label "cekime-hazir" \
-              --label "uretime-secildi" \
-              --search '"Nihai Senaryolar" in:title sort:updated-desc' \
-              --limit 20 \
-              --json number,title,updatedAt \
-              --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))]
-                    | sort_by(.updatedAt) | reverse | .[0].number // empty')
+            FINAL_NUMBER="$SOURCE_ISSUE_NUMBER"
+            EXPECTED_SCENARIO="$SOURCE_SCENARIO"
 
-            if [[ -z "$FINAL_NUMBER" ]]; then
-              echo "Eren tarafından onaylanmış ve üretime senaryosu seçilmiş Nihai Senaryolar Issue'su bulunamadı."
+            if [[ ! "$FINAL_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "Gerçek üretimde Handoff Kapısından gelen kesin source_issue_number zorunludur."
+              exit 1
+            fi
+            if [[ ! "$EXPECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Gerçek üretimde Handoff Kapısından gelen source_scenario yalnız 1, 2 veya 3 olabilir."
               exit 1
             fi
           fi
@@ -100,6 +107,7 @@ jobs:
 
           FINAL_TITLE=$(jq -r '.title' /tmp/final.json)
           FINAL_URL=$(jq -r '.url' /tmp/final.json)
+          FINAL_STATE=$(jq -r '.state // ""' /tmp/final.json)
 
           if [[ "$FINAL_TITLE" != Nihai\ Senaryolar* ]]; then
             echo "Kaynak Issue Nihai Senaryolar değil: $FINAL_TITLE"
@@ -112,6 +120,10 @@ jobs:
               exit 1
             fi
           else
+            if [[ "$FINAL_STATE" != "OPEN" ]]; then
+              echo "Gerçek çekim paketi yalnız açık Nihai Senaryolar Issue'sundan üretilebilir: state=$FINAL_STATE"
+              exit 1
+            fi
             if grep -qx 'sistem-testi' /tmp/final-labels.txt; then
               echo "Sistem testi gerçek çekim paketinde kaynak olarak kullanılamaz."
               exit 1
@@ -133,6 +145,19 @@ jobs:
               exit 1
             fi
             SELECTED_SCENARIO="${SELECTION_LABELS[0]##*-}"
+
+            if [[ "$SELECTED_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
+              echo "Handoff uyuşmazlığı: input senaryo=$EXPECTED_SCENARIO etiket senaryo=$SELECTED_SCENARIO"
+              exit 1
+            fi
+
+            gh issue view "$FINAL_NUMBER" --comments --json comments \
+              --jq '.comments[].body // ""' > /tmp/final-comments.txt
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$FINAL_NUMBER scenario=$EXPECTED_SCENARIO -->"
+            if ! grep -Fqx "$HANDOFF_MARKER" /tmp/final-comments.txt; then
+              echo "Geçerli Seçim Kapısı handoff işareti bulunamadı; gerçek üretim durduruldu."
+              exit 1
+            fi
           fi
 
           SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
@@ -236,6 +261,14 @@ jobs:
               echo "- Web araması: 0"
               echo "- Issue/etiket değişikliği: yapılmadı"
               echo "- Gerçek çekim paketi: oluşturulmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Deterministik handoff doğrulandı"
+              echo "- Kaynak Issue: #$FINAL_NUMBER"
+              echo "- Handoff senaryosu: $EXPECTED_SCENARIO"
+              echo "- Etiketten doğrulanan senaryo: $SELECTED_SCENARIO"
+              echo "- Seçim Kapısı işareti: doğrulandı"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
