@@ -228,7 +228,7 @@ jobs:
             echo "- Hiçbir AI sağlayıcısına canlı çağrı beklenmiyor"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Çekim Paketi Ajanını kesin handoff ile başlat
+      - name: Router'lı Çekim Paketi Ajanını kesin handoff ile başlat
         if: env.TEST_MODE != 'true' && env.START_FILMING == 'true'
         shell: bash
         run: |
@@ -240,13 +240,14 @@ jobs:
             '{ref:"main",inputs:{test_mode:false,source_issue_number:$issue,source_scenario:$scenario}}' > /tmp/dispatch.json
 
           gh api --method POST -H "Accept: application/vnd.github+json" \
-            "repos/$GH_REPO/actions/workflows/filming-package-agent-v3.yml.yml/dispatches" \
+            "repos/$GH_REPO/actions/workflows/filming-package-agent-v4-router.yml/dispatches" \
             --input /tmp/dispatch.json
 
           {
-            echo "### Çekim Paketi Ajanı başlatıldı"
+            echo "### Router'lı Çekim Paketi Ajanı başlatıldı"
             echo "- Kesin kaynak Issue: #$ISSUE_NUMBER"
             echo "- Kesin senaryo: $EXPECTED_SCENARIO"
             echo "- Başlatma komutu: Eren tarafından açıkça verildi"
             echo "- Bu kapıda AI kullanımı: 0 token"
+            echo "- AI sağlayıcısı Router tarafından üretim ajanında seçilecek"
           } >> "$GITHUB_STEP_SUMMARY"
