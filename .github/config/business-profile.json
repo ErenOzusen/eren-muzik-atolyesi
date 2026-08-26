@@ -119,6 +119,33 @@
         "Bilinen bir esere dayanmayan çalışmayı özgün egzersiz olarak adlandır.",
         "Son teknik kontrol raporunu yalnızca kaynak nihai Issue ile açıkça eşleşiyorsa uygula."
       ]
+    },
+    "final_technical_control": {
+      "max_final_chars": 24000,
+      "max_qc_chars": 18000,
+      "max_total_input_chars": 36000,
+      "max_model_output": 1800,
+      "max_blockers": 3,
+      "max_improvements": 5,
+      "require_explicit_qc_link": true,
+      "authoritative_facts": [
+        "Riff 1: 4/4, iki ölçü. Ölçü 1'de E0 dört çeyrek; ölçü 2'de E2 dört çeyrek.",
+        "Riff 2: 4/4, tek ölçü. E0, E0, A0, A2; her biri çeyrek.",
+        "Riff 3: 4/4, tek ölçü. E0 sekizlik vuruş 1; A2 sekizlik 1-ve; A0 çeyrek vuruş 2; E0 çeyrek vuruş 3; çeyrek sus vuruş 4."
+      ],
+      "domain_rules": [
+        "QC raporunun GENEL KARAR ve kesin düzeltmelerinin nihai metinde gerçekten uygulanıp uygulanmadığını kontrol et.",
+        "Ton, ilk akor, transpozisyon, yeniden armonizasyon ve pedagojik sadeleştirme kavramlarını birbirine karıştırma.",
+        "Akor, nota, tel, perde, ritim, ölçü ve TAB gösterimlerinin kendi içinde tutarlı olduğunu doğrula.",
+        "Nota olay tablosu ritim açısından esas kaynak ilan edilmişse, ölçü toplamı doğru olduğu sürece ASCII TAB boşluklarından ayrıca nota süresi uydurma.",
+        "Sayım ızgarasındaki nota saldırı noktalarını aynı karakter konumlarıyla karşılaştır; aralıkları yeniden ölçeklendirme.",
+        "Genellemeleri, fiyatları, kampanyaları, garantileri ve sonuç vaatlerini doğrulanmış gerçek gibi kabul etme.",
+        "Yalnızca kanıtlanabilir nesnel yanlış, gerçek çelişki veya çekimi engelleyen eksik veriyi bloklayıcı say.",
+        "Bir bölümün doğru olduğunu gösterdikten sonra varsayımsal gerekçeyle aynı bölümü bloklayıcı ilan etme.",
+        "Ölçü sonundaki açıkça yazılmış sus ve sonraki tekrara dönüşü normal kabul et; nota sırası belirtilmişse bunu çekim engeli sayma.",
+        "Beş dakikada öğren vaadi ile beş dakikadan kısa video süresini kendi başına çelişki sayma.",
+        "Nihai Issue yalnızca üretime seçilmiş senaryoları içeriyorsa diğer QC senaryolarının yokluğunu hata sayma; rapor kapsamını mevcut metinle sınırla."
+      ]
     }
   },
   "approval": {
