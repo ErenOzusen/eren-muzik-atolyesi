@@ -2,6 +2,12 @@ name: Haftalık Düzeltme Ajanı
 
 on:
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı ve kaynak Issue okuması yapmadan profil bağlantısını test et"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -20,9 +26,89 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v7
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE=.github/config/business-profile.json
+          python3 .github/scripts/validate_business_config.py --config "$PROFILE" --output /tmp/profile.md --test-mode true
+
+          echo "BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_CATEGORY=$(jq -r '.business.category' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "SERVICES_TEXT=$(jq -r '.offer.services | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "EQUIPMENT_TEXT=$(jq -r '.offer.available_equipment | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "RESERVATION_URL=$(jq -r '.offer.reservation_url' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PRIMARY_CTA=$(jq -r '.offer.primary_cta' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CONTENT_TOPICS_TEXT=$(jq -r '.content.content_topics | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PRIMARY_PLATFORM=$(jq -r '.content.primary_platform' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "SECONDARY_FORMATS_TEXT=$(jq -r '.content.secondary_formats | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "APPROVAL_COMMAND=$(jq -r '.approval.production_command' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "DEFAULT_MODEL=$(jq -r '.cost_control.default_model' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_SCENARIO_COUNT=$(jq -r '.content.correction.scenario_count' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_MAX_BASE_CHARS=$(jq -r '.content.correction.max_base_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_MAX_QC_CHARS=$(jq -r '.content.correction.max_qc_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_MAX_FINAL_CHECK_CHARS=$(jq -r '.content.correction.max_final_check_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_MAX_TOTAL_INPUT_CHARS=$(jq -r '.content.correction.max_total_input_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_MAX_MODEL_OUTPUT=$(jq -r '.content.correction.max_model_output' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CORRECTION_DOMAIN_RULES_TEXT=$(jq -r '.content.correction.domain_rules | join("; ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Düzeltme ajanı profil bağlantısını sıfır-token ile test et
+        if: ${{ env.TEST_MODE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TITLE="TEST Merkezi Profil Bağlantısı - Düzeltme Ajanı"
+          {
+            echo "<!-- PROFILE_BINDING_USAGE_V1 agent=weekly-script-correction test=true input=0 output=0 web_search=0 source_issue_read=0 profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ✅ Düzeltme Ajanı merkezi işletme profiline güvenle bağlandı."
+            echo
+            echo "# 🔗 DÜZELTME AJANI PROFİL BAĞLANTI TESTİ"
+            echo
+            echo "- **Marka:** $BRAND_NAME"
+            echo "- **İşletme sahibi:** $OWNER_NAME"
+            echo "- **Faaliyet alanı:** $BUSINESS_CATEGORY"
+            echo "- **Hizmetler:** $SERVICES_TEXT"
+            echo "- **Mevcut ekipman:** $EQUIPMENT_TEXT"
+            echo "- **İçerik konuları:** $CONTENT_TOPICS_TEXT"
+            echo "- **Platformlar:** $PRIMARY_PLATFORM; $SECONDARY_FORMATS_TEXT"
+            echo "- **Senaryo sayısı:** $CORRECTION_SCENARIO_COUNT"
+            echo "- **Toplam kaynak sınırı:** $CORRECTION_MAX_TOTAL_INPUT_CHARS karakter"
+            echo "- **Model / çıktı bütçesi:** $DEFAULT_MODEL / $CORRECTION_MAX_MODEL_OUTPUT token"
+            echo "- **Sektörel düzeltme kuralı:** $(awk -F';' '{print NF}' <<< "$CORRECTION_DOMAIN_RULES_TEXT")"
+            echo "- **AI kullanımı:** 0 giriş, 0 çıkış tokenı; 0 web araması"
+            echo "- **Kaynak Issue okuma:** 0"
+            echo "- **Gerçek nihai senaryo:** Oluşturulmadı veya değiştirilmedi"
+          } > /tmp/correction-profile-test.md
+
+          gh label create profil-baglantisi --color 0E8A16 --description "Ajanın merkezi işletme profili bağlantısı" --force
+          gh label create sistem-testi --color BFD4F2 --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" --force
+          NUMBER=$(gh issue list --state all --search "\"$TITLE\" in:title" --limit 20 --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n 1)
+          if [[ -n "$NUMBER" ]]; then
+            gh issue edit "$NUMBER" --body-file /tmp/correction-profile-test.md --add-label profil-baglantisi --add-label sistem-testi
+            URL=$(gh issue view "$NUMBER" --json url --jq '.url')
+          else
+            URL=$(gh issue create --title "$TITLE" --body-file /tmp/correction-profile-test.md --label profil-baglantisi --label sistem-testi)
+          fi
+
+          {
+            echo "### Düzeltme ajanı profil testi başarılı"
+            echo "- AI tokenı: 0 giriş / 0 çıkış"
+            echo "- Web araması: 0"
+            echo "- Kaynak Issue okuma: 0"
+            echo "- Test kaydı: $URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Kaynak senaryoları ve kalite raporunu bul
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -40,13 +126,15 @@ jobs:
           fi
 
           gh issue view "$QC_NUMBER" --json title,body,url > /tmp/qc.json
-          jq -r '.body' /tmp/qc.json > /tmp/qc-report.md
-
+          jq -r '.body' /tmp/qc.json > /tmp/qc-report.raw.md
           QC_URL=$(jq -r '.url' /tmp/qc.json)
-          SCRIPT_NUMBER=$(grep -oiE 'Issue[[:space:]]*(\[#|#)?[0-9]+' /tmp/qc-report.md \
-            | grep -oE '[0-9]+' \
-            | head -n 1 || true)
 
+          SCRIPT_NUMBER=$(grep -oE 'issues/[0-9]+' /tmp/qc-report.raw.md | grep -oE '[0-9]+' | head -n 1 || true)
+          if [[ -z "$SCRIPT_NUMBER" ]]; then
+            SCRIPT_NUMBER=$(grep -oiE 'Issue[[:space:]]*(\[#|#)?[0-9]+' /tmp/qc-report.raw.md \
+              | grep -oE '[0-9]+' \
+              | head -n 1 || true)
+          fi
           if [[ -z "$SCRIPT_NUMBER" ]]; then
             SCRIPT_NUMBER=$(gh issue list \
               --state all \
@@ -62,13 +150,17 @@ jobs:
           fi
 
           gh issue view "$SCRIPT_NUMBER" --json title,body,url > /tmp/scripts.json
-          jq -r '.body' /tmp/scripts.json > /tmp/scripts.md
-
+          SCRIPT_TITLE=$(jq -r '.title' /tmp/scripts.json)
+          if [[ "$SCRIPT_TITLE" != Haftalık\ Senaryolar* ]]; then
+            echo "QC raporundan çözülen #$SCRIPT_NUMBER haftalık senaryo Issue'su değil: $SCRIPT_TITLE"
+            exit 1
+          fi
+          jq -r '.body' /tmp/scripts.json > /tmp/scripts.raw.md
           SCRIPT_URL=$(jq -r '.url' /tmp/scripts.json)
-          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+
+          RUN_DATE=$(TZ="$BUSINESS_TIMEZONE" date +%d-%m-%Y)
           CURRENT_FINAL_TITLE="Nihai Senaryolar - $RUN_DATE"
           FINAL_CHECK_TITLE="Son Teknik Kontrol Raporu - $RUN_DATE"
-
           CURRENT_FINAL_NUMBER=$(gh issue list \
             --state all \
             --search "\"$CURRENT_FINAL_TITLE\" in:title sort:updated-desc" \
@@ -77,16 +169,31 @@ jobs:
             --jq ".[] | select(.title == \"$CURRENT_FINAL_TITLE\") | .number" \
             | head -n 1)
 
+          SOURCE_MODE="original"
+          BASE_URL="$SCRIPT_URL"
+          cp /tmp/scripts.raw.md /tmp/base-scripts.raw.md
+          CURRENT_FINAL_URL="Yok"
           if [[ -n "$CURRENT_FINAL_NUMBER" ]]; then
             gh issue view "$CURRENT_FINAL_NUMBER" --json body,url > /tmp/current-final.json
-            jq -r '.body' /tmp/current-final.json > /tmp/current-final-scripts.md
-            CURRENT_FINAL_URL=$(jq -r '.url' /tmp/current-final.json)
-          else
-            echo "Bu haftaya ait mevcut nihai senaryo taslağı henüz yok." \
-              > /tmp/current-final-scripts.md
-            CURRENT_FINAL_URL="Yok"
+            jq -r '.body' /tmp/current-final.json > /tmp/current-final-candidate.md
+            COMPLETE_FINAL=true
+            for NUMBER in $(seq 1 "$CORRECTION_SCENARIO_COUNT"); do
+              if ! grep -Eiq "SENARYO[[:space:]]*$NUMBER([^0-9]|$)" /tmp/current-final-candidate.md; then
+                COMPLETE_FINAL=false
+              fi
+            done
+            if [[ "$COMPLETE_FINAL" == "true" ]]; then
+              cp /tmp/current-final-candidate.md /tmp/base-scripts.raw.md
+              CURRENT_FINAL_URL=$(jq -r '.url' /tmp/current-final.json)
+              BASE_URL="$CURRENT_FINAL_URL"
+              SOURCE_MODE="current_final"
+            else
+              echo "Mevcut nihai taslak üç senaryonun tamamını içermediği için temel kaynak yapılmadı."
+            fi
           fi
 
+          : > /tmp/final-technical-report.raw.md
+          FINAL_CHECK_URL="Yok"
           FINAL_CHECK_NUMBER=$(gh issue list \
             --state all \
             --search "\"$FINAL_CHECK_TITLE\" in:title sort:updated-desc" \
@@ -95,20 +202,18 @@ jobs:
             --jq ".[] | select(.title == \"$FINAL_CHECK_TITLE\") | .number" \
             | head -n 1)
 
-          if [[ -n "$FINAL_CHECK_NUMBER" ]]; then
+          if [[ -n "$FINAL_CHECK_NUMBER" && "$SOURCE_MODE" == "current_final" ]]; then
             gh issue view "$FINAL_CHECK_NUMBER" --json body,url > /tmp/final-check.json
-            jq -r '.body' /tmp/final-check.json > /tmp/final-technical-report.md
-            FINAL_CHECK_URL=$(jq -r '.url' /tmp/final-check.json)
-
-            if ! grep -q 'DÜZELTME GEREKİYOR' /tmp/final-technical-report.md; then
-              echo "Bu haftaya ait bloklayıcı Son Teknik Kontrol bulgusu yok." \
-                > /tmp/final-technical-report.md
-              FINAL_CHECK_URL="Yok"
+            jq -r '.body' /tmp/final-check.json > /tmp/final-check-candidate.md
+            CANDIDATE_URL=$(jq -r '.url' /tmp/final-check.json)
+            if grep -q 'DÜZELTME GEREKİYOR' /tmp/final-check-candidate.md \
+              && { grep -Fq "$CURRENT_FINAL_URL" /tmp/final-check-candidate.md \
+                || grep -Eq "issues/$CURRENT_FINAL_NUMBER([^0-9]|$)" /tmp/final-check-candidate.md; }; then
+              cp /tmp/final-check-candidate.md /tmp/final-technical-report.raw.md
+              FINAL_CHECK_URL="$CANDIDATE_URL"
+            else
+              echo "Son teknik kontrol kaynak nihai Issue ile eşleşmediği veya bloklayıcı olmadığı için kullanılmadı."
             fi
-          else
-            echo "Bu haftaya ait Son Teknik Kontrol raporu henüz yok." \
-              > /tmp/final-technical-report.md
-            FINAL_CHECK_URL="Yok"
           fi
 
           {
@@ -116,112 +221,163 @@ jobs:
             echo "QC_URL=$QC_URL"
             echo "SCRIPT_NUMBER=$SCRIPT_NUMBER"
             echo "SCRIPT_URL=$SCRIPT_URL"
+            echo "BASE_URL=$BASE_URL"
+            echo "SOURCE_MODE=$SOURCE_MODE"
             echo "CURRENT_FINAL_URL=$CURRENT_FINAL_URL"
             echo "FINAL_CHECK_URL=$FINAL_CHECK_URL"
           } >> "$GITHUB_ENV"
 
-      - name: Düzeltme isteğini hazırla
+      - name: Kaynakları deterministik olarak küçült ve doğrula
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          cat > /tmp/system-prompt.txt <<'PROMPT'
-          Sen Eren Müzik Atölyesi'nin nihai senaryo düzeltme editörüsün.
+          python3 - <<'PY'
+          from __future__ import annotations
 
-          Görevin, özgün üç senaryoyu kalite kontrol raporundaki bulgulara göre
-          düzeltmek ve çekime hazır nihai senaryoları üretmektir.
+          import os
+          import re
+          from pathlib import Path
 
-          KURALLAR:
-          1. Yeni web araştırması yapma ve kaynak uydurma.
-          2. QC raporunda YANLIŞ veya YANILTICI olan her ifadeyi düzelt ya da kaldır.
-          3. BELİRSİZ iddiaları kesin gerçek gibi yazma; temkinli biçimde yeniden yaz
-             veya senaryodan çıkar.
-          4. DOĞRU bulunan ifadeleri gereksiz yere değiştirme.
-          5. Pedagojik sadeleştirmeyi, doğrulanabilir tarihsel/teorik gerçek gibi sunma.
-          6. Bir parçanın tonu ile ilk akorunu birbirine karıştırma.
-          7. Ekipman, fiyat ve maliyet ifadelerini koşullara göre değişebilecek şekilde yaz.
-          8. Bas gitarın rolü gibi müzikal genellemeleri mutlak ifadelerle anlatma.
-          9. Özgün senaryolardaki iyi kanca, akış ve Eren'in samimi anlatım tarzını koru.
-          10. Tam olarak üç senaryo üret. Eksik senaryo bırakma.
-          11. QC raporunda taslak ve nihai karar çelişirse en sonda yer alan GENEL KARAR,
-              SON EDİT veya önerilen düzeltme önceliklidir. Daha temkinli ifade kazanır.
-          12. C–G–Em–F düzenlemesini yalnızca "aynı tonda değil" diye açıklamakla yetinme.
-              Bunun orijinalin birebir transpozisyonu olmadığını, farklı akor grubu kullanan
-              öğrenme amaçlı sadeleştirilmiş/yeniden armonize edilmiş bir düzenleme olduğunu söyle.
-          13. Bas gitarın işlevini anlatırken "ritim ile melodi" deme. "Ritim ile armoni
-              arasında köprü" ifadesini kullan; bunun pedagojik bir benzetme olduğunu koru.
-          14. Bas gitarın taşınabilirliğinden veya sessiz çalışmadan söz edilen her yerde,
-              sesi duymak için amfi, kulaklık amfisi ya da ses arabirimi gerekebileceğini belirt.
-          15. Kaynaklarda doğrulanmış güncel bir kampanya yoksa indirim, özel teklif veya
-              kampanya uydurma. CTA'yı ders bilgisi ve ön görüşme bağlantısına yönlendir.
-          16. Bir riff dersi çekime hazır sayılabilmesi için her riffte tel/perde dizisi,
-              ritim veya sayım, önerilen tempo ve okunabilir TAB bulunmalı. Bilinen bir
-              şarkı riffi verilmemişse "gerçek riff" deme; "özgün egzersiz riffi" de.
-          17. Çıktıyı vermeden önce sessizce madde madde öz denetim yap. "Uygulanan QC
-              düzeltmeleri" bölümünde yalnızca metinde gerçekten uyguladığın değişiklikleri yaz.
-          18. Aynı haftaya ait Son Teknik Kontrol raporu varsa bu rapor en güncel ve en
-              yüksek öncelikli geri bildirimdir. Tüm bloklayıcı bulguları eksiksiz uygula.
-              Aynı haftaya ait mevcut nihai taslak varsa düzeltmeleri bu taslak üzerinde yap;
-              özgün senaryoları yalnızca amaç ve kapsam referansı olarak kullan.
-          19. Son Teknik Kontrol kesin bir TAB düzeltmesi verdiyse onu ritim ve hizalama
-              mantığını bozmadan kullan. Her TAB için sessizce nota olaylarını soldan sağa
-              say; aynı sütundaki notaların istemeden birlikte çalınmadığını doğrula.
-          20. Dört dörtlük ölçüde nota değerlerinin toplamını kontrol et. Sekiz çeyrek
-              notayı iki ölçü olarak açıkça göster; eksik vuruş veya belirsiz tire bırakma.
-          21. "Neredeyse her şarkı", "en sağlam temel" gibi kanıtlanmamış genellemeleri
-              daha dar ve pedagojik olarak açıklanabilir ifadelerle değiştir.
-          22. Başlık ve SEO alanlarında "#1" kullanma; GitHub bağlantısını önlemek için
-              "Ders 1" veya "Bas Gitar — Ders 1" yaz.
 
-          HER SENARYODA ŞUNLAR BULUNMALI:
-          - Başlık ve amaç
-          - Tahmini süre ve video formatı
-          - İlk 3 saniyelik kanca
-          - Zaman kodlu konuşma ve çekim akışı
-          - Ekran yazıları veya çekim notları
-          - Kapanış ve CTA
-          - Shorts/Reels kesiti
-          - SEO başlığı
-          - Açıklamanın ilk cümlesi
-          - Etiketler
-          - Playlist önerisi
-          - Ders içeriği gerektiriyorsa somut akor/TAB/nota veya uygulama bilgisi
-          - En fazla üç maddelik "Uygulanan QC düzeltmeleri" bölümü
+          def clean(path: str, kind: str) -> str:
+              text = Path(path).read_text(encoding="utf-8")
+              text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+              text = re.sub(r"(?m)^> \*\*Durum:\*\*.*\n?", "", text)
+              text = re.sub(
+                  r"(?m)^\*\*(?:Kaynak senaryolar|Kalite kontrol raporu|Son teknik kontrol raporu|Temel alınan metin):\*\*.*\n?",
+                  "",
+                  text,
+              )
+              if kind == "qc":
+                  text = re.sub(
+                      r"(?ms)^## Kullanılan Kaynaklar\s*\n.*?(?=^GENEL KARAR:|\Z)",
+                      "",
+                      text,
+                  )
+              text = re.sub(
+                  r"(?ms)\n---\s*\nOnaylamak için bu Issue'ya.*\Z",
+                  "",
+                  text,
+              )
+              text = re.sub(r"[ \t]+$", "", text, flags=re.MULTILINE)
+              text = re.sub(r"\n{3,}", "\n\n", text)
+              return text.strip() + "\n" if text.strip() else ""
 
-          Yalnızca nihai Markdown metnini yaz. Kod bloğu, ön açıklama veya özür ekleme.
-          Metin "# 🎬 EREN MÜZİK ATÖLYESİ — NİHAİ SENARYOLAR" başlığıyla başlasın.
+
+          base = clean("/tmp/base-scripts.raw.md", "base")
+          qc = clean("/tmp/qc-report.raw.md", "qc")
+          final_check = clean("/tmp/final-technical-report.raw.md", "final_check")
+
+          limits = {
+              "temel metin": (len(base), int(os.environ["CORRECTION_MAX_BASE_CHARS"])),
+              "kalite raporu": (len(qc), int(os.environ["CORRECTION_MAX_QC_CHARS"])),
+              "son teknik kontrol": (
+                  len(final_check),
+                  int(os.environ["CORRECTION_MAX_FINAL_CHECK_CHARS"]),
+              ),
+          }
+          for label, (actual, maximum) in limits.items():
+              if actual > maximum:
+                  raise SystemExit(
+                      f"{label} güvenli sınırı aşıyor: {actual} > {maximum}. "
+                      "Kaliteyi korumak için sessiz kırpma yapılmadı."
+                  )
+
+          total = len(base) + len(qc) + len(final_check)
+          total_limit = int(os.environ["CORRECTION_MAX_TOTAL_INPUT_CHARS"])
+          if total > total_limit:
+              raise SystemExit(
+                  f"Toplam düzeltme girdisi güvenli sınırı aşıyor: {total} > {total_limit}. "
+                  "Kaliteyi korumak için sessiz kırpma yapılmadı."
+              )
+
+          scenario_count = int(os.environ["CORRECTION_SCENARIO_COUNT"])
+          for number in range(1, scenario_count + 1):
+              if not re.search(rf"(?i)SENARYO\s*{number}\b", base):
+                  raise SystemExit(f"Temel metinde SENARYO {number} bulunamadı.")
+
+          Path("/tmp/base-scripts.md").write_text(base, encoding="utf-8")
+          Path("/tmp/qc-report.md").write_text(qc, encoding="utf-8")
+          Path("/tmp/final-technical-report.md").write_text(final_check, encoding="utf-8")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
+              env_file.write(f"CORRECTION_SOURCE_CHARS={total}\n")
+
+          print(
+              f"correction_sources_ok base={len(base)} qc={len(qc)} "
+              f"final_check={len(final_check)} total={total}"
+          )
+          PY
+
+      - name: Düzeltme isteğini hazırla
+        if: ${{ env.TEST_MODE != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/system-prompt.txt <<PROMPT
+          Sen $BRAND_NAME için çalışan nihai senaryo düzeltme editörüsün.
+
+          MERKEZİ İŞLETME PROFİLİ:
+          - Faaliyet alanı: $BUSINESS_CATEGORY
+          - Hizmetler: $SERVICES_TEXT
+          - Mevcut ekipman: $EQUIPMENT_TEXT
+          - İçerik konuları: $CONTENT_TOPICS_TEXT
+          - Platformlar: $PRIMARY_PLATFORM; $SECONDARY_FORMATS_TEXT
+          - Ana CTA: $PRIMARY_CTA — $RESERVATION_URL
+
+          ÖNCELİK VE GÜVENİLİRLİK:
+          1. Varsa kaynakla eşleştirilmiş Son Teknik Kontrol, ardından Kalite Kontrol, ardından temel metin gelir.
+          2. Yeni web araştırması yapma; kaynak, fiyat, kampanya veya doğrulanmamış bilgi uydurma.
+          3. YANLIŞ/YANILTICI bulguları düzelt veya kaldır. BELİRSİZ iddiaları temkinli yaz.
+          4. DOĞRU bulunan içeriği, güçlü kancayı, akışı ve samimi anlatım tarzını gereksiz değiştirme.
+          5. Yalnızca profildeki hizmet, ekipman ve CTA gerçeklerini kullan.
+          6. Tüm düzeltmeleri tek geçişte uygula; çıktıda analiz, özür veya kaynak uydurması gösterme.
+
+          SEKTÖREL KURALLAR:
+          $CORRECTION_DOMAIN_RULES_TEXT
+
+          ÇIKTI SÖZLEŞMESİ:
+          - Tam olarak $CORRECTION_SCENARIO_COUNT senaryo üret.
+          - İlk satır tam olarak: # 🎬 $BRAND_NAME — NİHAİ SENARYOLAR
+          - Senaryo başlıklarını sırasıyla "## SENARYO 1:", "## SENARYO 2:", "## SENARYO 3:" biçiminde yaz.
+          - Her senaryoda başlık/amaç, süre/format, ilk 3 saniye kancası, zaman kodlu konuşma ve çekim akışı, ekran notları, kapanış/CTA, Shorts/Reels kesiti, SEO başlığı, açıklama ilk cümlesi, etiketler, playlist ve gerekiyorsa somut akor/TAB/nota bilgisi bulunsun.
+          - Her senaryoda en fazla üç maddelik "Uygulanan QC düzeltmeleri" bölümü bulunsun; yalnızca gerçekten yapılan değişiklikleri yaz.
+          - Yalnızca nihai Markdown metnini döndür; kod çiti veya ön açıklama ekleme.
           PROMPT
 
           jq -n \
             --rawfile system /tmp/system-prompt.txt \
-            --rawfile scripts /tmp/scripts.md \
+            --rawfile base /tmp/base-scripts.md \
             --rawfile qc /tmp/qc-report.md \
-            --rawfile current_final /tmp/current-final-scripts.md \
             --rawfile final_check /tmp/final-technical-report.md \
-            --arg script_url "$SCRIPT_URL" \
+            --arg model "$DEFAULT_MODEL" \
+            --argjson max_tokens "$CORRECTION_MAX_MODEL_OUTPUT" \
+            --arg base_url "$BASE_URL" \
             --arg qc_url "$QC_URL" \
-            --arg current_final_url "$CURRENT_FINAL_URL" \
             --arg final_check_url "$FINAL_CHECK_URL" \
             '{
-              model: "claude-sonnet-4-6",
-              max_tokens: 5000,
-              temperature: 0.2,
+              model: $model,
+              max_tokens: $max_tokens,
+              temperature: 0,
               system: $system,
               messages: [
                 {
                   role: "user",
                   content: (
-                    "Aşağıdaki özgün senaryoları QC raporuna göre düzelt.\n\n" +
-                    "ÖZGÜN SENARYOLAR — " + $script_url + "\n\n" + $scripts +
+                    "TEMEL SENARYO METNİ — " + $base_url + "\n\n" + $base +
                     "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc +
-                    "\n\nMEVCUT NİHAİ TASLAK — " + $current_final_url + "\n\n" + $current_final +
-                    "\n\nSON TEKNİK KONTROL RAPORU — " + $final_check_url + "\n\n" + $final_check
+                    (if ($final_check | length) > 0 then
+                      "\n\nSON TEKNİK KONTROL RAPORU — " + $final_check_url + "\n\n" + $final_check
+                    else "" end)
                   )
                 }
               ]
             }' > /tmp/request.json
 
-      - name: Anthropic API ile senaryoları düzelt
+      - name: Anthropic API ile senaryoları tek çağrıda düzelt
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -244,6 +400,12 @@ jobs:
             exit 1
           fi
 
+          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/response.json)
+          if [[ "$STOP_REASON" != "end_turn" ]]; then
+            echo "Model çıktısı güvenli biçimde tamamlanmadı: stop_reason=$STOP_REASON"
+            exit 1
+          fi
+
           jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
             /tmp/response.json > /tmp/final-scripts.md
 
@@ -252,34 +414,60 @@ jobs:
             exit 1
           fi
 
+          EXPECTED_HEADING="# 🎬 $BRAND_NAME — NİHAİ SENARYOLAR"
+          if [[ "$(head -n 1 /tmp/final-scripts.md)" != "$EXPECTED_HEADING" ]]; then
+            echo "Nihai çıktı başlığı sözleşmeyle eşleşmiyor."
+            exit 1
+          fi
+
+          SCENARIO_HEADINGS=$(grep -Ec '^## SENARYO [123]:' /tmp/final-scripts.md || true)
+          QC_SECTIONS=$(grep -c 'Uygulanan QC düzeltmeleri' /tmp/final-scripts.md || true)
+          if [[ "$SCENARIO_HEADINGS" -ne "$CORRECTION_SCENARIO_COUNT" || "$QC_SECTIONS" -ne "$CORRECTION_SCENARIO_COUNT" ]]; then
+            echo "Nihai çıktı tam üç senaryo veya üç QC özeti içermiyor."
+            exit 1
+          fi
+
+          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
+          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
+          {
+            echo "CORRECTION_INPUT_TOKENS=$INPUT_TOKENS"
+            echo "CORRECTION_OUTPUT_TOKENS=$OUTPUT_TOKENS"
+          } >> "$GITHUB_ENV"
+
       - name: Nihai senaryoları Issue olarak yayınla
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+          RUN_DATE=$(TZ="$BUSINESS_TIMEZONE" date +%d-%m-%Y)
           TITLE="Nihai Senaryolar - $RUN_DATE"
 
           {
-            echo "> **Durum:** ⏳ Eren'in onayı bekleniyor"
+            echo "<!-- CORRECTION_AI_USAGE_V1 source_chars=$CORRECTION_SOURCE_CHARS input=$CORRECTION_INPUT_TOKENS output=$CORRECTION_OUTPUT_TOKENS web_search=0 model=$DEFAULT_MODEL source_mode=$SOURCE_MODE profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ⏳ $OWNER_NAME onayı bekleniyor"
             echo
-            echo "**Kaynak senaryolar:** $SCRIPT_URL"
+            echo "**Temel alınan metin:** $BASE_URL"
+            echo "**Kaynak haftalık senaryolar:** $SCRIPT_URL"
             echo "**Kalite kontrol raporu:** $QC_URL"
+            if [[ "$FINAL_CHECK_URL" != "Yok" ]]; then
+              echo "**Eşleştirilmiş son teknik kontrol:** $FINAL_CHECK_URL"
+            fi
             echo
             cat /tmp/final-scripts.md
             echo
             echo "---"
-            echo "Onaylamak için bu Issue'ya **ONAYLIYORUM** yaz."
+            echo "Onaylamak için bu Issue'ya **$APPROVAL_COMMAND** yaz."
           } > /tmp/issue-body.md
 
           gh label create "eren-onayi-bekliyor" \
             --color "FBCA04" \
-            --description "Nihai içerik Eren'in onayını bekliyor" \
+            --description "Nihai içerik işletme sahibi onayını bekliyor" \
             --force
 
           EXISTING_NUMBER=$(gh issue list \
             --state all \
-            --search '"Nihai Senaryolar" in:title sort:created-desc' \
+            --search "\"$TITLE\" in:title sort:updated-desc" \
             --limit 20 \
             --json number,title \
             --jq ".[] | select(.title == \"$TITLE\") | .number" \
@@ -291,16 +479,20 @@ jobs:
               --body-file /tmp/issue-body.md \
               --add-label "eren-onayi-bekliyor"
             ISSUE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-            echo "Mevcut nihai senaryo Issue'su güncellendi: $ISSUE_URL"
           else
             ISSUE_URL=$(gh issue create \
               --title "$TITLE" \
               --body-file /tmp/issue-body.md \
               --label "eren-onayi-bekliyor")
-            echo "Yeni nihai senaryo Issue'su oluşturuldu: $ISSUE_URL"
           fi
 
-          echo "### Düzeltme ajanı tamamlandı" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Kaynak senaryolar: #$SCRIPT_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Kalite raporu: #$QC_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Nihai çıktı: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Düzeltme ajanı tamamlandı"
+            echo "- Kaynak senaryolar: #$SCRIPT_NUMBER"
+            echo "- Kalite raporu: #$QC_NUMBER"
+            echo "- Temel kaynak modu: $SOURCE_MODE"
+            echo "- Kaynak karakteri: $CORRECTION_SOURCE_CHARS"
+            echo "- AI kullanımı: $CORRECTION_INPUT_TOKENS giriş / $CORRECTION_OUTPUT_TOKENS çıkış tokenı"
+            echo "- Web araması: 0"
+            echo "- Nihai çıktı: $ISSUE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
