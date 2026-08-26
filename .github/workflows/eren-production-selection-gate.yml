@@ -1,0 +1,142 @@
+name: Eren Üretim Senaryosu Seçim Kapısı
+
+"on":
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: eren-production-selection-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  select-scenario:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'Nihai Senaryolar')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Seçim komutunu güvenli biçimde doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROFILE=.github/config/business-profile.json
+          EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
+          COMMENT_AUTHOR=$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")
+          RAW_COMMENT=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+          NORMALIZED=$(printf '%s' "$RAW_COMMENT" | tr '[:lower:]' '[:upper:]' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s/[[:space:]]+/ /g')
+
+          TEST_MODE=false
+          SELECTED=""
+          if [[ "$NORMALIZED" =~ ^SEÇ[[:space:]]+([123])$ ]]; then
+            SELECTED="${BASH_REMATCH[1]}"
+          elif [[ "$NORMALIZED" =~ ^TEST[[:space:]]+SEÇ[[:space:]]+([123])$ ]]; then
+            TEST_MODE=true
+            SELECTED="${BASH_REMATCH[1]}"
+          else
+            echo "Yorum seçim komutu değil; işlem yapılmadı."
+            exit 0
+          fi
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "Seçim yalnız yetkili işletme sahibi tarafından yapılabilir: $COMMENT_AUTHOR"
+            exit 1
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels,url > /tmp/issue.json
+          ISSUE_TITLE=$(jq -r '.title' /tmp/issue.json)
+          ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+
+          if [[ "$ISSUE_TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Hedef Issue Nihai Senaryolar değil."
+            exit 1
+          fi
+
+          if ! grep -qx 'eren-onayli' /tmp/labels.txt || ! grep -qx 'cekime-hazir' /tmp/labels.txt; then
+            if [[ "$TEST_MODE" != "true" || ! grep -qx 'sistem-testi' /tmp/labels.txt ]]; then
+              echo "Senaryo seçimi için önce Eren onayı ve cekime-hazir durumu gerekli."
+              exit 1
+            fi
+          fi
+
+          if grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt; then
+            echo "Düzeltme gereken içerik üretime seçilemez."
+            exit 1
+          fi
+
+          if ! grep -Eiq "^##[[:space:]]+SENARYO[[:space:]]+$SELECTED([^0-9]|$)" /tmp/body.md; then
+            echo "Seçilen SENARYO $SELECTED nihai Issue içinde bulunamadı."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            {
+              echo "### Eren üretim seçimi — sıfır-token test başarılı"
+              echo "- Issue: $ISSUE_URL"
+              echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
+              echo "- Seçilen senaryo: $SELECTED"
+              echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+              echo "- Etiket/Issue değişikliği: yapılmadı"
+              echo "- Sonraki ajan: otomatik başlatılmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if grep -qx 'sistem-testi' /tmp/labels.txt; then
+            echo "Sistem testi üretim seçimiyle işaretlenemez. TEST SEÇ N kullan."
+            exit 1
+          fi
+
+          for N in 1 2 3; do
+            LABEL="uretim-senaryo-$N"
+            gh label create "$LABEL" \
+              --color "C5DEF5" \
+              --description "Üretime seçilen nihai senaryo $N" \
+              --force
+            if grep -qx "$LABEL" /tmp/labels.txt; then
+              gh issue edit "$ISSUE_NUMBER" --remove-label "$LABEL" > /dev/null
+            fi
+          done
+
+          gh label create "uretime-secildi" \
+            --color "0052CC" \
+            --description "Çekim için bir nihai senaryo açıkça seçildi" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --add-label "uretime-secildi" \
+            --add-label "uretim-senaryo-$SELECTED" > /dev/null
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
+          ## 🎯 Üretim senaryosu seçildi
+
+          **Seçilen:** SENARYO $SELECTED  
+          **Durum:** Çekim Paketi Ajanı bu senaryoyu kullanabilir.  
+          **Güvenlik:** Sonraki ajan otomatik başlatılmadı.
+          MESSAGE
+          )"
+
+          {
+            echo "### Eren üretim seçimi kaydedildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Seçilen senaryo: $SELECTED"
+            echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+            echo "- Sonraki ajan: otomatik başlatılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
