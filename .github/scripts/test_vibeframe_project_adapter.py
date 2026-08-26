@@ -21,20 +21,25 @@ class AdapterTests(unittest.TestCase):
         source = "## SENARYO 2: Test\nMerhaba dünya.\nCTA burada."
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "vf"
-            adapter.make_project(source, out, "Test", 30, "9:16")
+            adapter.make_project(source, out, "Test", 10, "9:16")
             self.assertTrue((out / "STORYBOARD.md").exists())
             self.assertTrue((out / "DESIGN.md").exists())
             self.assertTrue((out / "scenes" / "01-approved-script.md").exists())
             self.assertEqual((out / "APPROVED_SCRIPT.md").read_text(encoding="utf-8"), source + "\n")
             scene = (out / "scenes" / "01-approved-script.md").read_text(encoding="utf-8")
             self.assertIn("type: Scene", scene)
-            self.assertIn(source, scene)
+            self.assertIn("> ## SENARYO 2: Test", scene)
+            self.assertNotIn("\n## SENARYO 2: Test", scene)
+            self.assertNotIn("narration:", scene)
             self.assertNotIn("video:", scene)
             self.assertNotIn("backdrop:", scene)
 
     def test_clean_script_removes_comments_only(self) -> None:
         raw = "<!-- test -->\nMetin\n\n\nDevam"
         self.assertEqual(adapter.clean_script(raw), "Metin\n\nDevam")
+
+    def test_blockquote_keeps_markdown_headings_opaque(self) -> None:
+        self.assertEqual(adapter.as_blockquote("## Başlık\nMetin"), "> ## Başlık\n> Metin")
 
 
 if __name__ == "__main__":
