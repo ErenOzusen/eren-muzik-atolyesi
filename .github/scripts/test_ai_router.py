@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Zero-network tests for the AI provider router.
 
-These tests exercise provider ordering, credential/model skipping and fallback
-without calling any external AI API, so they consume 0 AI tokens.
+These tests exercise provider ordering, credential/model skipping, system prompt
+preservation and fallback without calling any external AI API, so they consume
+0 AI tokens.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -59,6 +59,60 @@ class RouterUnitTests(unittest.TestCase):
         self.assertFalse(ai_router.usable({**ok, "stop_reason": "max_tokens"}))
         self.assertFalse(ai_router.usable({**ok, "stop_reason": "content_filter"}))
 
+    def test_anthropic_payload_preserves_system_prompt(self) -> None:
+        response = {
+            "content": [{"type": "text", "text": "OK"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)) as mocked:
+            result = ai_router.call_anthropic(
+                "https://anthropic.invalid/messages",
+                "key",
+                "model",
+                "SYSTEM RULES",
+                "USER PROMPT",
+                100,
+                5,
+            )
+        payload = mocked.call_args.args[2]
+        self.assertEqual(payload["system"], "SYSTEM RULES")
+        self.assertEqual(payload["messages"], [{"role": "user", "content": "USER PROMPT"}])
+        self.assertEqual(result["text"], "OK")
+
+    def test_openai_payload_preserves_system_prompt(self) -> None:
+        response = {
+            "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)) as mocked:
+            result = ai_router.call_openai_chat(
+                "https://openai.invalid/chat",
+                "key",
+                "model",
+                "SYSTEM RULES",
+                "USER PROMPT",
+                100,
+                5,
+            )
+        payload = mocked.call_args.args[2]
+        self.assertEqual(
+            payload["messages"],
+            [
+                {"role": "system", "content": "SYSTEM RULES"},
+                {"role": "user", "content": "USER PROMPT"},
+            ],
+        )
+        self.assertEqual(result["text"], "OK")
+
+    def test_usage_totals_include_failed_attempt_costs(self) -> None:
+        attempts = [
+            {"input_tokens": 100, "output_tokens": 5},
+            {"input_tokens": 120, "output_tokens": 20},
+            {"status": "skipped"},
+        ]
+        self.assertEqual(ai_router.usage_totals(attempts), (220, 25))
+
     def test_provider_order_and_fallback_can_be_simulated_without_network(self) -> None:
         config = {
             "routing": {
@@ -67,35 +121,12 @@ class RouterUnitTests(unittest.TestCase):
                 "retry_http_statuses": [429, 500, 599],
             },
             "providers": {
-                "anthropic": {
-                    "api_style": "anthropic_messages",
-                    "endpoint": "https://anthropic.invalid/messages",
-                    "secret_env": "ANTHROPIC_API_KEY",
-                    "model_env": "ANTHROPIC_MODEL",
-                },
-                "openai": {
-                    "api_style": "openai_chat",
-                    "endpoint": "https://openai.invalid/chat",
-                    "secret_env": "OPENAI_API_KEY",
-                    "model_env": "OPENAI_MODEL",
-                },
-                "deepseek": {
-                    "api_style": "openai_chat",
-                    "endpoint": "https://deepseek.invalid/chat",
-                    "secret_env": "DEEPSEEK_API_KEY",
-                    "model_env": "DEEPSEEK_MODEL",
-                },
-                "qwen": {
-                    "api_style": "openai_chat",
-                    "endpoint": "https://qwen.invalid/chat",
-                    "secret_env": "QWEN_API_KEY",
-                    "model_env": "QWEN_MODEL",
-                },
+                "anthropic": {"api_style": "anthropic_messages"},
+                "openai": {"api_style": "openai_chat"},
+                "deepseek": {"api_style": "openai_chat"},
+                "qwen": {"api_style": "openai_chat"},
             },
         }
-
-        # This is the same routing contract main() uses, but all responses are
-        # deterministic local fixtures: Anthropic fails, OpenAI succeeds.
         order = config["routing"]["default_order"]
         fixtures = {
             "anthropic": {"http_status": 429, "text": "", "stop_reason": None},
