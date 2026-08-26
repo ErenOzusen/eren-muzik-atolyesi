@@ -61,6 +61,15 @@
       "shorts_max_seconds": 60,
       "ideas_char_limit": 12000,
       "max_model_output": 4800
+    },
+    "quality_control": {
+      "max_script_chars": 40000,
+      "max_model_output": 4500,
+      "target_report_output_tokens": 2500,
+      "max_web_searches": 1,
+      "domain_rules": [
+        "SEKTÖRE ÖZEL DOĞRULAMA KURALINI BURAYA YAZIN."
+      ]
     }
   },
   "approval": {
