@@ -2,11 +2,6 @@ name: Son Teknik Kontrol Ajanı
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Haftalık Düzeltme Ajanı
-    types:
-      - completed
 
 permissions:
   contents: read
@@ -18,7 +13,7 @@ concurrency:
 
 jobs:
   final-check:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
