@@ -1,0 +1,445 @@
+name: Çekim Paketi Ajanı — AI Router
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "AI çağrısı ve gerçek üretim kaydı oluşturmadan seçim/ayıklama hattını test et"
+        required: true
+        default: true
+        type: boolean
+      test_issue_number:
+        description: "Test modunda kullanılacak sistem-testi Nihai Senaryolar Issue numarası"
+        required: false
+        type: string
+      test_scenario:
+        description: "Test modunda ayıklanacak senaryo: 1, 2 veya 3"
+        required: false
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+      source_issue_number:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin Nihai Senaryolar Issue numarası"
+        required: false
+        type: string
+      source_scenario:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin senaryo numarası"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: filming-package-agent-router
+  cancel-in-progress: false
+
+jobs:
+  create-filming-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
+      PACKAGE_VERSION: "7"
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '' }}
+      TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
+      SOURCE_ISSUE_NUMBER: ${{ inputs.source_issue_number || '' }}
+      SOURCE_SCENARIO: ${{ inputs.source_scenario || '' }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
+
+      - name: Seçilmiş nihai senaryoyu güvenli biçimde bul ve ayıkla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXPECTED_SCENARIO=""
+          if [[ "$TEST_MODE" == "true" ]]; then
+            FINAL_NUMBER="$TEST_ISSUE_NUMBER"
+            if [[ -z "$FINAL_NUMBER" ]]; then
+              FINAL_NUMBER=$(gh issue list \
+                --state all \
+                --label "sistem-testi" \
+                --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+                --limit 20 \
+                --json number,title,updatedAt \
+                --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))] | sort_by(.updatedAt) | reverse | .[0].number // empty')
+            fi
+            if [[ -z "$FINAL_NUMBER" ]]; then
+              echo "Test için sistem-testi etiketli Nihai Senaryolar Issue'su bulunamadı."
+              exit 1
+            fi
+            SELECTED_SCENARIO="$TEST_SCENARIO"
+            if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Test senaryosu yalnız 1, 2 veya 3 olabilir."
+              exit 1
+            fi
+          else
+            FINAL_NUMBER="$SOURCE_ISSUE_NUMBER"
+            EXPECTED_SCENARIO="$SOURCE_SCENARIO"
+            if [[ ! "$FINAL_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "Gerçek üretimde kesin source_issue_number zorunludur."
+              exit 1
+            fi
+            if [[ ! "$EXPECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Gerçek üretimde source_scenario yalnız 1, 2 veya 3 olabilir."
+              exit 1
+            fi
+          fi
+
+          gh issue view "$FINAL_NUMBER" --json title,body,url,labels,state > /tmp/final.json
+          jq -r '.body // ""' /tmp/final.json > /tmp/final-scripts.md
+          jq -r '.labels[].name' /tmp/final.json > /tmp/final-labels.txt
+
+          FINAL_TITLE=$(jq -r '.title // ""' /tmp/final.json)
+          FINAL_URL=$(jq -r '.url // ""' /tmp/final.json)
+          FINAL_STATE=$(jq -r '.state // ""' /tmp/final.json)
+
+          if [[ "$FINAL_TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Issue Nihai Senaryolar değil: $FINAL_TITLE"
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Test modu yalnız sistem-testi etiketli Issue üzerinde çalışabilir."
+              exit 1
+            fi
+          else
+            if [[ "$FINAL_STATE" != "OPEN" ]]; then
+              echo "Gerçek çekim paketi yalnız açık Nihai Senaryolar Issue'sundan üretilebilir: state=$FINAL_STATE"
+              exit 1
+            fi
+            if grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Sistem testi gerçek üretim kaynağı olamaz."
+              exit 1
+            fi
+            for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
+              if ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
+                echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
+                exit 1
+              fi
+            done
+            if grep -qx 'duzeltme-gerekiyor' /tmp/final-labels.txt; then
+              echo "Düzeltme gereken içerikten çekim paketi oluşturulamaz."
+              exit 1
+            fi
+
+            mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/final-labels.txt || true)
+            if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
+              echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
+              exit 1
+            fi
+            SELECTED_SCENARIO="${SELECTION_LABELS[0]##*-}"
+            if [[ "$SELECTED_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
+              echo "Handoff uyuşmazlığı: input=$EXPECTED_SCENARIO etiket=$SELECTED_SCENARIO"
+              exit 1
+            fi
+
+            gh issue view "$FINAL_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/final-comments.txt
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$FINAL_NUMBER scenario=$EXPECTED_SCENARIO -->"
+            if ! grep -Fqx "$HANDOFF_MARKER" /tmp/final-comments.txt; then
+              echo "Geçerli Seçim Kapısı handoff işareti bulunamadı."
+              exit 1
+            fi
+          fi
+
+          SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
+          PACKAGE_TITLE="Çekim Paketi - Nihai Senaryolar #$FINAL_NUMBER"
+          export SELECTED_SCENARIO
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, re
+
+          text = Path('/tmp/final-scripts.md').read_text(encoding='utf-8')
+          scenario = int(os.environ['SELECTED_SCENARIO'])
+          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123]):\s*(.+)$', text))
+          matches = [item for item in headings if int(item.group(1)) == scenario]
+          if len(matches) != 1:
+              raise SystemExit(f'Seçilen SENARYO {scenario} tam bir kez bulunmalı; bulunan: {len(matches)}')
+          heading = matches[0]
+          later = [item for item in headings if item.start() > heading.start()]
+          next_start = later[0].start() if later else len(text)
+          separator = re.search(r'(?m)^---\s*$', text[heading.start():next_start])
+          end = heading.start() + separator.start() if separator else next_start
+          selected = text[heading.start():end].strip()
+          selected = re.sub(r'<!--.*?-->', '', selected, flags=re.DOTALL)
+          selected = re.sub(r'\n{3,}', '\n\n', selected).strip() + '\n'
+          size = len(selected.encode('utf-8'))
+          minimum = 40 if os.environ.get('TEST_MODE') == 'true' else 1200
+          if size < minimum or size > 16000:
+              raise SystemExit(f'Seçilen senaryo güvenli sınır dışında: {size} bayt; minimum={minimum}')
+          title = heading.group(2).strip()
+          Path('/tmp/selected-script.md').write_text(selected, encoding='utf-8')
+          Path('/tmp/selected-script.json').write_text(
+              json.dumps({'scenario': scenario, 'title': title, 'chars': size}, ensure_ascii=False) + '\n',
+              encoding='utf-8')
+          print(f'Seçilen senaryo: {scenario}; {size} bayt; {title}')
+          PY
+
+          SELECTED_TITLE=$(jq -r '.title' /tmp/selected-script.json)
+          SELECTED_CHARS=$(jq -r '.chars' /tmp/selected-script.json)
+
+          EXISTING_NUMBER=""
+          SKIP_PACKAGE=false
+          if [[ "$TEST_MODE" != "true" ]]; then
+            EXISTING_NUMBER=$(gh issue list --state all --search "\"$PACKAGE_TITLE\" in:title" --limit 20 --json number,title \
+              --jq ".[] | select(.title == \"$PACKAGE_TITLE\") | .number" | head -n 1)
+            if [[ -n "$EXISTING_NUMBER" ]]; then
+              gh issue view "$EXISTING_NUMBER" --json body > /tmp/existing-package.json
+              EXISTING_BODY=$(jq -r '.body // ""' /tmp/existing-package.json)
+              if grep -Fq "source-body-sha256: $SOURCE_SHA" <<< "$EXISTING_BODY" \
+                && grep -Fq "package-version: $PACKAGE_VERSION" <<< "$EXISTING_BODY" \
+                && grep -Fq "scenario=$SELECTED_SCENARIO" <<< "$EXISTING_BODY"; then
+                SKIP_PACKAGE=true
+              fi
+            fi
+          fi
+
+          {
+            echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_URL=$FINAL_URL"
+            echo "SOURCE_SHA=$SOURCE_SHA"
+            echo "PACKAGE_TITLE=$PACKAGE_TITLE"
+            echo "EXISTING_NUMBER=$EXISTING_NUMBER"
+            echo "SKIP_PACKAGE=$SKIP_PACKAGE"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
+            echo "SELECTED_TITLE=$SELECTED_TITLE"
+            echo "SELECTED_CHARS=$SELECTED_CHARS"
+          } >> "$GITHUB_ENV"
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            {
+              echo "### Router'lı Çekim Paketi handoff testi başarılı"
+              echo "- Kaynak test Issue: $FINAL_URL"
+              echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+              echo "- Ayıklanan veri: $SELECTED_CHARS bayt"
+              echo "- AI kullanımı: 0 token"
+              echo "- Router canlı çağrısı: yapılmadı"
+              echo "- Issue/etiket değişikliği: yapılmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Tek senaryoluk çekim promptlarını hazırla
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/system-prompt.txt <<'PROMPT'
+          Sen Eren Müzik Atölyesi'nin telefonla çekim yönetmeni ve prodüksiyon planlayıcısısın.
+          Görevin, Eren tarafından onaylanan tek senaryoyu DEĞİŞTİRMEDEN uygulanabilir,
+          kısa ve çekim sırasında doğrudan kullanılabilir bir pakete dönüştürmektir.
+
+          EREN'İN MEVCUT İMKÂNLARI:
+          - Tek bir telefon
+          - Elektro gitar
+          - Bas gitar
+          - Bas gitar amfisi
+          - Piyano
+
+          OLMAYAN EKİPMANLAR:
+          - Tripod, harici mikrofon, stüdyo ışığı, ses kartı
+          - İkinci telefon veya kamera, teleprompter, kulaklık, harici metronom
+
+          ZORUNLU KURALLAR:
+          1. Yeni ekipman satın aldırma ve olmayan ekipmanı varmış gibi yazma.
+          2. Telefon desteği için yalnız güvenli ev çözümleri öner ve düşme kontrolü yaptır.
+          3. Pencere ışığını kullan; pencere Eren'in arkasında kalmasın.
+          4. Ana videoyu yatay, Shorts/Reels kesitini ayrıca dikey çektir.
+          5. Telefon destekliyorsa arka kamera ve 1080p/30 fps kullan; pil/depolama/Rahatsız Etmeyin kontrolü ekle.
+          6. Sessiz oda ve kısa deneme kaydı kullan; ses patlıyorsa telefonu güvenli biçimde uzaklaştır.
+          7. Onaylı konuşma metnini, akorları, TAB'ları, notaları, ritimleri ve CTA'yı değiştirme.
+          8. Tek telefonla aynı anda iki açı isteme; farklı açıları ayrı çekimler olarak planla.
+          9. Her sahnede kadraj, hareket, ses/ışık ve hata kontrolü açık olsun.
+          10. Yalnız kaynakta bulunan seçilmiş tek senaryo için paket üret.
+          11. Telefon konumunu mümkün olduğunca az değiştiren çekim sırası oluştur.
+          12. Çıktıyı kısa ve uygulanabilir tut.
+
+          ZORUNLU ÇIKTI BİÇİMİ:
+          # 🎥 EREN MÜZİK ATÖLYESİ — TELEFONLA ÇEKİM PAKETİ
+          ## 1. Çekimden Önce Ortak Hazırlık
+          ## 2. Oda ve Telefon Yerleşimi
+          ## 3. Seçilen Senaryo Çekim Planı
+          Markdown tablo: Sıra | Bölüm | Telefon/Kadraj | Eren'in Yapacağı | Ses/Işık | Kontrol
+          ## 4. Shorts/Reels Dikey Çekimi
+          ## 5. En Verimli Çekim Sırası
+          ## 6. Çekim Sonu Dosya Kontrolü
+
+          Yalnızca nihai Markdown metnini yaz. Ön açıklama, özür veya kod bloğu ekleme.
+          PROMPT
+
+          {
+            echo "Aşağıdaki Eren onaylı ve üretime açıkça seçilmiş tek senaryo için telefonla çekim paketi hazırla."
+            echo "Kaynak: $FINAL_URL"
+            echo "Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo
+            cat /tmp/selected-script.md
+          } > /tmp/user-prompt.txt
+
+      - name: AI Router ile çekim paketini oluştur
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --system-file /tmp/system-prompt.txt \
+            --prompt-file /tmp/user-prompt.txt \
+            --output-file /tmp/filming-package.md \
+            --meta-file /tmp/filming-router-meta.json \
+            --max-tokens 3000 \
+            --primary-model claude-sonnet-4-6
+
+          PROVIDER=$(jq -r '.provider // ""' /tmp/filming-router-meta.json)
+          MODEL=$(jq -r '.model // ""' /tmp/filming-router-meta.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/filming-router-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/filming-router-meta.json)
+          ATTEMPTS=$(jq -r '[.attempts[]? | select(.status != "skipped")] | length' /tmp/filming-router-meta.json)
+
+          if [[ -z "$PROVIDER" || -z "$MODEL" || ! -s /tmp/filming-package.md ]]; then
+            echo "Router geçerli provider/model/çıktı üretmedi."
+            exit 1
+          fi
+
+          {
+            echo "FILMING_PROVIDER=$PROVIDER"
+            echo "FILMING_MODEL=$MODEL"
+            echo "FILMING_INPUT_TOKENS=$INPUT_TOKENS"
+            echo "FILMING_OUTPUT_TOKENS=$OUTPUT_TOKENS"
+            echo "FILMING_AI_ATTEMPTS=$ATTEMPTS"
+          } >> "$GITHUB_ENV"
+
+      - name: Çekim paketi kalite sözleşmesini doğrula
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REQUIRED_PATTERNS=(
+            '^##[[:space:]]+1\.[[:space:]].*Ortak Hazırlık'
+            '^##[[:space:]]+2\.[[:space:]].*(Oda|Telefon).*Yerleş'
+            '^##[[:space:]]+3\.[[:space:]].*Senaryo.*Çekim Planı'
+            '^##[[:space:]]+4\.[[:space:]].*(Shorts|Reels)'
+            '^##[[:space:]]+5\.[[:space:]].*Çekim.*Sıra'
+            '^##[[:space:]]+6\.[[:space:]].*(Çekim Sonu|Dosya Kontrol)'
+          )
+          for pattern in "${REQUIRED_PATTERNS[@]}"; do
+            if ! grep -Eiq "$pattern" /tmp/filming-package.md; then
+              echo "Zorunlu bölüm eksik; Issue yayımlanmadı: $pattern"
+              exit 1
+            fi
+          done
+          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-6]\.' /tmp/filming-package.md)
+          if [[ "$SECTION_COUNT" -ne 6 ]]; then
+            echo "Tam olarak altı numaralı bölüm gerekli; bulunan: $SECTION_COUNT"
+            exit 1
+          fi
+          if grep -Eiq '^##[[:space:]]+[0-9]+\.[[:space:]]+Senaryo[[:space:]]+[123]' /tmp/filming-package.md; then
+            echo "Tek senaryo paketine ek senaryo başlığı eklendi."
+            exit 1
+          fi
+          if grep -Eqi 'onay(ı|i)?.*bekleniyor|onay.*bekle' /tmp/filming-package.md; then
+            echo "Eski onay bekleme uyarısı çıktıya taşındı."
+            exit 1
+          fi
+          PACKAGE_CHARS=$(wc -c < /tmp/filming-package.md)
+          if [[ "$PACKAGE_CHARS" -gt 30000 ]]; then
+            echo "Çekim paketi 30.000 karakter sınırını aştı."
+            exit 1
+          fi
+          echo "FILMING_PACKAGE_CHARS=$PACKAGE_CHARS" >> "$GITHUB_ENV"
+
+          {
+            echo "### AI Router kullanım özeti"
+            echo "- provider: $FILMING_PROVIDER"
+            echo "- model: $FILMING_MODEL"
+            echo "- provider_attempts: $FILMING_AI_ATTEMPTS"
+            echo "- selected_scenario: $SELECTED_SCENARIO"
+            echo "- script_chars: $SELECTED_CHARS"
+            echo "- total_input_tokens: $FILMING_INPUT_TOKENS"
+            echo "- total_output_tokens: $FILMING_OUTPUT_TOKENS"
+            echo "- web_searches: 0"
+            echo "- kalite_sözleşmesi: geçti"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Çekim paketini Issue olarak kaydet
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "<!-- source-body-sha256: $SOURCE_SHA -->"
+            echo "<!-- package-version: $PACKAGE_VERSION -->"
+            echo "<!-- FILMING_AI_ROUTER_V1 scenario=$SELECTED_SCENARIO provider=$FILMING_PROVIDER model=$FILMING_MODEL attempts=$FILMING_AI_ATTEMPTS input=$FILMING_INPUT_TOKENS output=$FILMING_OUTPUT_TOKENS web_search=0 package_chars=$FILMING_PACKAGE_CHARS -->"
+            echo "**Kaynak onaylı senaryo:** $FINAL_URL"
+            echo "**Seçilen içerik:** Senaryo $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "**AI sağlayıcısı:** $FILMING_PROVIDER / $FILMING_MODEL"
+            echo "**Mevcut imkânlar:** Telefon, elektro gitar, bas gitar, bas amfisi, piyano"
+            echo "**Plan türü:** Ek ekipman satın almadan telefonla çekim"
+            echo
+            cat /tmp/filming-package.md
+          } > /tmp/package-body.md
+
+          gh label create "cekim-paketi" --color "5319E7" --description "Telefonla çekim planı ve kontrol listesi" --force
+          gh label create "cekim-paketi-hazir" --color "0E8A16" --description "Onaylı senaryo için çekim paketi hazır" --force
+
+          if [[ -n "$EXISTING_NUMBER" ]]; then
+            gh issue edit "$EXISTING_NUMBER" --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --add-label "cekim-paketi"
+            PACKAGE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          else
+            PACKAGE_URL=$(gh issue create --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --label "cekim-paketi")
+          fi
+
+          gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir"
+          gh issue comment "$FINAL_NUMBER" --body "🎥 Telefonla çekim paketi hazırlandı: $PACKAGE_URL"
+
+          {
+            echo "### Çekim paketi hazırlandı"
+            echo "- Kaynak: #$FINAL_NUMBER"
+            echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "- Provider: $FILMING_PROVIDER / $FILMING_MODEL"
+            echo "- Paket: $PACKAGE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Güncel paket zaten varsa özeti yaz
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          {
+            echo "### Güncel çekim paketi zaten mevcut"
+            echo "- Kaynak: #$FINAL_NUMBER"
+            echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "- Paket: $PACKAGE_URL"
+            echo "- Yeni AI çağrısı: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
