@@ -92,7 +92,7 @@
     "quality_control": {
       "max_script_chars": 40000,
       "max_model_output": 4500,
-      "target_report_output_tokens": 2500,
+      "target_report_output": 2500,
       "max_web_searches": 1,
       "domain_rules": [
         "Orijinal ton, ilk duyulan akor, tüm akorlar, capo şekilleri, gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyonu birbirinden ayır.",
