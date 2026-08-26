@@ -54,10 +54,12 @@ Okunaklı, yüksek kontrastlı altyazı.
 Gereksiz efekt yok; kısa ve anlaşılır geçişler.
 """
 
+    # Deliberately no narration/video/backdrop/music cues here. The approved
+    # script stays in the scene body so VibeFrame can validate/project-plan it
+    # without resolving a paid provider during the zero-cost compatibility test.
     scene = f"""---
 type: Scene
 duration: {duration}
-narration: {yaml_quote(script)}
 ---
 
 # Onaylı Senaryo
@@ -65,7 +67,7 @@ narration: {yaml_quote(script)}
 {script}
 
 ## Üretim notu
-Bu dry-run testinde video/backdrop üretim cue'su yoktur. Gerçek çekim daha sonra `media/` içinden referans edilir.
+Bu dry-run testinde ücretli asset cue'su yoktur. Gerçek çekim daha sonra `media/` içinden referans edilir.
 """
 
     (output / "STORYBOARD.md").write_text(storyboard, encoding="utf-8")
