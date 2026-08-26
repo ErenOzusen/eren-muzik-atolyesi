@@ -76,6 +76,11 @@ def validate(profile: dict[str, Any]) -> list[str]:
         else {}
     )
     correction = content.get("correction") if isinstance(content.get("correction"), dict) else {}
+    final_technical_control = (
+        content.get("final_technical_control")
+        if isinstance(content.get("final_technical_control"), dict)
+        else {}
+    )
     approval = profile.get("approval") if isinstance(profile.get("approval"), dict) else {}
     cost = profile.get("cost_control") if isinstance(profile.get("cost_control"), dict) else {}
     assets = profile.get("assets") if isinstance(profile.get("assets"), dict) else {}
@@ -283,6 +288,67 @@ def validate(profile: dict[str, Any]) -> list[str]:
         errors,
     )
 
+    require(
+        isinstance(final_technical_control.get("max_final_chars"), int)
+        and 4_000 <= final_technical_control["max_final_chars"] <= 40_000,
+        "Son teknik kontrol nihai metin sınırı 4.000–40.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(final_technical_control.get("max_qc_chars"), int)
+        and 4_000 <= final_technical_control["max_qc_chars"] <= 30_000,
+        "Son teknik kontrol QC sınırı 4.000–30.000 karakter olmalı.",
+        errors,
+    )
+    final_technical_source_cap_sum = sum(
+        value
+        for value in (
+            final_technical_control.get("max_final_chars"),
+            final_technical_control.get("max_qc_chars"),
+        )
+        if isinstance(value, int)
+    )
+    require(
+        isinstance(final_technical_control.get("max_total_input_chars"), int)
+        and 8_000 <= final_technical_control["max_total_input_chars"] <= 60_000
+        and final_technical_control["max_total_input_chars"] <= final_technical_source_cap_sum,
+        "Son teknik kontrol toplam girdi sınırı 8.000–60.000 karakter olmalı ve kaynak sınırları toplamını aşmamalı.",
+        errors,
+    )
+    require(
+        isinstance(final_technical_control.get("max_model_output"), int)
+        and 1_000 <= final_technical_control["max_model_output"] <= 3_000,
+        "Son teknik kontrol çıktı token bütçesi 1.000–3.000 olmalı.",
+        errors,
+    )
+    require(
+        isinstance(final_technical_control.get("max_blockers"), int)
+        and 1 <= final_technical_control["max_blockers"] <= 5,
+        "Son teknik kontrol bloklayıcı bulgu sınırı 1–5 olmalı.",
+        errors,
+    )
+    require(
+        isinstance(final_technical_control.get("max_improvements"), int)
+        and 1 <= final_technical_control["max_improvements"] <= 10,
+        "Son teknik kontrol küçük iyileştirme sınırı 1–10 olmalı.",
+        errors,
+    )
+    require(
+        final_technical_control.get("require_explicit_qc_link") is True,
+        "Son teknik kontrol açık QC kaynak bağlantısını zorunlu tutmalı.",
+        errors,
+    )
+    require(
+        nonempty_unique_list(final_technical_control.get("authoritative_facts"), maximum=20),
+        "Son teknik kontrol için 1–20 benzersiz bağlayıcı uzman bilgisi gerekli.",
+        errors,
+    )
+    require(
+        nonempty_unique_list(final_technical_control.get("domain_rules"), maximum=20),
+        "Son teknik kontrol için 1–20 benzersiz sektör kuralı gerekli.",
+        errors,
+    )
+
     require(approval.get("required") is True, "İşletme sahibi onayı zorunlu olmalı.", errors)
     require(nonempty_text(approval.get("production_command"), 3, 80), "Gerçek onay komutu gerekli.", errors)
     require(nonempty_text(approval.get("test_command"), 3, 80), "Test onay komutu gerekli.", errors)
@@ -336,6 +402,7 @@ def main() -> None:
     script = content["script"]
     quality_control = content["quality_control"]
     correction = content["correction"]
+    final_technical_control = content["final_technical_control"]
     approval = profile["approval"]
     cost = profile["cost_control"]
     assets = profile["assets"]
@@ -352,7 +419,7 @@ def main() -> None:
 
 # ⚙️ {business['brand_name']} — MARKA VE İŞLETME YAPILANDIRMA RAPORU
 
-> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo, Kalite Kontrol ve Düzeltme ajanları merkezi profile bağlıdır; diğer ajanların kontrollü geçişi sürüyor.
+> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo, Kalite Kontrol ve Düzeltme ajanları merkezi profile bağlıdır; Son Teknik Kontrol Ajanının kontrollü bağlantı testi sıradadır.
 
 ## 1. İşletme Kimliği
 
@@ -392,6 +459,10 @@ def main() -> None:
 - **Düzeltme toplam girdi sınırı:** {correction['max_total_input_chars']} karakter
 - **Düzeltme çıktı bütçesi:** {correction['max_model_output']} token
 - **Düzeltme sektörel kuralı:** {len(correction['domain_rules'])}
+- **Son teknik kontrol toplam girdi sınırı:** {final_technical_control['max_total_input_chars']} karakter
+- **Son teknik kontrol çıktı bütçesi:** {final_technical_control['max_model_output']} token
+- **Son teknik kontrol bağlayıcı uzman bilgisi:** {len(final_technical_control['authoritative_facts'])}
+- **Son teknik kontrol sektörel kuralı:** {len(final_technical_control['domain_rules'])}
 - **Ana çağrı:** {offer['primary_cta']}
 - **Rezervasyon bağlantısı:** {offer['reservation_url']}
 
@@ -431,7 +502,9 @@ def main() -> None:
 - **Kalite Kontrol workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
 - **Düzeltme Ajanı profil ayarları:** ✅ Hazır
 - **Düzeltme workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
-- **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
+- **Son Teknik Kontrol Ajanı profil ayarları:** ✅ Hazır
+- **Son Teknik Kontrol workflow bağlantısı:** ⏳ Sıfır-token test bekliyor
+- **Diğer ajanların profile bağlanması:** ⏳ Son Teknik Kontrol testinden sonra
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
 - Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
