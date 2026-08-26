@@ -1,6 +1,11 @@
 name: VibeFrame Compatibility Test
 
 "on":
+  push:
+    paths:
+      - ".github/scripts/vibeframe_project_adapter.py"
+      - ".github/scripts/test_vibeframe_project_adapter.py"
+      - ".github/workflows/vibeframe-compatibility-test.yml"
   workflow_dispatch:
     inputs:
       test_issue_number:
@@ -28,8 +33,8 @@ jobs:
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ISSUE_NUMBER: ${{ inputs.test_issue_number }}
-      SCENARIO: ${{ inputs.test_scenario }}
+      ISSUE_NUMBER: ${{ inputs.test_issue_number || '37' }}
+      SCENARIO: ${{ inputs.test_scenario || '2' }}
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
