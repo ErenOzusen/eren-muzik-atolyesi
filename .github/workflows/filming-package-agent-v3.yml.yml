@@ -2,6 +2,25 @@ name: Çekim Paketi Ajanı
 
 "on":
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı ve gerçek üretim kaydı oluşturmadan seçim/ayıklama hattını test et"
+        required: true
+        default: true
+        type: boolean
+      test_issue_number:
+        description: "Test modunda kullanılacak sistem-testi Nihai Senaryolar Issue numarası (boşsa en günceli)"
+        required: false
+        type: string
+      test_scenario:
+        description: "Test modunda ayıklanacak senaryo: 1, 2 veya 3"
+        required: false
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
 
 permissions:
   contents: read
@@ -20,63 +39,143 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      PACKAGE_VERSION: "4"
+      PACKAGE_VERSION: "5"
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '' }}
+      TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
 
     steps:
-      - name: Onaylı tek nihai senaryoyu bul ve ayıkla
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Seçilmiş nihai senaryoyu güvenli biçimde bul ve ayıkla
         shell: bash
         run: |
           set -euo pipefail
 
-          FINAL_NUMBER=$(gh issue list \
-            --state open \
-            --label "eren-onayli" \
-            --label "cekime-hazir" \
-            --search '"Nihai Senaryolar" in:title sort:updated-desc' \
-            --limit 20 \
-            --json number,title,updatedAt \
-            --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))]
-                  | sort_by(.updatedAt) | reverse | .[0].number // empty')
+          if [[ "$TEST_MODE" == "true" ]]; then
+            FINAL_NUMBER="$TEST_ISSUE_NUMBER"
+            if [[ -z "$FINAL_NUMBER" ]]; then
+              FINAL_NUMBER=$(gh issue list \
+                --state all \
+                --label "sistem-testi" \
+                --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+                --limit 20 \
+                --json number,title,updatedAt \
+                --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))]
+                      | sort_by(.updatedAt) | reverse | .[0].number // empty')
+            fi
 
-          if [[ -z "$FINAL_NUMBER" ]]; then
-            echo "Eren tarafından onaylanmış Nihai Senaryolar Issue'su bulunamadı."
+            if [[ -z "$FINAL_NUMBER" ]]; then
+              echo "Test için sistem-testi etiketli Nihai Senaryolar Issue'su bulunamadı."
+              exit 1
+            fi
+
+            SELECTED_SCENARIO="$TEST_SCENARIO"
+            if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Test senaryosu yalnız 1, 2 veya 3 olabilir."
+              exit 1
+            fi
+          else
+            FINAL_NUMBER=$(gh issue list \
+              --state open \
+              --label "eren-onayli" \
+              --label "cekime-hazir" \
+              --label "uretime-secildi" \
+              --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+              --limit 20 \
+              --json number,title,updatedAt \
+              --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))]
+                    | sort_by(.updatedAt) | reverse | .[0].number // empty')
+
+            if [[ -z "$FINAL_NUMBER" ]]; then
+              echo "Eren tarafından onaylanmış ve üretime senaryosu seçilmiş Nihai Senaryolar Issue'su bulunamadı."
+              exit 1
+            fi
+          fi
+
+          gh issue view "$FINAL_NUMBER" --json title,body,url,labels,state > /tmp/final.json
+          jq -r '.body // ""' /tmp/final.json > /tmp/final-scripts.md
+          jq -r '.labels[].name' /tmp/final.json > /tmp/final-labels.txt
+
+          FINAL_TITLE=$(jq -r '.title' /tmp/final.json)
+          FINAL_URL=$(jq -r '.url' /tmp/final.json)
+
+          if [[ "$FINAL_TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Issue Nihai Senaryolar değil: $FINAL_TITLE"
             exit 1
           fi
 
-          gh issue view "$FINAL_NUMBER" --json title,body,url > /tmp/final.json
-          jq -r '.body' /tmp/final.json > /tmp/final-scripts.md
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Test modu yalnız sistem-testi etiketli Issue üzerinde çalışabilir."
+              exit 1
+            fi
+          else
+            if grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Sistem testi gerçek çekim paketinde kaynak olarak kullanılamaz."
+              exit 1
+            fi
+            for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
+              if ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
+                echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
+                exit 1
+              fi
+            done
+            if grep -qx 'duzeltme-gerekiyor' /tmp/final-labels.txt; then
+              echo "Düzeltme gereken içerikten çekim paketi oluşturulamaz."
+              exit 1
+            fi
 
-          FINAL_URL=$(jq -r '.url' /tmp/final.json)
+            mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/final-labels.txt || true)
+            if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
+              echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
+              exit 1
+            fi
+            SELECTED_SCENARIO="${SELECTION_LABELS[0]##*-}"
+          fi
+
           SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
           PACKAGE_TITLE="Çekim Paketi - Nihai Senaryolar #$FINAL_NUMBER"
+          export SELECTED_SCENARIO
 
           python3 - <<'PY'
           from pathlib import Path
           import json
+          import os
           import re
 
           text = Path("/tmp/final-scripts.md").read_text(encoding="utf-8")
-          headings = list(
-              re.finditer(r"(?mi)^## Senaryo ([123]):\s*(.+)$", text)
-          )
+          scenario = int(os.environ["SELECTED_SCENARIO"])
 
-          if len(headings) != 1:
+          headings = list(re.finditer(r"(?mi)^##\s+SENARYO\s+([123]):\s*(.+)$", text))
+          if not headings:
+              raise SystemExit("Nihai Issue içinde senaryo başlığı bulunamadı.")
+
+          matches = [item for item in headings if int(item.group(1)) == scenario]
+          if len(matches) != 1:
               raise SystemExit(
-                  f"Çekim paketi için tam olarak bir seçilmiş senaryo gerekli; bulunan: {len(headings)}"
+                  f"Seçilen SENARYO {scenario} tam bir kez bulunmalı; bulunan: {len(matches)}"
               )
 
-          heading = headings[0]
-          separator = re.search(r"(?m)^---\s*$", text[heading.start():])
-          end = heading.start() + separator.start() if separator else len(text)
+          heading = matches[0]
+          later_headings = [item for item in headings if item.start() > heading.start()]
+          next_heading_start = later_headings[0].start() if later_headings else len(text)
+          separator = re.search(r"(?m)^---\s*$", text[heading.start():next_heading_start])
+          end = heading.start() + separator.start() if separator else next_heading_start
+
           selected = text[heading.start():end].strip()
           selected = re.sub(r"<!--.*?-->", "", selected, flags=re.DOTALL)
           selected = re.sub(r"\n{3,}", "\n\n", selected).strip() + "\n"
 
           size = len(selected.encode("utf-8"))
-          if size < 1200 or size > 16000:
-              raise SystemExit(f"Seçilen senaryo güvenli sınır dışında: {size} bayt")
+          test_mode = os.environ.get("TEST_MODE") == "true"
+          minimum = 40 if test_mode else 1200
+          if size < minimum or size > 16000:
+              raise SystemExit(
+                  f"Seçilen senaryo güvenli sınır dışında: {size} bayt; minimum={minimum}"
+              )
 
-          scenario = int(heading.group(1))
           title = heading.group(2).strip()
           Path("/tmp/selected-script.md").write_text(selected, encoding="utf-8")
           Path("/tmp/selected-script.json").write_text(
@@ -89,26 +188,29 @@ jobs:
           print(f"Seçilen senaryo: {scenario}; {size} bayt; {title}")
           PY
 
-          SELECTED_SCENARIO=$(jq -r '.scenario' /tmp/selected-script.json)
           SELECTED_TITLE=$(jq -r '.title' /tmp/selected-script.json)
           SELECTED_CHARS=$(jq -r '.chars' /tmp/selected-script.json)
 
-          EXISTING_NUMBER=$(gh issue list \
-            --state all \
-            --search "\"$PACKAGE_TITLE\" in:title" \
-            --limit 20 \
-            --json number,title \
-            --jq ".[] | select(.title == \"$PACKAGE_TITLE\") | .number" \
-            | head -n 1)
-
+          EXISTING_NUMBER=""
           SKIP_PACKAGE=false
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue view "$EXISTING_NUMBER" --json body > /tmp/existing-package.json
-            EXISTING_BODY=$(jq -r '.body' /tmp/existing-package.json)
-            if grep -Fq "source-body-sha256: $SOURCE_SHA" <<< "$EXISTING_BODY" \
-              && grep -Fq "package-version: $PACKAGE_VERSION" <<< "$EXISTING_BODY"; then
-              SKIP_PACKAGE=true
-              echo "Bu senaryo için güncel çekim paketi zaten mevcut: #$EXISTING_NUMBER"
+          if [[ "$TEST_MODE" != "true" ]]; then
+            EXISTING_NUMBER=$(gh issue list \
+              --state all \
+              --search "\"$PACKAGE_TITLE\" in:title" \
+              --limit 20 \
+              --json number,title \
+              --jq ".[] | select(.title == \"$PACKAGE_TITLE\") | .number" \
+              | head -n 1)
+
+            if [[ -n "$EXISTING_NUMBER" ]]; then
+              gh issue view "$EXISTING_NUMBER" --json body > /tmp/existing-package.json
+              EXISTING_BODY=$(jq -r '.body' /tmp/existing-package.json)
+              if grep -Fq "source-body-sha256: $SOURCE_SHA" <<< "$EXISTING_BODY" \
+                && grep -Fq "package-version: $PACKAGE_VERSION" <<< "$EXISTING_BODY" \
+                && grep -Fq "scenario=$SELECTED_SCENARIO" <<< "$EXISTING_BODY"; then
+                SKIP_PACKAGE=true
+                echo "Bu seçilmiş senaryo için güncel çekim paketi zaten mevcut: #$EXISTING_NUMBER"
+              fi
             fi
           fi
 
@@ -124,8 +226,21 @@ jobs:
             echo "SELECTED_CHARS=$SELECTED_CHARS"
           } >> "$GITHUB_ENV"
 
+          if [[ "$TEST_MODE" == "true" ]]; then
+            {
+              echo "### Çekim Paketi handoff testi başarılı"
+              echo "- Kaynak test Issue: $FINAL_URL"
+              echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+              echo "- Ayıklanan veri: $SELECTED_CHARS bayt"
+              echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+              echo "- Web araması: 0"
+              echo "- Issue/etiket değişikliği: yapılmadı"
+              echo "- Gerçek çekim paketi: oluşturulmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Tek senaryoluk telefonla çekim isteğini hazırla
-        if: env.SKIP_PACKAGE != 'true'
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -199,7 +314,7 @@ jobs:
                 {
                   role: "user",
                   content: (
-                    "Aşağıdaki Eren onaylı tek senaryo için telefonla çekim paketi hazırla.\n" +
+                    "Aşağıdaki Eren onaylı ve üretime açıkça seçilmiş tek senaryo için telefonla çekim paketi hazırla.\n" +
                     "Kaynak: " + $source_url + "\n" +
                     "Seçilen senaryo: " + $scenario + " — " + $title + "\n\n" + $script
                   )
@@ -208,7 +323,7 @@ jobs:
             }' > /tmp/request.json
 
       - name: Tek senaryoluk çekim paketini oluştur ve doğrula
-        if: env.SKIP_PACKAGE != 'true'
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -305,7 +420,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Çekim paketini Issue olarak kaydet
-        if: env.SKIP_PACKAGE != 'true'
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -355,7 +470,7 @@ jobs:
           echo "- Paket: $PACKAGE_URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Güncel paket zaten varsa özeti yaz
-        if: env.SKIP_PACKAGE == 'true'
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE == 'true'
         shell: bash
         run: |
           set -euo pipefail
