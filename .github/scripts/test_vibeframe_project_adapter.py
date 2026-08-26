@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,7 @@ class AdapterTests(unittest.TestCase):
             self.assertTrue((out / "STORYBOARD.md").exists())
             self.assertTrue((out / "DESIGN.md").exists())
             self.assertTrue((out / "scenes" / "01-approved-script.md").exists())
+            self.assertTrue((out / "vibe.config.json").exists())
             self.assertEqual((out / "APPROVED_SCRIPT.md").read_text(encoding="utf-8"), source + "\n")
             scene = (out / "scenes" / "01-approved-script.md").read_text(encoding="utf-8")
             self.assertIn("type: Scene", scene)
@@ -33,6 +35,10 @@ class AdapterTests(unittest.TestCase):
             self.assertNotIn("narration:", scene)
             self.assertNotIn("video:", scene)
             self.assertNotIn("backdrop:", scene)
+            config = json.loads((out / "vibe.config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["schemaVersion"], "1")
+            self.assertEqual(config["aspect"], "9:16")
+            self.assertEqual(config["build"]["imageSize"], "1024x1536")
 
     def test_clean_script_removes_comments_only(self) -> None:
         raw = "<!-- test -->\nMetin\n\n\nDevam"
