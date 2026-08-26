@@ -92,6 +92,7 @@ jobs:
               echo "- Issue: $ISSUE_URL"
               echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
               echo "- Seçilen senaryo: $SELECTED"
+              echo "- Handoff kimliği: issue=$ISSUE_NUMBER scenario=$SELECTED"
               echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
               echo "- Etiket/Issue değişikliği: yapılmadı"
               echo "- Sonraki ajan: otomatik başlatılmadı"
@@ -125,10 +126,13 @@ jobs:
             --add-label "uretim-senaryo-$SELECTED" > /dev/null
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
+          <!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$SELECTED -->
           ## 🎯 Üretim senaryosu seçildi
 
+          **Kaynak Issue:** #$ISSUE_NUMBER  
           **Seçilen:** SENARYO $SELECTED  
           **Durum:** Çekim Paketi Ajanı bu senaryoyu kullanabilir.  
+          **Güvenli devralma:** Çekim Paketi Ajanı yalnız bu Issue numarası ve tek `uretim-senaryo-$SELECTED` etiketi eşleşirse gerçek üretime geçebilir.  
           **Güvenlik:** Sonraki ajan otomatik başlatılmadı.
           MESSAGE
           )"
@@ -136,6 +140,7 @@ jobs:
           {
             echo "### Eren üretim seçimi kaydedildi"
             echo "- Issue: $ISSUE_URL"
+            echo "- Handoff Issue numarası: $ISSUE_NUMBER"
             echo "- Seçilen senaryo: $SELECTED"
             echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
             echo "- Sonraki ajan: otomatik başlatılmadı"
