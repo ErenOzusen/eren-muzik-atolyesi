@@ -13,6 +13,12 @@ on:
         required: false
         default: ""
         type: string
+  push:
+    paths:
+      - ".github/workflows/ai-router-smoke-test.yml"
+      - ".github/config/ai-router.json"
+      - ".github/scripts/ai_router.py"
+      - ".github/scripts/test_ai_router.py"
 
 jobs:
   router-smoke-test:
@@ -31,19 +37,21 @@ jobs:
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
-      PROVIDER_ORDER: ${{ inputs.provider_order }}
-      LIVE_TEST: ${{ inputs.live_test }}
+      PROVIDER_ORDER: ${{ inputs.provider_order || '' }}
+      LIVE_TEST: ${{ inputs.live_test || false }}
 
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
 
-      - name: Router dosyalarını sıfır-token doğrula
+      - name: Router dosyalarını ve fallback mantığını sıfır-token doğrula
         shell: bash
         run: |
           set -euo pipefail
 
-          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m py_compile .github/scripts/ai_router.py .github/scripts/test_ai_router.py
+          python3 .github/scripts/test_ai_router.py
+
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -53,23 +61,32 @@ jobs:
           assert config['schema_version'] == 1
           order = config['routing']['default_order']
           assert order == ['anthropic', 'openai', 'deepseek', 'qwen']
+          assert len(order) == len(set(order))
           providers = config['providers']
           assert set(order) <= set(providers)
           for name in order:
-              assert providers[name]['api_style'] in {'anthropic_messages', 'openai_chat'}
-          print('AI router yapılandırması geçerli. AI kullanımı: 0 token.')
+              provider = providers[name]
+              assert provider['api_style'] in {'anthropic_messages', 'openai_chat'}
+              endpoint = provider.get('endpoint') or provider.get('default_endpoint', '')
+              assert endpoint.startswith('https://')
+          print('AI router yapılandırması ve fallback testleri geçerli. AI kullanımı: 0 token.')
           PY
 
           {
             echo "### AI Router — Sıfır Token Doğrulaması"
             echo "- Python derleme: ✅"
             echo "- Router config: ✅"
+            echo "- Provider sıra testi: ✅"
+            echo "- Simüle Anthropic hata → OpenAI fallback: ✅"
+            echo "- Boş/truncated/filtered çıktı bloklama: ✅"
+            echo "- HTTPS endpoint kontrolü: ✅"
             echo "- Varsayılan sıra: Anthropic → OpenAI → DeepSeek → Qwen"
+            echo "- Harici AI isteği: 0"
             echo "- AI kullanımı: 0 token"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Canlı fallback testi için küçük prompt hazırla
-        if: ${{ inputs.live_test == true }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_test == true }}
         shell: bash
         run: |
           cat > /tmp/router-prompt.txt <<'EOF'
@@ -77,7 +94,7 @@ jobs:
           EOF
 
       - name: Canlı provider/fallback testi
-        if: ${{ inputs.live_test == true }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_test == true }}
         shell: bash
         run: |
           set -euo pipefail
