@@ -9,6 +9,7 @@ priced by VibeFrame before any paid generation is allowed.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -28,6 +29,43 @@ def yaml_quote(text: str) -> str:
 def as_blockquote(text: str) -> str:
     """Render source text without letting its Markdown headings become VibeFrame beats."""
     return "\n".join(">" if not line else f"> {line}" for line in text.splitlines())
+
+
+def project_config(title: str, duration: int, aspect: str) -> dict:
+    image_size = "1024x1536" if aspect == "9:16" else "1536x1024"
+    return {
+        "schemaVersion": "1",
+        "name": re.sub(r"[^a-z0-9]+", "-", title.lower(), flags=re.I).strip("-") or "video",
+        "aspect": aspect,
+        "kind": "cinema",
+        "defaults": {
+            "sceneDurationSec": duration,
+            "narrationPaddingSec": 0.5,
+            "fps": 30,
+            "quality": "standard",
+        },
+        "providers": {
+            "image": None,
+            "video": None,
+            "narration": None,
+            "music": None,
+            "composer": None,
+        },
+        "build": {
+            "mode": "auto",
+            "stage": "all",
+            "maxCostUsd": None,
+            "imageQuality": "hd",
+            "imageSize": image_size,
+        },
+        "composition": {
+            "engine": "hyperframes",
+            "entry": "index.html",
+            "compositionsDir": "compositions",
+            "assetsDir": "assets",
+            "rendersDir": "renders",
+        },
+    }
 
 
 def make_project(script: str, output: Path, title: str, duration: int, aspect: str) -> None:
@@ -59,9 +97,6 @@ Okunaklı, yüksek kontrastlı altyazı.
 Gereksiz efekt yok; kısa ve anlaşılır geçişler.
 """
 
-    # Deliberately no narration/video/backdrop/music cues here. The approved
-    # source remains byte-for-byte in APPROVED_SCRIPT.md. In the scene body it
-    # is quoted so headings such as "## SENARYO" cannot be misread as new beats.
     quoted_script = as_blockquote(script)
     scene = f"""---
 type: Scene
@@ -79,6 +114,10 @@ duration: {duration}
     (output / "DESIGN.md").write_text(design, encoding="utf-8")
     (output / "scenes" / "01-approved-script.md").write_text(scene, encoding="utf-8")
     (output / "APPROVED_SCRIPT.md").write_text(script + "\n", encoding="utf-8")
+    (output / "vibe.config.json").write_text(
+        json.dumps(project_config(title, duration, aspect), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def main() -> None:
