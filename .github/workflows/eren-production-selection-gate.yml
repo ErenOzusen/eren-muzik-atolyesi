@@ -70,7 +70,7 @@ jobs:
           fi
 
           if ! grep -qx 'eren-onayli' /tmp/labels.txt || ! grep -qx 'cekime-hazir' /tmp/labels.txt; then
-            if [[ "$TEST_MODE" != "true" || ! grep -qx 'sistem-testi' /tmp/labels.txt ]]; then
+            if [[ "$TEST_MODE" != "true" ]] || ! grep -qx 'sistem-testi' /tmp/labels.txt; then
               echo "Senaryo seçimi için önce Eren onayı ve cekime-hazir durumu gerekli."
               exit 1
             fi
