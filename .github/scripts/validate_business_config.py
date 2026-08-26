@@ -213,8 +213,8 @@ def validate(profile: dict[str, Any]) -> list[str]:
         errors,
     )
     require(
-        isinstance(quality_control.get("target_report_output_tokens"), int)
-        and 1_000 <= quality_control["target_report_output_tokens"]
+        isinstance(quality_control.get("target_report_output"), int)
+        and 1_000 <= quality_control["target_report_output"]
         <= quality_control.get("max_model_output", 0),
         "Kalite kontrol rapor hedefi 1.000 token ile model çıktı bütçesi arasında olmalı.",
         errors,
