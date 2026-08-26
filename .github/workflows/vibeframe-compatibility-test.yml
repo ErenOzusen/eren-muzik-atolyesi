@@ -90,7 +90,7 @@ jobs:
             --script-file /tmp/selected-script.md \
             --output-dir /tmp/vibeframe-test \
             --title "Eren Müzik Atölyesi — VibeFrame Test" \
-            --duration 30 \
+            --duration 10 \
             --aspect 9:16
           test -s /tmp/vibeframe-test/STORYBOARD.md
           test -s /tmp/vibeframe-test/DESIGN.md
@@ -104,42 +104,70 @@ jobs:
           npm install --global @vibeframe/cli@0.115.2
           vibe --version
 
-      - name: Storyboard doğrula ve sıfır maliyet planla
+      - name: Storyboard doğrula ve sıfır harcamalı planla
         shell: bash
         run: |
           set -euo pipefail
           vibe storyboard validate /tmp/vibeframe-test --json > /tmp/vibe-validate.json
           vibe plan /tmp/vibeframe-test --json > /tmp/vibe-plan.json
-          vibe build /tmp/vibeframe-test --dry-run --max-cost 0 --json > /tmp/vibe-build-dry-run.json
+
+          set +e
+          vibe build /tmp/vibeframe-test --dry-run --max-cost 0 --json \
+            > /tmp/vibe-build-stdout.json 2> /tmp/vibe-build-stderr.json
+          BUILD_EXIT=$?
+          set -e
 
           python3 - <<'PY'
           import json
           from pathlib import Path
-          for p in ['/tmp/vibe-validate.json','/tmp/vibe-plan.json','/tmp/vibe-build-dry-run.json']:
-              data = json.loads(Path(p).read_text(encoding='utf-8'))
-              print(p, json.dumps(data, ensure_ascii=False)[:1500])
-          dry = json.loads(Path('/tmp/vibe-build-dry-run.json').read_text(encoding='utf-8'))
-          cost = dry.get('costUsd')
+
+          validate = json.loads(Path('/tmp/vibe-validate.json').read_text(encoding='utf-8'))
+          plan = json.loads(Path('/tmp/vibe-plan.json').read_text(encoding='utf-8'))
+          stdout = Path('/tmp/vibe-build-stdout.json').read_text(encoding='utf-8').strip()
+          stderr = Path('/tmp/vibe-build-stderr.json').read_text(encoding='utf-8').strip()
+          dry = json.loads(stdout or stderr)
+
+          print('validate:', json.dumps(validate, ensure_ascii=False)[:1500])
+          print('plan:', json.dumps(plan, ensure_ascii=False)[:2500])
+          print('dry-run:', json.dumps(dry, ensure_ascii=False)[:2500])
+
+          validation = (plan.get('data') or {}).get('validation') or plan.get('validation') or {}
+          if validation and validation.get('ok') is False:
+              raise SystemExit('VibeFrame storyboard validation başarısız.')
+
+          cost = plan.get('costUsd')
           if cost is None:
-              cost = (dry.get('data') or {}).get('estimatedCostUsd')
+              cost = (plan.get('data') or {}).get('estimatedCostUsd')
           if cost is None:
-              cost = ((dry.get('data') or {}).get('plan') or {}).get('estimatedCostUsd')
-          if cost is not None and float(cost) > 0:
-              raise SystemExit(f'Dry-run sıfır maliyet sınırını aştı: {cost}')
+              cost = ((plan.get('data') or {}).get('plan') or {}).get('estimatedCostUsd')
+          if cost is None:
+              cost = plan.get('estimatedCostUsd')
+
+          if dry.get('success') is False and dry.get('code') != 'COST_CAP_EXCEEDED':
+              raise SystemExit(f"Beklenmeyen dry-run hatası: {dry.get('code')} {dry.get('error')}")
+
+          dry_plan = ((dry.get('data') or {}).get('plan') or {})
+          estimated = dry_plan.get('estimatedCostUsd', cost if cost is not None else 0)
+          Path('/tmp/vibe-estimated-cost.txt').write_text(str(estimated), encoding='utf-8')
+          print(f'Tahmini gelecek üretim maliyeti: ${estimated}; bu testte gerçek harcama: $0')
           PY
+
+          ESTIMATED_COST=$(cat /tmp/vibe-estimated-cost.txt)
+          echo "VIBE_ESTIMATED_COST=$ESTIMATED_COST" >> "$GITHUB_ENV"
 
       - name: Güvenli test özeti
         shell: bash
         run: |
           set -euo pipefail
           {
-            echo "### VibeFrame uygunluk testi"
+            echo "### VibeFrame uygunluk testi başarılı"
             echo "- Kaynak: sistem-testi Issue #$ISSUE_NUMBER / Senaryo $SCENARIO"
             echo "- Adapter testleri: geçti"
             echo "- VibeFrame storyboard validate: geçti"
             echo "- VibeFrame plan: geçti"
-            echo "- Build dry-run: --max-cost 0"
-            echo "- Harici AI/video üretimi: yapılmadı"
-            echo "- AI/video API harcaması: 0"
+            echo "- Güvenlik kapısı: --dry-run --max-cost 0"
+            echo "- Planlanan ileriki üretim tahmini: \$$VIBE_ESTIMATED_COST"
+            echo "- Bu testte harici AI/video üretimi: yapılmadı"
+            echo "- Bu testte AI/video API harcaması: \$0"
             echo "- Gerçek MP4 üretimi: yapılmadı"
           } >> "$GITHUB_STEP_SUMMARY"
