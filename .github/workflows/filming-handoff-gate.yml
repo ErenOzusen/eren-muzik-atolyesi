@@ -20,29 +20,71 @@ name: Çekim Handoff Güvenlik Kapısı
         required: true
         default: true
         type: boolean
+  issue_comment:
+    types:
+      - created
 
 permissions:
   contents: read
   issues: read
 
 concurrency:
-  group: filming-handoff-${{ inputs.issue_number }}
+  group: filming-handoff-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
   validate-handoff:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request == null &&
+       startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
+       startsWith(github.event.comment.body, 'TEST HANDOFF '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      ISSUE_NUMBER: ${{ inputs.issue_number }}
-      EXPECTED_SCENARIO: ${{ inputs.scenario }}
-      TEST_MODE: ${{ inputs.test_mode }}
 
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
+
+      - name: Handoff girdilerini güvenli biçimde çöz
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+            PROFILE=.github/config/business-profile.json
+            EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
+            COMMENT_AUTHOR=$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")
+            RAW_COMMENT=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+            NORMALIZED=$(printf '%s' "$RAW_COMMENT" | tr '[:lower:]' '[:upper:]' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s/[[:space:]]+/ /g')
+
+            if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+              echo "Handoff testi yalnız yetkili işletme sahibi tarafından başlatılabilir: $COMMENT_AUTHOR"
+              exit 1
+            fi
+            if [[ ! "$NORMALIZED" =~ ^TEST[[:space:]]+HANDOFF[[:space:]]+([123])$ ]]; then
+              echo "Yorum geçerli TEST HANDOFF komutu değil."
+              exit 1
+            fi
+
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+            EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
+            TEST_MODE=true
+          else
+            ISSUE_NUMBER="${{ inputs.issue_number }}"
+            EXPECTED_SCENARIO="${{ inputs.scenario }}"
+            TEST_MODE="${{ inputs.test_mode }}"
+          fi
+
+          {
+            echo "ISSUE_NUMBER=$ISSUE_NUMBER"
+            echo "EXPECTED_SCENARIO=$EXPECTED_SCENARIO"
+            echo "TEST_MODE=$TEST_MODE"
+          } >> "$GITHUB_ENV"
 
       - name: Issue ve seçim sözleşmesini doğrula
         shell: bash
