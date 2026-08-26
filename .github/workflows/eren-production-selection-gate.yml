@@ -17,7 +17,13 @@ jobs:
   select-scenario:
     if: >-
       github.event.issue.pull_request == null &&
-      startsWith(github.event.issue.title, 'Nihai Senaryolar')
+      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
+      (github.event.comment.body == 'SEÇ 1' ||
+       github.event.comment.body == 'SEÇ 2' ||
+       github.event.comment.body == 'SEÇ 3' ||
+       github.event.comment.body == 'TEST SEÇ 1' ||
+       github.event.comment.body == 'TEST SEÇ 2' ||
+       github.event.comment.body == 'TEST SEÇ 3')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
