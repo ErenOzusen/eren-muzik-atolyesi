@@ -2,6 +2,12 @@ name: Son Teknik Kontrol Ajanı
 
 on:
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı ve kaynak Issue okuması yapmadan profil bağlantısını test et"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -13,17 +19,93 @@ concurrency:
 
 jobs:
   final-check:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
 
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
-      - name: Nihai senaryoları ve QC raporunu bul
+      - name: Kaynak kodu al
+        uses: actions/checkout@v7
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE=.github/config/business-profile.json
+          python3 .github/scripts/validate_business_config.py --config "$PROFILE" --output /tmp/profile.md --test-mode true
+
+          echo "BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_CATEGORY=$(jq -r '.business.category' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CONTENT_TOPICS_TEXT=$(jq -r '.content.content_topics | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "MAX_SCENARIO_COUNT=$(jq -r '.content.script.idea_count' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "DEFAULT_MODEL=$(jq -r '.cost_control.default_model' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_FINAL_CHARS=$(jq -r '.content.final_technical_control.max_final_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_QC_CHARS=$(jq -r '.content.final_technical_control.max_qc_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_TOTAL_INPUT_CHARS=$(jq -r '.content.final_technical_control.max_total_input_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_MODEL_OUTPUT=$(jq -r '.content.final_technical_control.max_model_output' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_BLOCKERS=$(jq -r '.content.final_technical_control.max_blockers' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_MAX_IMPROVEMENTS=$(jq -r '.content.final_technical_control.max_improvements' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_REQUIRE_EXPLICIT_QC_LINK=$(jq -r '.content.final_technical_control.require_explicit_qc_link' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_FACT_COUNT=$(jq -r '.content.final_technical_control.authoritative_facts | length' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_RULE_COUNT=$(jq -r '.content.final_technical_control.domain_rules | length' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_FACTS_TEXT=$(jq -r '.content.final_technical_control.authoritative_facts | join("; ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "FTC_RULES_TEXT=$(jq -r '.content.final_technical_control.domain_rules | join("; ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Son Teknik Kontrol profil bağlantısını sıfır-token ile test et
+        if: ${{ env.TEST_MODE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TITLE="TEST Merkezi Profil Bağlantısı - Son Teknik Kontrol Ajanı"
+          {
+            echo "<!-- PROFILE_BINDING_USAGE_V1 agent=final-technical-check test=true input=0 output=0 web_search=0 source_issue_read=0 downstream_run=0 profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ✅ Son Teknik Kontrol Ajanı merkezi işletme profiline güvenle bağlandı."
+            echo
+            echo "# 🔗 SON TEKNİK KONTROL AJANI PROFİL BAĞLANTI TESTİ"
+            echo
+            echo "- **Marka:** $BRAND_NAME"
+            echo "- **İşletme sahibi:** $OWNER_NAME"
+            echo "- **Faaliyet alanı:** $BUSINESS_CATEGORY"
+            echo "- **İçerik konuları:** $CONTENT_TOPICS_TEXT"
+            echo "- **Toplam kaynak sınırı:** $FTC_MAX_TOTAL_INPUT_CHARS karakter"
+            echo "- **Model / çıktı bütçesi:** $DEFAULT_MODEL / $FTC_MAX_MODEL_OUTPUT token"
+            echo "- **Bağlayıcı uzman bilgisi:** $FTC_FACT_COUNT"
+            echo "- **Sektörel kontrol kuralı:** $FTC_RULE_COUNT"
+            echo "- **AI kullanımı:** 0 giriş, 0 çıkış tokenı; 0 web araması"
+            echo "- **Kaynak Issue okuma:** 0"
+            echo "- **Alt ajan tetikleme:** 0"
+            echo "- **Gerçek teknik rapor / etiket / yorum:** Oluşturulmadı veya değiştirilmedi"
+          } > /tmp/final-technical-profile-test.md
+
+          gh label create profil-baglantisi --color 0E8A16 --description "Ajanın merkezi işletme profili bağlantısı" --force
+          gh label create sistem-testi --color BFD4F2 --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" --force
+          NUMBER=$(gh issue list --state all --search "\"$TITLE\" in:title" --limit 20 --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n 1)
+          if [[ -n "$NUMBER" ]]; then
+            gh issue edit "$NUMBER" --body-file /tmp/final-technical-profile-test.md --add-label profil-baglantisi --add-label sistem-testi
+            URL=$(gh issue view "$NUMBER" --json url --jq '.url')
+          else
+            URL=$(gh issue create --title "$TITLE" --body-file /tmp/final-technical-profile-test.md --label profil-baglantisi --label sistem-testi)
+          fi
+
+          {
+            echo "### Son Teknik Kontrol profil testi başarılı"
+            echo "- AI tokenı: 0 giriş / 0 çıkış"
+            echo "- Web araması: 0"
+            echo "- Kaynak Issue okuma: 0"
+            echo "- Alt ajan tetikleme: 0"
+            echo "- Test kaydı: $URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nihai senaryoları ve açıkça bağlı QC raporunu bul
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -31,153 +113,210 @@ jobs:
           FINAL_NUMBER=$(gh issue list \
             --state all \
             --search '"Nihai Senaryolar" in:title sort:updated-desc' \
-            --limit 1 \
-            --json number \
-            --jq '.[0].number // empty')
+            --limit 50 \
+            --json number,title \
+            --jq '.[] | select(.title | startswith("Nihai Senaryolar - ")) | .number' \
+            | head -n 1)
 
           if [[ -z "$FINAL_NUMBER" ]]; then
-            echo "Nihai Senaryolar Issue'su bulunamadı."
+            echo "Üretim biçiminde Nihai Senaryolar Issue'su bulunamadı."
             exit 1
           fi
 
           gh issue view "$FINAL_NUMBER" --json title,body,url > /tmp/final.json
-          jq -r '.body' /tmp/final.json > /tmp/final-scripts.md
+          FINAL_TITLE=$(jq -r '.title' /tmp/final.json)
           FINAL_URL=$(jq -r '.url' /tmp/final.json)
+          jq -r '.body' /tmp/final.json > /tmp/final-scripts.raw.md
 
-          QC_NUMBER=$(grep -i 'Kalite kontrol raporu' /tmp/final-scripts.md \
-            | grep -oE '(issues/|#)[0-9]+' \
+          if grep -q 'PROFILE_BINDING_USAGE_V1' /tmp/final-scripts.raw.md; then
+            echo "Profil bağlantı testi üretim kaynağı olarak kullanılamaz."
+            exit 1
+          fi
+
+          QC_NUMBER=$(grep -iE '^\*\*Kalite kontrol raporu:\*\*' /tmp/final-scripts.raw.md \
+            | grep -oE 'issues/[0-9]+' \
             | grep -oE '[0-9]+' \
             | head -n 1 || true)
 
-          if [[ -z "$QC_NUMBER" ]]; then
-            QC_NUMBER=$(gh issue list \
-              --state all \
-              --search '"Kalite Kontrol Raporu" in:title sort:created-desc' \
-              --limit 1 \
-              --json number \
-              --jq '.[0].number // empty')
+          if [[ "$FTC_REQUIRE_EXPLICIT_QC_LINK" == "true" && -z "$QC_NUMBER" ]]; then
+            echo "Nihai senaryoda açık Kalite Kontrol raporu bağlantısı yok; son rapora sessizce geri düşülmedi."
+            exit 1
           fi
-
           if [[ -z "$QC_NUMBER" ]]; then
-            echo "Kalite Kontrol Raporu bulunamadı."
+            echo "Kalite Kontrol Raporu çözülemedi."
             exit 1
           fi
 
           gh issue view "$QC_NUMBER" --json title,body,url > /tmp/qc.json
-          jq -r '.body' /tmp/qc.json > /tmp/qc-report.md
+          QC_TITLE=$(jq -r '.title' /tmp/qc.json)
+          if [[ "$QC_TITLE" != Kalite\ Kontrol\ Raporu* ]]; then
+            echo "Nihai senaryoya bağlı #$QC_NUMBER bir Kalite Kontrol Raporu değil: $QC_TITLE"
+            exit 1
+          fi
           QC_URL=$(jq -r '.url' /tmp/qc.json)
+          jq -r '.body' /tmp/qc.json > /tmp/qc-report.raw.md
 
           {
             echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_TITLE=$FINAL_TITLE"
             echo "FINAL_URL=$FINAL_URL"
             echo "QC_NUMBER=$QC_NUMBER"
             echo "QC_URL=$QC_URL"
           } >> "$GITHUB_ENV"
 
-      - name: Son kontrol isteğini hazırla
+      - name: Kaynakları deterministik olarak küçült ve doğrula
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          cat > /tmp/system-prompt.txt <<'PROMPT'
-          Sen Eren Müzik Atölyesi'nin bağımsız son teknik kontrol editörüsün.
+          python3 - <<'PY'
+          from __future__ import annotations
 
-          Görevin düzeltilmiş nihai senaryoları yayımlamadan ve Eren'in onayına
-          sunmadan önce denetlemektir. Senaryoları yeniden yazma; sorunları bul,
-          gerekçelendir ve her bloklayıcı sorun için uygulanabilir kesin düzeltme ver.
+          import os
+          import re
+          from pathlib import Path
 
-          YENİ WEB ARAŞTIRMASI YAPMA. Sana verilen QC raporu ve nihai senaryolarla çalış.
-          "Uygulanan QC düzeltmeleri" bölümündeki beyanlara güvenme; gerçek metni incele.
 
-          EREN'İN UZMAN ONAYI — AŞAĞIDAKİ MÜZİKAL VERİLER BAĞLAYICIDIR:
-          - Riff 1: 4/4, iki ölçü. Ölçü 1'de E0 dört çeyrek; ölçü 2'de E2 dört çeyrek.
-          - Riff 2: 4/4, tek ölçü. E0, E0, A0, A2; her biri çeyrek.
-          - Riff 3: 4/4, tek ölçü. E0 sekizlik vuruş 1; A2 sekizlik 1-ve;
-            A0 çeyrek vuruş 2; E0 çeyrek vuruş 3; çeyrek sus vuruş 4.
-          Bu dizileri yeniden tartışma veya başka notalar önerme; yalnızca belgede bunlarla
-          nesnel bir çelişki bulunup bulunmadığını kontrol et.
+          def clean(path: str, kind: str) -> str:
+              text = Path(path).read_text(encoding="utf-8")
+              text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+              text = re.sub(r"(?m)^> \*\*Durum:\*\*.*\n?", "", text)
+              text = re.sub(
+                  r"(?m)^\*\*(?:Temel alınan metin|Kaynak haftalık senaryolar|Kaynak senaryolar|Kalite kontrol raporu|Eşleştirilmiş son teknik kontrol):\*\*.*\n?",
+                  "",
+                  text,
+              )
+              if kind == "qc":
+                  text = re.sub(
+                      r"(?ms)^## Kullanılan Kaynaklar\s*\n.*?(?=^GENEL KARAR:|\Z)",
+                      "",
+                      text,
+                  )
+              text = re.sub(
+                  r"(?ms)\n---\s*\nOnaylamak için bu Issue'ya.*\Z",
+                  "",
+                  text,
+              )
+              text = re.sub(r"[ \t]+$", "", text, flags=re.MULTILINE)
+              text = re.sub(r"\n{3,}", "\n\n", text)
+              return text.strip() + "\n" if text.strip() else ""
 
-          ZORUNLU KONTROLLER:
-          1. QC raporundaki nihai/GENEL KARAR ve önerilen düzeltmeler gerçekten uygulanmış mı?
-          2. Ton, ilk akor, transpozisyon, yeniden armonizasyon ve pedagojik sadeleştirme
-             kavramları birbirine karıştırılmış mı?
-          3. Akor dizileri, nota adları, tel/perde numaraları ve müzik teorisi kendi içinde tutarlı mı?
-          4. Nota olay tablosu "ritim açısından esas kaynak" olarak belirtilmişse tablo
-             otoritatiftir. Ölçü toplamı doğruysa ASCII TAB'daki tirelerden ayrıca nota
-             süresi icat etme; TAB yalnızca tel/perde saldırı noktalarını görselleştirir.
-          5. "Sayım |1-&-2-&-3-&-4-&-|" ızgarasında etiket konumları sırasıyla karakter
-             0, 2, 4, 6, 8, 10, 12 ve 14'tür. Tel satırındaki notayı aynı karakter
-             konumuyla karşılaştır. Karakter aralıklarını yeniden ölçeklendirme.
-          6. Her riffteki olay tablosunda tel/perde dizisi, ölçü, zaman, nota süresi ve
-             tempo çekimde tereddüt bırakmayacak kadar açık mı? TAB ile gerçek bir nota
-             saldırısı çelişmedikçe yalnızca görsel boşluk tercihini bloklayıcı sayma.
-          7. "Neredeyse her şarkı", "en sağlam temel", "en kolay", "en düşük" gibi
-             genellemeler kanıtlanmış gerçek gibi sunulmuş mu?
-          8. Doğrulanmamış indirim, kampanya, fiyat, garanti veya sonuç vaadi var mı?
-          9. Başlıklardaki #1 gibi ifadeler GitHub Issue bağlantısına dönüşüyor mu?
-             Gerekirse "Ders 1" biçimini öner.
-          10. Senaryo gerçekten çekime hazır mı; Eren'in çekim sırasında nota, ritim,
-              örnek, görsel veya konuşma içeriğini kendisinin icat etmesi gerekiyor mu?
-          11. Bir düzeltme yeni bir teknik hata, çelişki veya doğrulanmamış iddia üretmiş mi?
-          12. Kendi incelemen bir bölümün matematiksel olarak doğru olduğunu gösteriyorsa
-              aynı bölümü sonradan varsayımsal bir gerekçeyle bloklayıcı ilan etme.
-          13. Bir ölçünün sonundaki açıkça yazılmış sus ve sonraki tekrara dönüş normaldir;
-              nota sırası belirtilmişse bunu çekim engeli sayma.
-          14. "Beş dakikada öğren" vaadi ile 3:50'lik video süresi çelişmez; içerik beş
-              dakikadan uzun sürmediği için bunu hata veya yanıltma olarak işaretleme.
+
+          final_text = clean("/tmp/final-scripts.raw.md", "final")
+          qc_text = clean("/tmp/qc-report.raw.md", "qc")
+
+          limits = {
+              "nihai metin": (len(final_text), int(os.environ["FTC_MAX_FINAL_CHARS"])),
+              "kalite raporu": (len(qc_text), int(os.environ["FTC_MAX_QC_CHARS"])),
+          }
+          for label, (actual, maximum) in limits.items():
+              if actual > maximum:
+                  raise SystemExit(
+                      f"{label} güvenli sınırı aşıyor: {actual} > {maximum}. "
+                      "Kaliteyi korumak için sessiz kırpma yapılmadı."
+                  )
+
+          total = len(final_text) + len(qc_text)
+          total_limit = int(os.environ["FTC_MAX_TOTAL_INPUT_CHARS"])
+          if total > total_limit:
+              raise SystemExit(
+                  f"Toplam son kontrol girdisi güvenli sınırı aşıyor: {total} > {total_limit}. "
+                  "Kaliteyi korumak için sessiz kırpma yapılmadı."
+              )
+
+          scenarios = {
+              int(number)
+              for number in re.findall(r"(?i)SENARYO\s*(\d+)\b", final_text)
+          }
+          maximum_scenarios = int(os.environ["MAX_SCENARIO_COUNT"])
+          if not scenarios or len(scenarios) > maximum_scenarios:
+              raise SystemExit(
+                  f"Nihai metin senaryo kapsamı geçersiz: {sorted(scenarios)}; "
+                  f"izin verilen üst sınır {maximum_scenarios}."
+              )
+          if "GENEL KARAR:" not in qc_text:
+              raise SystemExit("Bağlı kalite raporunda GENEL KARAR bulunamadı.")
+
+          Path("/tmp/final-scripts.md").write_text(final_text, encoding="utf-8")
+          Path("/tmp/qc-report.md").write_text(qc_text, encoding="utf-8")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
+              env_file.write(f"FTC_SOURCE_CHARS={total}\n")
+              env_file.write(f"FTC_SCENARIO_COUNT={len(scenarios)}\n")
+
+          print(
+              f"final_technical_sources_ok final={len(final_text)} qc={len(qc_text)} "
+              f"total={total} scenarios={len(scenarios)}"
+          )
+          PY
+
+      - name: Son kontrol isteğini hazırla
+        if: ${{ env.TEST_MODE != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/system-prompt.txt <<PROMPT
+          Sen $BRAND_NAME için çalışan bağımsız son teknik kontrol editörüsün.
+
+          AMAÇ:
+          Nihai senaryoyu yeniden yazmadan, yayımdan önce QC uyumu, iç tutarlılık ve çekime hazır olma açısından denetle. Yalnızca sana verilen nihai metin ve ona açıkça bağlı QC raporuyla çalış. Yeni web araştırması yapma ve kaynak uydurma.
+
+          MERKEZİ PROFİL:
+          - Faaliyet alanı: $BUSINESS_CATEGORY
+          - İçerik konuları: $CONTENT_TOPICS_TEXT
+          - İncelenen nihai senaryo sayısı: $FTC_SCENARIO_COUNT
+
+          BAĞLAYICI UZMAN BİLGİLERİ:
+          $FTC_FACTS_TEXT
+
+          SEKTÖREL KONTROL KURALLARI:
+          $FTC_RULES_TEXT
 
           KARAR KURALI:
-          - Yalnızca kanıtlayabildiğin nesnel bir yanlış, gerçek çelişki veya çekimi
-            engelleyen eksik veri varsa:
-            GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
-          - Açıklama zaten doğruysa ve önerin yalnızca daha ayrıntılı söyleyiş, üslup,
-            tekrar geçişi veya görsel boşluk tercihi ise bunu küçük iyileştirmeye yaz ve:
+          - "Uygulanan QC düzeltmeleri" beyanına güvenme; gerçek metni kontrol et.
+          - Yalnızca kanıtlayabildiğin nesnel yanlış, gerçek çelişki veya çekimi engelleyen eksik veri varsa DÜZELTME GEREKİYOR kararı ver.
+          - Her bloklayıcı bulgu için "Metindeki hangi iki bilgi aynı anda doğru olamaz?" sorusunu cevapla. Cevap yoksa bulguyu küçük iyileştirmeye taşı.
+          - Yalnızca üslup veya daha ayrıntılı söyleyiş önerisi varsa EREN ONAYINA HAZIR kararı ver.
+
+          ÇIKTI SÖZLEŞMESİ:
+          - İlk satır tam olarak: # 🔍 $BRAND_NAME — SON TEKNİK KONTROL
+          - "## Kontrol Özeti" altında Senaryo | QC Uyumu | Teknik Tutarlılık | Çekime Hazır mı tablosu yaz.
+          - "## Bloklayıcı Bulgular" altında en fazla $FTC_MAX_BLOCKERS bulgu yaz; yoksa "Bloklayıcı bulgu yok" de.
+          - "## Küçük İyileştirmeler" altında en fazla $FTC_MAX_IMPROVEMENTS kısa madde yaz.
+          - "## GENEL KARAR" bölümüyle bitir.
+          - Son satır aşağıdaki iki seçenekten tam olarak biri olsun:
             GENEL KARAR: ✅ EREN ONAYINA HAZIR
-          - Sonuç üretmeden önce her bloklayıcı bulgu için "Metindeki hangi iki bilgi
-            aynı anda doğru olamaz?" sorusunu cevapla. Cevaplayamıyorsan bloklayıcı değildir.
-
-          RAPOR BİÇİMİ:
-          # 🔍 EREN MÜZİK ATÖLYESİ — SON TEKNİK KONTROL
-          ## Kontrol Özeti
-          Kısa bir tablo: Senaryo | QC Uyumu | Teknik Tutarlılık | Çekime Hazır mı
-          ## Bloklayıcı Bulgular
-          En fazla üç bloklayıcı bulgu yaz. Her bulguda: senaryo, çelişen iki bilgi,
-          kısa gerekçe ve kesin önerilen düzeltme. Uzun karakter-karakter düşünce dökümü yazma.
-          Sorun yoksa "Bloklayıcı bulgu yok" yaz.
-          ## Küçük İyileştirmeler
-          En fazla beş madde.
-          ## GENEL KARAR
-          Son satır tam olarak iki seçenekten yalnızca biri olsun:
-          GENEL KARAR: ✅ EREN ONAYINA HAZIR
-          GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
-
-          Yalnızca Markdown raporunu yaz. Kod bloğu veya ön açıklama ekleme.
+            GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
+          - Yalnızca Markdown raporunu döndür; kod çiti veya ön açıklama ekleme.
           PROMPT
 
           jq -n \
             --rawfile system /tmp/system-prompt.txt \
             --rawfile final_scripts /tmp/final-scripts.md \
             --rawfile qc /tmp/qc-report.md \
+            --arg model "$DEFAULT_MODEL" \
+            --argjson max_tokens "$FTC_MAX_MODEL_OUTPUT" \
             --arg final_url "$FINAL_URL" \
             --arg qc_url "$QC_URL" \
             '{
-              model: "claude-sonnet-4-6",
-              max_tokens: 1800,
+              model: $model,
+              max_tokens: $max_tokens,
               temperature: 0,
               system: $system,
               messages: [
                 {
                   role: "user",
                   content: (
-                    "Aşağıdaki nihai senaryoları, verilen QC raporuyla karşılaştırarak son teknik kontrolden geçir.\n\n" +
                     "NİHAİ SENARYOLAR — " + $final_url + "\n\n" + $final_scripts +
-                    "\n\nÖNCEKİ QC RAPORU — " + $qc_url + "\n\n" + $qc
+                    "\n\nBAĞLI KALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc
                   )
                 }
               ]
             }' > /tmp/request.json
 
-      - name: Anthropic API ile son teknik kontrolü yap
+      - name: Anthropic API ile tek çağrıda son teknik kontrol yap
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -200,6 +339,12 @@ jobs:
             exit 1
           fi
 
+          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/response.json)
+          if [[ "$STOP_REASON" != "end_turn" ]]; then
+            echo "Model çıktısı güvenli biçimde tamamlanmadı: stop_reason=$STOP_REASON"
+            exit 1
+          fi
+
           jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
             /tmp/response.json > /tmp/final-check.md
 
@@ -208,15 +353,40 @@ jobs:
             exit 1
           fi
 
+          EXPECTED_HEADING="# 🔍 $BRAND_NAME — SON TEKNİK KONTROL"
+          if [[ "$(head -n 1 /tmp/final-check.md)" != "$EXPECTED_HEADING" ]]; then
+            echo "Son teknik kontrol başlığı sözleşmeyle eşleşmiyor."
+            exit 1
+          fi
+
+          READY_COUNT=$(grep -c '^GENEL KARAR: ✅ EREN ONAYINA HAZIR$' /tmp/final-check.md || true)
+          FIX_COUNT=$(grep -c '^GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR$' /tmp/final-check.md || true)
+          if [[ $((READY_COUNT + FIX_COUNT)) -ne 1 ]]; then
+            echo "Son teknik kontrol raporu tam olarak bir geçerli GENEL KARAR içermiyor."
+            exit 1
+          fi
+          if ! tail -n 1 /tmp/final-check.md | grep -Eq '^GENEL KARAR: (✅ EREN ONAYINA HAZIR|⚠️ DÜZELTME GEREKİYOR)$'; then
+            echo "GENEL KARAR raporun son satırı değil."
+            exit 1
+          fi
+
+          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
+          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
+          {
+            echo "FTC_INPUT_TOKENS=$INPUT_TOKENS"
+            echo "FTC_OUTPUT_TOKENS=$OUTPUT_TOKENS"
+          } >> "$GITHUB_ENV"
+
       - name: Kontrol raporunu ve onay etiketlerini yayınla
+        if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          RUN_DATE=$(TZ=Europe/Istanbul date +%d-%m-%Y)
+          RUN_DATE=$(TZ="$BUSINESS_TIMEZONE" date +%d-%m-%Y)
           TITLE="Son Teknik Kontrol Raporu - $RUN_DATE"
 
-          if grep -q 'GENEL KARAR: ✅ EREN ONAYINA HAZIR' /tmp/final-check.md; then
+          if grep -q '^GENEL KARAR: ✅ EREN ONAYINA HAZIR$' /tmp/final-check.md; then
             DECISION="✅ EREN ONAYINA HAZIR"
             REPORT_LABEL="son-kontrol-gecti"
             FINAL_LABEL="eren-onayi-bekliyor"
@@ -226,7 +396,9 @@ jobs:
             FINAL_LABEL="duzeltme-gerekiyor"
           fi
 
+          REPORT_HASH=$(sha256sum /tmp/final-check.md | awk '{print $1}')
           {
+            echo "<!-- FINAL_TECHNICAL_AI_USAGE_V1 source_chars=$FTC_SOURCE_CHARS input=$FTC_INPUT_TOKENS output=$FTC_OUTPUT_TOKENS web_search=0 model=$DEFAULT_MODEL scenarios=$FTC_SCENARIO_COUNT profile_sha=$PROFILE_FILE_SHA report_sha=$REPORT_HASH -->"
             echo "**Kaynak nihai senaryolar:** $FINAL_URL"
             echo "**Önceki kalite kontrol raporu:** $QC_URL"
             echo "**Otomatik karar:** $DECISION"
@@ -234,55 +406,51 @@ jobs:
             cat /tmp/final-check.md
           } > /tmp/report-body.md
 
-          gh label create "son-kontrol-gecti" \
-            --color "0E8A16" \
-            --description "Son teknik kontrolü geçti" \
-            --force
-
-          gh label create "duzeltme-gerekiyor" \
-            --color "D93F0B" \
-            --description "İçerikte düzeltme gerekiyor" \
-            --force
-
-          gh label create "eren-onayi-bekliyor" \
-            --color "FBCA04" \
-            --description "Nihai içerik Eren'in onayını bekliyor" \
-            --force
+          gh label create "son-kontrol-gecti" --color "0E8A16" --description "Son teknik kontrolü geçti" --force
+          gh label create "duzeltme-gerekiyor" --color "D93F0B" --description "İçerikte düzeltme gerekiyor" --force
+          gh label create "eren-onayi-bekliyor" --color "FBCA04" --description "Nihai içerik işletme sahibi onayını bekliyor" --force
 
           REPORT_NUMBER=$(gh issue list \
             --state all \
-            --search '"Son Teknik Kontrol Raporu" in:title sort:created-desc' \
+            --search "\"$TITLE\" in:title sort:updated-desc" \
             --limit 20 \
             --json number,title \
             --jq ".[] | select(.title == \"$TITLE\") | .number" \
             | head -n 1)
 
           if [[ -n "$REPORT_NUMBER" ]]; then
-            gh issue edit "$REPORT_NUMBER" \
-              --title "$TITLE" \
-              --body-file /tmp/report-body.md \
-              --add-label "$REPORT_LABEL"
+            gh issue edit "$REPORT_NUMBER" --title "$TITLE" --body-file /tmp/report-body.md --add-label "$REPORT_LABEL"
             REPORT_URL=$(gh issue view "$REPORT_NUMBER" --json url --jq '.url')
           else
-            REPORT_URL=$(gh issue create \
-              --title "$TITLE" \
-              --body-file /tmp/report-body.md \
-              --label "$REPORT_LABEL")
+            REPORT_URL=$(gh issue create --title "$TITLE" --body-file /tmp/report-body.md --label "$REPORT_LABEL")
+            REPORT_NUMBER=$(grep -oE '[0-9]+$' <<< "$REPORT_URL")
           fi
 
-          gh issue edit "$FINAL_NUMBER" \
-            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
-          gh issue edit "$FINAL_NUMBER" \
-            --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
-          gh issue edit "$FINAL_NUMBER" \
-            --remove-label "son-kontrol-gecti" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" --remove-label "son-kontrol-gecti" > /dev/null 2>&1 || true
           gh issue edit "$FINAL_NUMBER" --add-label "$FINAL_LABEL"
 
-          gh issue comment "$FINAL_NUMBER" \
-            --body "Son teknik kontrol tamamlandı: $DECISION — $REPORT_URL"
+          COMMENT_MARKER="<!-- FINAL_TECHNICAL_RESULT_V1 report=$REPORT_NUMBER report_sha=$REPORT_HASH -->"
+          COMMENT_EXISTS=$(gh issue view "$FINAL_NUMBER" --json comments \
+            --jq ".comments[]? | select(.body | contains(\"$COMMENT_MARKER\")) | .id" \
+            | head -n 1)
+          if [[ -z "$COMMENT_EXISTS" ]]; then
+            {
+              echo "$COMMENT_MARKER"
+              echo "Son teknik kontrol tamamlandı: $DECISION — $REPORT_URL"
+            } > /tmp/final-comment.md
+            gh issue comment "$FINAL_NUMBER" --body-file /tmp/final-comment.md
+          fi
 
-          echo "### Son teknik kontrol tamamlandı" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Nihai senaryolar: #$FINAL_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Önceki QC raporu: #$QC_NUMBER" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Karar: $DECISION" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Rapor: $REPORT_URL" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Son teknik kontrol tamamlandı"
+            echo "- Nihai senaryolar: #$FINAL_NUMBER"
+            echo "- Bağlı QC raporu: #$QC_NUMBER"
+            echo "- İncelenen senaryo: $FTC_SCENARIO_COUNT"
+            echo "- Kaynak karakteri: $FTC_SOURCE_CHARS"
+            echo "- AI kullanımı: $FTC_INPUT_TOKENS giriş / $FTC_OUTPUT_TOKENS çıkış tokenı"
+            echo "- Web araması: 0"
+            echo "- Karar: $DECISION"
+            echo "- Rapor: $REPORT_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
