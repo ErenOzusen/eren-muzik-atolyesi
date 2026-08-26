@@ -352,7 +352,7 @@ def main() -> None:
 
 # ⚙️ {business['brand_name']} — MARKA VE İŞLETME YAPILANDIRMA RAPORU
 
-> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo ve Kalite Kontrol ajanları merkezi profile bağlıdır; Düzeltme Ajanının kontrollü bağlantı testi sıradadır.
+> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo, Kalite Kontrol ve Düzeltme ajanları merkezi profile bağlıdır; diğer ajanların kontrollü geçişi sürüyor.
 
 ## 1. İşletme Kimliği
 
@@ -430,8 +430,8 @@ def main() -> None:
 - **Kalite Kontrol Ajanı profil ayarları:** ✅ Hazır
 - **Kalite Kontrol workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
 - **Düzeltme Ajanı profil ayarları:** ✅ Hazır
-- **Düzeltme workflow bağlantısı:** ⏳ Sıfır-token test bekliyor
-- **Diğer ajanların profile bağlanması:** ⏳ Düzeltme testinden sonra
+- **Düzeltme workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
+- **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
 - Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
