@@ -88,6 +88,19 @@
       "shorts_max_seconds": 60,
       "ideas_char_limit": 12000,
       "max_model_output": 4800
+    },
+    "quality_control": {
+      "max_script_chars": 40000,
+      "max_model_output": 4500,
+      "target_report_output_tokens": 2500,
+      "max_web_searches": 1,
+      "domain_rules": [
+        "Orijinal ton, ilk duyulan akor, tüm akorlar, capo şekilleri, gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyonu birbirinden ayır.",
+        "Akor, nota, perde ve rifflerin müzikal uyumunu kontrol et.",
+        "Bas gitarın ritim, armoni ve melodiyle ilişkili olabileceğini kabul et.",
+        "Fiziksel taşınabilirlik ile yükseltilmiş ses ihtiyacını karıştırma.",
+        "Maliyet iddialarını güncel ve karşılaştırılabilir fiyat olmadan doğrulanmış sayma."
+      ]
     }
   },
   "approval": {
