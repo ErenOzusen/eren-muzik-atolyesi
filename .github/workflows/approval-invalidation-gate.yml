@@ -1,0 +1,77 @@
+name: Eski Onay Geçersizleştirme Kapısı
+
+on:
+  issues:
+    types:
+      - edited
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: approval-invalidation-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  invalidate-stale-approval:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
+      github.event.changes.body != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: İçerik değişikliğinde eski onayı geçersizleştir
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$ISSUE_NUMBER" --json labels,url > /tmp/issue.json
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
+
+          HAD_APPROVAL=false
+          for LABEL in eren-onayli cekime-hazir cekim-paketi-hazir; do
+            if grep -qx "$LABEL" /tmp/labels.txt; then
+              HAD_APPROVAL=true
+              gh issue edit "$ISSUE_NUMBER" --remove-label "$LABEL" > /dev/null
+            fi
+          done
+
+          if [[ "$HAD_APPROVAL" != "true" ]]; then
+            echo "Bu içerikte geçersizleştirilecek eski onay yok."
+            exit 0
+          fi
+
+          gh label create "eren-onayi-bekliyor" \
+            --color "FBCA04" \
+            --description "Nihai içerik işletme sahibi onayını bekliyor" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" --add-label "eren-onayi-bekliyor" > /dev/null
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          ## 🔄 Önceki Eren onayı geçersizleştirildi
+
+          Nihai senaryo içeriği değiştirildiği için önceki onay ve çekime-hazır durumu artık geçerli değil.
+
+          **Durum:** Eren onayı yeniden bekleniyor.  
+          **Güvenlik:** Hiçbir sonraki ajan otomatik başlatılmadı.
+          MESSAGE
+          )"
+
+          {
+            echo "### Eski onay geçersizleştirildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Kaldırılan durumlar: mevcut olan eren-onayli / cekime-hazir / cekim-paketi-hazir"
+            echo "- Yeni durum: eren-onayi-bekliyor"
+            echo "- Sonraki ajan: otomatik başlatılmadı"
+            echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+          } >> "$GITHUB_STEP_SUMMARY"
