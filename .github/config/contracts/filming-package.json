@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "name": "filming-package-v1",
+  "min_chars": 800,
+  "max_chars": 30000,
+  "required_regex": [
+    "^#\\s+🎥\\s+EREN MÜZİK ATÖLYESİ\\s+—\\s+TELEFONLA ÇEKİM PAKETİ",
+    "^##\\s+1\\.\\s+.*Ortak Hazırlık",
+    "^##\\s+2\\.\\s+.*(Oda|Telefon).*Yerleş",
+    "^##\\s+3\\.\\s+.*Senaryo.*Çekim Planı",
+    "^##\\s+4\\.\\s+.*(Shorts|Reels)",
+    "^##\\s+5\\.\\s+.*Çekim.*Sıra",
+    "^##\\s+6\\.\\s+.*(Çekim Sonu|Dosya Kontrol)",
+    "Sıra\\s*\\|\\s*Bölüm\\s*\\|\\s*Telefon/Kadraj"
+  ],
+  "forbidden_regex": [
+    "onay(ı|i)?.*bekleniyor|onay.*bekle",
+    "^##\\s+[0-9]+\\.\\s+Senaryo\\s+[123]"
+  ],
+  "count_regex": [
+    {
+      "regex": "^##\\s+[1-6]\\.",
+      "equals": 6
+    }
+  ]
+}
