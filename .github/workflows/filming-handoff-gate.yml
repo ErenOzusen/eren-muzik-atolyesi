@@ -27,7 +27,7 @@ name: Çekim Handoff Güvenlik Kapısı
 permissions:
   actions: write
   contents: read
-  issues: read
+  issues: write
 
 concurrency:
   group: filming-handoff-${{ github.event.issue.number || inputs.issue_number }}
@@ -205,6 +205,117 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Video Orchestrator kararını seçilen senaryodan üret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 -m py_compile .github/scripts/video_orchestrator.py
+          python3 -m json.tool .github/config/video-orchestrator.json >/dev/null
+          python3 .github/scripts/test_video_orchestrator.py
+
+          export EXPECTED_SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+
+          text = Path('/tmp/body.md').read_text(encoding='utf-8')
+          n = os.environ['EXPECTED_SCENARIO']
+          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123]):.*$', text))
+          matches = [h for h in headings if h.group(1) == n]
+          if len(matches) != 1:
+              raise SystemExit(f'SENARYO {n} tam bir kez bulunmalı; bulunan: {len(matches)}')
+          start = matches[0].start()
+          later = [h for h in headings if h.start() > start]
+          end = later[0].start() if later else len(text)
+          block = text[start:end]
+          separator = re.search(r'(?m)^---\s*$', block)
+          if separator:
+              block = block[:separator.start()]
+          block = re.sub(r'<!--.*?-->', '', block, flags=re.S)
+          block = re.sub(r'\n{3,}', '\n\n', block).strip() + '\n'
+          if len(block) < 40:
+              raise SystemExit('Seçilen senaryo Orchestrator için fazla kısa.')
+          Path('/tmp/orchestrator-input.md').write_text(block, encoding='utf-8')
+          PY
+
+          python3 .github/scripts/video_orchestrator.py \
+            --config .github/config/video-orchestrator.json \
+            --input-file /tmp/orchestrator-input.md \
+            --output-file /tmp/video-route.json \
+            --mode auto
+
+          jq -e '.paid_generation_allowed == false' /tmp/video-route.json >/dev/null
+          jq -e '.dispatch_enabled == false' /tmp/video-route.json >/dev/null
+
+          VIDEO_MODE=$(jq -r '.selected_mode' /tmp/video-route.json)
+          VIDEO_ENGINE=$(jq -r '.engine' /tmp/video-route.json)
+          VIDEO_NEXT_STAGE=$(jq -r '.next_stage' /tmp/video-route.json)
+          VIDEO_REQUIRES_RAW=$(jq -r '.requires_raw_video' /tmp/video-route.json)
+          VIDEO_REASON=$(jq -r '.reason' /tmp/video-route.json)
+
+          case "$VIDEO_MODE" in
+            human|hybrid|faceless) ;;
+            *) echo "Auto Orchestrator güvenli olmayan mod seçti: $VIDEO_MODE"; exit 1 ;;
+          esac
+
+          {
+            echo "VIDEO_MODE=$VIDEO_MODE"
+            echo "VIDEO_ENGINE=$VIDEO_ENGINE"
+            echo "VIDEO_NEXT_STAGE=$VIDEO_NEXT_STAGE"
+            echo "VIDEO_REQUIRES_RAW=$VIDEO_REQUIRES_RAW"
+            echo "VIDEO_REASON=$VIDEO_REASON"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "### Video Orchestrator — 0-token karar"
+            echo "- Mod: $VIDEO_MODE"
+            echo "- Motor: $VIDEO_ENGINE"
+            echo "- Ham video gerekli: $VIDEO_REQUIRES_RAW"
+            echo "- Sıradaki aşama: $VIDEO_NEXT_STAGE"
+            echo "- Neden: $VIDEO_REASON"
+            echo "- Ücretli üretim: kapalı"
+            echo "- Motor dispatch: kapalı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gerçek modda Orchestrator kararını Nihai Senaryolara kaydet
+        if: env.TEST_MODE != 'true' && env.START_FILMING == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MARKER="<!-- VIDEO_ORCHESTRATOR_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
+          gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/route-comments.txt
+
+          for label in video-route-human video-route-hybrid video-route-faceless; do
+            gh label create "$label" --color "5319E7" --description "Video Orchestrator üretim rotası" --force
+            gh issue edit "$ISSUE_NUMBER" --remove-label "$label" >/dev/null 2>&1 || true
+          done
+
+          ROUTE_LABEL="video-route-$VIDEO_MODE"
+          gh issue edit "$ISSUE_NUMBER" --add-label "$ROUTE_LABEL"
+          gh label create "video-route-decided" --color "0E8A16" --description "Video Orchestrator rota kararı hazır" --force
+          gh issue edit "$ISSUE_NUMBER" --add-label "video-route-decided"
+
+          if ! grep -Fqx "$MARKER" /tmp/route-comments.txt; then
+            cat > /tmp/route-comment.md <<EOF
+          $MARKER
+          ## 🧭 Video Orchestrator Kararı
+
+          - **Seçilen senaryo:** $EXPECTED_SCENARIO
+          - **Üretim modu:** \`$VIDEO_MODE\`
+          - **Önerilen motor:** \`$VIDEO_ENGINE\`
+          - **Ham video gerekli:** \`$VIDEO_REQUIRES_RAW\`
+          - **Sıradaki aşama:** \`$VIDEO_NEXT_STAGE\`
+          - **Karar nedeni:** \`$VIDEO_REASON\`
+          - **Ücretli üretim:** ❌ Kapalı
+          - **Video motoru otomatik başlatma:** ❌ Kapalı
+
+          > Orchestrator yalnız rota kararı verdi. Video sağlayıcısı çağrılmadı ve ücretli video üretimi başlamadı.
+          EOF
+            gh issue comment "$ISSUE_NUMBER" --body-file /tmp/route-comment.md
+          fi
+
       - name: Router'lı Çekim Paketi Ajanına 0-token test dispatch gönder
         if: env.TEST_MODE == 'true' && env.DISPATCH_TEST == 'true'
         shell: bash
@@ -247,7 +358,10 @@ jobs:
             echo "### Router'lı Çekim Paketi Ajanı başlatıldı"
             echo "- Kesin kaynak Issue: #$ISSUE_NUMBER"
             echo "- Kesin senaryo: $EXPECTED_SCENARIO"
+            echo "- Video modu: $VIDEO_MODE"
+            echo "- Önerilen video motoru: $VIDEO_ENGINE"
             echo "- Başlatma komutu: Eren tarafından açıkça verildi"
             echo "- Bu kapıda AI kullanımı: 0 token"
-            echo "- AI sağlayıcısı Router tarafından üretim ajanında seçilecek"
+            echo "- Çekim Paketi AI sağlayıcısı ayrı Router tarafından seçilecek"
+            echo "- Video motoru henüz başlatılmıyor"
           } >> "$GITHUB_STEP_SUMMARY"
