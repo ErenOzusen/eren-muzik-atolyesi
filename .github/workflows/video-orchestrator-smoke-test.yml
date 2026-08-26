@@ -1,0 +1,66 @@
+name: Video Orchestrator Smoke Test
+
+"on":
+  push:
+    paths:
+      - ".github/config/video-orchestrator.json"
+      - ".github/scripts/video_orchestrator.py"
+      - ".github/scripts/test_video_orchestrator.py"
+      - ".github/workflows/video-orchestrator-smoke-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-token-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Python ve config doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/video_orchestrator.py
+          python3 -m json.tool .github/config/video-orchestrator.json >/dev/null
+          python3 .github/scripts/test_video_orchestrator.py
+
+      - name: Örnek karar dosyalarını üret
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'Riffi gitarda göster, araya B-roll ve nota görseli ekle.' > /tmp/hybrid.txt
+          python3 .github/scripts/video_orchestrator.py \
+            --config .github/config/video-orchestrator.json \
+            --input-file /tmp/hybrid.txt \
+            --output-file /tmp/hybrid.json \
+            --mode auto
+          jq -e '.selected_mode == "hybrid" and .engine == "vibeframe"' /tmp/hybrid.json >/dev/null
+          jq -e '.dispatch_enabled == false and .paid_generation_allowed == false' /tmp/hybrid.json >/dev/null
+
+          printf '%s\n' 'Gitar tarihi hakkında 5 ilginç bilgi.' > /tmp/faceless.txt
+          python3 .github/scripts/video_orchestrator.py \
+            --config .github/config/video-orchestrator.json \
+            --input-file /tmp/faceless.txt \
+            --output-file /tmp/faceless.json \
+            --mode auto
+          jq -e '.selected_mode == "faceless" and .engine == "moneyprinterturbo"' /tmp/faceless.json >/dev/null
+          jq -e '.dispatch_enabled == false and .paid_generation_allowed == false' /tmp/faceless.json >/dev/null
+
+      - name: Güvenli test özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Video Orchestrator smoke testi başarılı"
+            echo "- human -> VibeFrame"
+            echo "- hybrid -> VibeFrame + AI B-roll izni"
+            echo "- faceless -> MoneyPrinterTurbo"
+            echo "- premium_ai -> yalnız manuel"
+            echo "- Motor dispatch: kapalı"
+            echo "- Ücretli üretim: kapalı"
+            echo "- AI/API token harcaması: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
