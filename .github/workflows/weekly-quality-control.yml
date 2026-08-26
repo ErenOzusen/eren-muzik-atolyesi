@@ -2,6 +2,12 @@ name: Weekly Quality Control Agent
 
 on:
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Claude çağrısı yapmadan merkezi profil bağlantısını test et"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -12,8 +18,80 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
 
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
+
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE=.github/config/business-profile.json
+          python3 .github/scripts/validate_business_config.py --config "$PROFILE" --output /tmp/profile.md --test-mode true
+
+          echo "BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_CATEGORY=$(jq -r '.business.category' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "SERVICES_TEXT=$(jq -r '.offer.services | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "EQUIPMENT_TEXT=$(jq -r '.offer.available_equipment | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "CONTENT_TOPICS_TEXT=$(jq -r '.content.content_topics | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PRIMARY_PLATFORM=$(jq -r '.content.primary_platform' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "SECONDARY_FORMATS_TEXT=$(jq -r '.content.secondary_formats | join(", ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "DEFAULT_MODEL=$(jq -r '.cost_control.default_model' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "QC_MAX_SCRIPT_CHARS=$(jq -r '.content.quality_control.max_script_chars' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "QC_MAX_MODEL_OUTPUT=$(jq -r '.content.quality_control.max_model_output' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "QC_TARGET_REPORT_OUTPUT_TOKENS=$(jq -r '.content.quality_control.target_report_output' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "QC_MAX_WEB_SEARCHES=$(jq -r '.content.quality_control.max_web_searches' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "QC_DOMAIN_RULES_TEXT=$(jq -r '.content.quality_control.domain_rules | join("; ")' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Kalite kontrol ajanı profil bağlantısını sıfır-token ile test et
+        if: ${{ env.TEST_MODE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TITLE="TEST Merkezi Profil Bağlantısı - Kalite Kontrol Ajanı"
+          {
+            echo "<!-- PROFILE_BINDING_USAGE_V1 agent=weekly-quality-control test=true input=0 output=0 web_search=0 source_issue_read=0 profile_sha=$PROFILE_FILE_SHA -->"
+            echo "> **Durum:** ✅ Kalite Kontrol Ajanı merkezi işletme profiline güvenle bağlandı."
+            echo
+            echo "# 🔗 KALİTE KONTROL AJANI PROFİL BAĞLANTI TESTİ"
+            echo
+            echo "- **Marka:** $BRAND_NAME"
+            echo "- **İşletme sahibi:** $OWNER_NAME"
+            echo "- **Faaliyet alanı:** $BUSINESS_CATEGORY"
+            echo "- **Hizmetler:** $SERVICES_TEXT"
+            echo "- **Mevcut ekipman:** $EQUIPMENT_TEXT"
+            echo "- **İçerik konuları:** $CONTENT_TOPICS_TEXT"
+            echo "- **Platformlar:** $PRIMARY_PLATFORM; $SECONDARY_FORMATS_TEXT"
+            echo "- **Veri sınırı:** $QC_MAX_SCRIPT_CHARS karakter"
+            echo "- **Model / çıktı bütçesi:** $DEFAULT_MODEL / $QC_MAX_MODEL_OUTPUT token"
+            echo "- **Rapor hedefi / web üst sınırı:** $QC_TARGET_REPORT_OUTPUT_TOKENS token / $QC_MAX_WEB_SEARCHES arama"
+            echo "- **AI kullanımı:** 0 giriş, 0 çıkış tokenı; 0 web araması"
+            echo "- **Kaynak Issue okuma:** 0"
+            echo "- **Gerçek rapor:** Oluşturulmadı"
+          } > /tmp/qc-profile-test.md
+
+          gh label create profil-baglantisi --color 0E8A16 --description "Ajanın merkezi işletme profili bağlantısı" --force
+          gh label create sistem-testi --color BFD4F2 --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" --force
+          NUMBER=$(gh issue list --state all --search "\"$TITLE\" in:title" --limit 20 --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n 1)
+          if [[ -n "$NUMBER" ]]; then
+            gh issue edit "$NUMBER" --body-file /tmp/qc-profile-test.md --add-label profil-baglantisi --add-label sistem-testi
+          else
+            URL=$(gh issue create --title "$TITLE" --body-file /tmp/qc-profile-test.md --label profil-baglantisi --label sistem-testi)
+            NUMBER=$(grep -oE '[0-9]+$' <<< "$URL")
+          fi
+          echo "### QC merkezi profil testi: #$NUMBER — 0 token" >> "$GITHUB_STEP_SUMMARY"
+
       - name: En son haftalık senaryoları bul
+        if: ${{ env.TEST_MODE != 'true' }}
         id: source
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,6 +119,7 @@ jobs:
           echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Araştırma kanıtlı tek geçişli Claude kalite kontrolü yap
+        if: ${{ env.TEST_MODE != 'true' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -295,6 +374,7 @@ jobs:
           } >> final-report.md
 
       - name: Kalite kontrol raporunu issue olarak yayımla
+        if: ${{ env.TEST_MODE != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
