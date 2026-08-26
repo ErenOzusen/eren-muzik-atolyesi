@@ -1,0 +1,140 @@
+name: VibeFrame Compatibility Test
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_issue_number:
+        description: "sistem-testi Nihai Senaryolar Issue numarası"
+        required: true
+        default: "37"
+        type: string
+      test_scenario:
+        description: "Test senaryosu: 1, 2 veya 3"
+        required: true
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  vibeframe-zero-cost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ inputs.test_issue_number }}
+      SCENARIO: ${{ inputs.test_scenario }}
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Adapter yerel testlerini çalıştır
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/vibeframe_project_adapter.py
+          python3 .github/scripts/test_vibeframe_project_adapter.py
+
+      - name: Sistem-testi senaryosunu ayıkla
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$ISSUE_NUMBER" =~ ^[0-9]+$ || ! "$SCENARIO" =~ ^[123]$ ]]; then
+            echo "Geçersiz test girdisi."
+            exit 1
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels,state,url > /tmp/issue.json
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          if ! grep -qx 'sistem-testi' /tmp/labels.txt; then
+            echo "Bu workflow yalnız sistem-testi Issue'su kullanabilir."
+            exit 1
+          fi
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          if [[ "$TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Nihai Senaryolar değil."
+            exit 1
+          fi
+          jq -r '.body // ""' /tmp/issue.json > /tmp/all-scripts.md
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          text = Path('/tmp/all-scripts.md').read_text(encoding='utf-8')
+          n = os.environ['SCENARIO']
+          pattern = rf'(?ms)^##\s+SENARYO\s+{n}:.*?(?=^##\s+SENARYO\s+[123]:|^---\s*$|\Z)'
+          m = re.search(pattern, text)
+          if not m:
+              raise SystemExit(f'SENARYO {n} bulunamadı')
+          selected = m.group(0).strip() + '\n'
+          Path('/tmp/selected-script.md').write_text(selected, encoding='utf-8')
+          print(selected)
+          PY
+
+      - name: VibeFrame proje taslağını üret
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/vibeframe_project_adapter.py \
+            --script-file /tmp/selected-script.md \
+            --output-dir /tmp/vibeframe-test \
+            --title "Eren Müzik Atölyesi — VibeFrame Test" \
+            --duration 30 \
+            --aspect 9:16
+          test -s /tmp/vibeframe-test/STORYBOARD.md
+          test -s /tmp/vibeframe-test/DESIGN.md
+          test -s /tmp/vibeframe-test/scenes/01-approved-script.md
+          cmp /tmp/selected-script.md /tmp/vibeframe-test/APPROVED_SCRIPT.md
+
+      - name: VibeFrame CLI 0.115.2 kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @vibeframe/cli@0.115.2
+          vibe --version
+
+      - name: Storyboard doğrula ve sıfır maliyet planla
+        shell: bash
+        run: |
+          set -euo pipefail
+          vibe storyboard validate /tmp/vibeframe-test --json > /tmp/vibe-validate.json
+          vibe plan /tmp/vibeframe-test --json > /tmp/vibe-plan.json
+          vibe build /tmp/vibeframe-test --dry-run --max-cost 0 --json > /tmp/vibe-build-dry-run.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for p in ['/tmp/vibe-validate.json','/tmp/vibe-plan.json','/tmp/vibe-build-dry-run.json']:
+              data = json.loads(Path(p).read_text(encoding='utf-8'))
+              print(p, json.dumps(data, ensure_ascii=False)[:1500])
+          dry = json.loads(Path('/tmp/vibe-build-dry-run.json').read_text(encoding='utf-8'))
+          cost = dry.get('costUsd')
+          if cost is None:
+              cost = (dry.get('data') or {}).get('estimatedCostUsd')
+          if cost is None:
+              cost = ((dry.get('data') or {}).get('plan') or {}).get('estimatedCostUsd')
+          if cost is not None and float(cost) > 0:
+              raise SystemExit(f'Dry-run sıfır maliyet sınırını aştı: {cost}')
+          PY
+
+      - name: Güvenli test özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### VibeFrame uygunluk testi"
+            echo "- Kaynak: sistem-testi Issue #$ISSUE_NUMBER / Senaryo $SCENARIO"
+            echo "- Adapter testleri: geçti"
+            echo "- VibeFrame storyboard validate: geçti"
+            echo "- VibeFrame plan: geçti"
+            echo "- Build dry-run: --max-cost 0"
+            echo "- Harici AI/video üretimi: yapılmadı"
+            echo "- AI/video API harcaması: 0"
+            echo "- Gerçek MP4 üretimi: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
