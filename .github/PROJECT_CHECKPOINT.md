@@ -2,167 +2,181 @@
 
 Devam komutu: **“Ben Eren kral devam edelim”**
 
-Bu dosya, Eren Müzik Atölyesi çok ajanlı içerik otomasyonu projesinde kaldığımız güvenli noktayı kaydeder.
+## Ana hedef ve çalışma kuralı
 
-## Ana hedef
-
-Öncelik sırası değişmedi:
-
+Öncelik sırası:
 1. Güvenilirlik
 2. Kalite
 3. Hız
 4. Token tasarrufu
 
-Üretim zinciri kullanıcı onayı olmadan AI harcaması başlatmayacak. Testler önce `test_mode=true` ve mümkün olduğunda 0 token ile yapılacak.
+Gerçek AI harcaması kullanıcı kontrolü dışında başlamayacak. Yeni bağlantılar önce `test_mode=true` ve mümkün olduğunda 0 AI token ile doğrulanacak.
 
 ## Doğrulanmış ana akış
 
-`QC → Düzeltme Ajanı → Nihai Senaryolar → Eren Onay Kapısı → Eren Senaryo Seçimi → Çekim Handoff Güvenlik Kapısı → Çekim Paketi Ajanı`
+`QC → Düzeltme Ajanı → Nihai Senaryolar → Eren Onay Kapısı → Eren Senaryo Seçimi → Çekim Handoff Güvenlik Kapısı → Router'lı Çekim Paketi Ajanı`
 
-### 1. Eren Onay Kapısı
+### Eren kontrol komutları
 
+- Onay: `ONAYLIYORUM`
+- Test onay: `TEST ONAYLIYORUM`
+- Senaryo seçimi: `SEÇ 1/2/3`
+- Test seçim: `TEST SEÇ 1/2/3`
+- Handoff testi: `TEST HANDOFF 1/2/3`
+- Uçtan uca 0-token çekim testi: `TEST ÇEKİMİ BAŞLAT 1/2/3`
+- Gerçek çekim paketi başlatma: `ÇEKİMİ BAŞLAT 1/2/3`
+
+`ONAYLIYORUM` ve `SEÇ N` tek başına AI harcaması başlatmaz. Gerçek üretim ancak Eren ayrıca `ÇEKİMİ BAŞLAT N` dediğinde açılır.
+
+## Güvenlik kapıları
+
+### Onay Kapısı
 Workflow: `.github/workflows/eren-approval-gate.yml`
 
-- Yalnız `Nihai Senaryolar` Issue'larında çalışıyor.
-- Merkezi profilden yetkili GitHub sahibini ve onay komutunu okuyor.
-- QC bağlantısını zorunlu tutuyor.
-- `duzeltme-gerekiyor` varsa gerçek onayı reddediyor.
-- `TEST ONAYLIYORUM` 0-token testidir ve Issue/etiket değiştirmez.
-- 0-token test başarıyla geçti.
-- Job filtresi yalnız `ONAYLIYORUM` veya `TEST ONAYLIYORUM` yorumlarında runner açıyor; ilgisiz yorumlar job başlamadan eleniyor.
+- Yalnız doğru Nihai Senaryolar kayıtlarında çalışır.
+- Merkezi profildeki yetkili GitHub sahibini doğrular.
+- QC bağlantısını ve düzeltme durumunu kontrol eder.
+- İlgisiz yorumlarda job `skipped` olur.
 
-### 2. Eski onay geçersizleştirme
-
-Workflow: `.github/workflows/approval-invalidation-gate.yml`
-
-- Nihai Issue gövdesi sonradan değişirse eski `eren-onayli`, `cekime-hazir`, `cekim-paketi-hazir` durumları kaldırılır.
-- İçerik yeniden `eren-onayi-bekliyor` durumuna döner.
-- Hiçbir sonraki ajan otomatik başlamaz.
-
-### 3. Düzeltme Ajanı → Eren Onay Kapısı entegrasyonu
-
-- Ayrı sistem test Issue'su ile 0-token handoff testi yapıldı.
-- Onay Kapısı doğrulaması başarıyla geçti.
-- Test gerçek üretime dokunmadan kapatıldı.
-
-### 4. Eren Üretim Senaryosu Seçim Kapısı
-
+### Senaryo Seçim Kapısı
 Workflow: `.github/workflows/eren-production-selection-gate.yml`
 
-Komutlar:
-- `SEÇ 1/2/3`
-- `TEST SEÇ 1/2/3`
+- Onay + çekime hazır durumunu zorunlu tutar.
+- Tam bir `uretim-senaryo-N` etiketi üretir.
+- Deterministik marker yazar:
+  `<!-- FILMING_HANDOFF_V1 issue=N scenario=S -->`
+- `SEÇ N` tek başına sonraki AI ajanını çalıştırmaz.
 
-Gerçek seçimde:
-- `eren-onayli + cekime-hazir` zorunlu.
-- `duzeltme-gerekiyor` varsa seçim yapılamaz.
-- `uretime-secildi` ve tam bir `uretim-senaryo-N` etiketi kaydedilir.
-- Yorum içine `<!-- FILMING_HANDOFF_V1 issue=N scenario=S -->` handoff işareti yazılır.
-- `SEÇ N` tek başına Çekim Paketi Ajanını veya Claude'u başlatmaz.
-- Job filtresi yalnız geçerli seçim komutlarında runner açar.
-- 0-token seçim testi geçti.
-
-### 5. Çekim Handoff Güvenlik Kapısı
-
+### Çekim Handoff Güvenlik Kapısı
 Workflow: `.github/workflows/filming-handoff-gate.yml`
 
-Test komutları:
-- `TEST HANDOFF 1/2/3`: yalnız handoff doğrulaması, sonraki ajan başlamaz.
-- `TEST ÇEKİMİ BAŞLAT 1/2/3`: handoff doğrulaması + Çekim Paketi Ajanına `test_mode=true` workflow dispatch.
+Gerçek üretimde şunları kontrol eder:
+- exact Issue numarası
+- exact senaryo
+- Issue açık mı
+- `eren-onayli + cekime-hazir + uretime-secildi`
+- tam olarak bir `uretim-senaryo-N`
+- `duzeltme-gerekiyor` yok
+- `sistem-testi` değil
+- komut senaryosu = etiket senaryosu
+- exact `FILMING_HANDOFF_V1` marker
 
-Gerçek üretim komutları:
-- `ÇEKİMİ BAŞLAT 1/2/3`
+Bu kapı artık gerçek `ÇEKİMİ BAŞLAT N` komutunda Router'lı Çekim Paketi Ajanını çağırır.
 
-Güvenlikler:
-- Yalnız merkezi profildeki yetkili GitHub sahibi komut verebilir.
-- Exact Issue numarası ve senaryo çözülür.
-- Hedef mutlaka `Nihai Senaryolar` olmalıdır.
-- Testte yalnız `sistem-testi` kabul edilir.
-- Gerçek modda Issue açık olmalı; `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
-- `duzeltme-gerekiyor` gerçek aktarımı bloklar.
-- Tam olarak bir `uretim-senaryo-1/2/3` etiketi gerekir.
-- Komuttaki senaryo, etiket ve `FILMING_HANDOFF_V1` marker birebir uyuşmalıdır.
-- `TEST ÇEKİMİ BAŞLAT N`, gerçek Claude çağrısı açmadan dispatch hattını test eder.
-- `ÇEKİMİ BAŞLAT N`, yalnız bütün gerçek üretim kontrolleri geçerse exact Issue + exact senaryo ile Çekim Paketi Ajanını başlatır.
+Aktivasyon commit'i:
+- `8449567b146f93bd20bec2bb8b9bd5ea061e9cf0` — gerçek handoff yolunu Router'lı v4 ajana bağladı.
 
-### 6. Çekim Paketi Ajanı — deterministik kaynak devralma
+## AI Router
 
-Workflow: `.github/workflows/filming-package-agent-v3.yml.yml`
-Paket sürümü: `6`
+Ana dosyalar:
+- `.github/scripts/ai_router.py`
+- `.github/config/ai-router.json`
+- `.github/scripts/test_ai_router.py`
+- `.github/workflows/ai-router-smoke-test.yml`
 
-- Varsayılan `test_mode=true`.
-- Test modunda Claude/API, Issue oluşturma ve etiket değişikliği yok.
-- Gerçek üretimde artık 'en güncel uygun Issue' aranmaz.
-- `source_issue_number` ve `source_scenario` zorunludur.
-- Exact kaynak Issue + açık state + güvenlik etiketleri + tek seçim etiketi + handoff marker doğrulanır.
-- Yalnız seçilmiş tek senaryo Python ile deterministik ayıklanır.
-- Yalnız bu tek senaryo modele gider.
-- Aynı kaynak gövde + paket sürümü + senaryo için güncel paket varsa AI yeniden çağrılmaz.
+Varsayılan sağlayıcı sırası:
 
-## Doğrulanmış 0-token çekim testleri
+`Anthropic → OpenAI → DeepSeek → Qwen`
 
-### A. Yerel Çekim Paketi testi
-Run #3:
-- SUCCESS
-- `TEST_MODE=true`, senaryo 2
-- Senaryo ayıklama başarılı
-- Claude/API: skipped
-- Issue/etiket yazma: skipped
-- 0 AI token
+Mevcut davranış:
+- API anahtarı/model eksik provider atlanır.
+- API/network/limit/boş/truncated/filtered sonuç gibi kullanılmaz cevaplarda sonraki provider denenebilir.
+- Anthropic ve OpenAI-style sağlayıcılarda system prompt ayrı korunur.
+- Fallback sırasında harcanan toplam giriş/çıkış tokenları da meta veride toplanır.
+- Canlı smoke test yalnız manuel `live_test=true` ile açılır.
 
-### B. Handoff regresyon testi
-Issue #37 / senaryo 2:
-- `TEST HANDOFF 2`
-- Handoff Run #1: SUCCESS
-- Handoff Run #2: SUCCESS
-- Gerçek Çekim Paketi dispatch adımı testte skipped
-- 0 AI token
+Router system-prompt commit'i:
+- `29ae3e35b73ee9599141c0c88497c2329675342a`
 
-### C. Uçtan uca workflow_dispatch testi — TAMAMLANDI
-Komut: `TEST ÇEKİMİ BAŞLAT 2`
-Kaynak: sistem testi Issue #37
+Router test genişletme commit'i:
+- `651fd7bafd8467f09373bc7be2ef42aa0341c487`
 
-Sonuç:
-- Handoff Kapısı başarılı oldu.
-- Handoff Kapısı, Çekim Paketi Ajanını `test_mode=true`, `test_issue_number=37`, `test_scenario=2` ile gerçekten workflow_dispatch üzerinden başlattı.
-- Çekim Paketi Ajanı Run #4 — run id `33011714337`: SUCCESS.
-- `Seçilmiş nihai senaryoyu güvenli biçimde bul ve ayıkla`: SUCCESS.
-- `Tek senaryoluk telefonla çekim isteğini hazırla`: SKIPPED.
-- `Tek senaryoluk çekim paketini oluştur ve doğrula` / Anthropic API: SKIPPED.
-- `Çekim paketini Issue olarak kaydet`: SKIPPED.
-- Eski paket kontrol/yazma adımı: SKIPPED.
-- Gerçek Issue/etiket değişikliği: yok.
-- AI maliyeti: 0 token.
+## Router'lı Çekim Paketi Ajanı
 
-Bu test ile `Eren komutu → Handoff Kapısı → workflow_dispatch → Çekim Paketi Ajanı → güvenli test-mode ayıklama` sözleşmesi uçtan uca doğrulandı.
+Yeni workflow:
+- `.github/workflows/filming-package-agent-v4-router.yml`
+- Paket sürümü: `7`
 
-## Yeni gerçek üretim akışı
+Commit:
+- `b4e3c24a7225cefdee1b482532a82230d751d29d`
 
-`3 Nihai Senaryo`
-→ Eren `ONAYLIYORUM`
-→ Eren `SEÇ N`
-→ seçim etiketi + handoff marker
-→ Eren `ÇEKİMİ BAŞLAT N`
-→ Handoff Kapısı exact Issue + exact senaryoyu doğrular
-→ Çekim Paketi Ajanı exact girdilerle başlar
-→ yalnız seçilen tek senaryo modele gönderilir
-→ yalnız burada gerektiğinde Claude çağrısı yapılır
+Özellikler:
+- Eski v3 dosyası geri dönüş/yedek olarak korunuyor.
+- Varsayılan test modu gerçek AI çağrısı yapmaz.
+- Exact Issue + exact senaryo güvenlikleri korunuyor.
+- Yalnız seçilen tek senaryo ayıklanıyor.
+- System prompt + user prompt ayrımı korunuyor.
+- AI çağrısı doğrudan Claude curl yerine Router üzerinden yapılacak.
+- Kazanan provider/model ve toplam token kullanımı kaydedilecek.
+- Çıktı ancak kalite kontrollerini geçerse Issue olarak yayımlanacak.
 
-Önemli: `ONAYLIYORUM` ve `SEÇ N` AI harcaması başlatmaz. AI harcaması ancak Eren açıkça `ÇEKİMİ BAŞLAT N` dediğinde ve bütün güvenlik kontrolleri geçtiğinde açılır.
+### Doğrulanmış v4 0-token testi
 
-## Bu turdaki önemli commitler
+Issue #37 / Senaryo 2 ile:
+- Handoff Run #5: SUCCESS
+- Router'lı Çekim Paketi Ajanı Run #1 — run id `33012564105`: SUCCESS
+- Router/config yerel doğrulama: SUCCESS
+- Seçilen senaryo ayıklama: SUCCESS
+- Prompt hazırlama: SKIPPED
+- AI Router canlı çağrısı: SKIPPED
+- Issue/etiket yazma: SKIPPED
+- AI tokenı: 0
 
-- `72401500ce45231864d2d35cb69d8d1ce44e2705` — deterministik seçim handoff marker
-- `733beee50f95dc197aa659eb7644abd8757e412e` — Çekim Paketi Ajanında exact Issue/senaryo zorunluluğu
-- `4064963413197ff47d0429b1efec2762c00786c5` — explicit `ÇEKİMİ BAŞLAT N` kapısı
-- `75f4814a33e1c70a26e09bd989f7ec518546c7b3` — Onay Kapısı ilgisiz yorum filtresi
-- `1f03eb63aecf297b37b15936621048992a3dc4ef` — Seçim Kapısı ilgisiz yorum filtresi
-- `e6ccb65132d1633ca439786f2422cce88c42a95d` — `TEST ÇEKİMİ BAŞLAT N` 0-token workflow_dispatch test yolu
+Aktivasyon sonrası regresyon:
+- Handoff Run #6 — run id `33012727716`: SUCCESS
+- 0-token Router test dispatch: SUCCESS
+- Gerçek Router'lı Çekim Paketi başlatma adımı testte beklendiği gibi SKIPPED
 
-## Tam burada durduk
+## Çıktı kalite sözleşmesi — yeni katman
 
-**Çekim hattının deterministik, kontrollü ve 0-token test edilebilir devralma/dispatch mimarisi tamamlandı.**
+Yeni dosyalar:
+- `.github/scripts/output_contract.py`
+- `.github/scripts/test_output_contract.py`
+- `.github/config/contracts/filming-package.json`
 
-Bir sonraki mantıklı aşama:
+Amaç:
+Bir AI HTTP 200 ve dolu cevap verdi diye cevabı otomatik kabul etmemek. Çıktı; zorunlu başlıklar, bölüm sayısı, tablo yapısı, uzunluk ve yasak metinler açısından deterministik olarak kontrol edilecek.
 
-**Mevcut `.github/workflows/ai-router-smoke-test.yml` ve ilgili router yapılarını inceleyip, mevcut güvenlik kapılarını bozmadan çoklu AI provider/fallback katmanını önce 0-token konfigürasyon testiyle doğrulamak.**
+Filming contract şu tür hataları reddeder:
+- zorunlu altı bölümden biri eksik
+- fazla/yanlış senaryo başlığı
+- eski `onay bekleniyor` metni
+- aşırı kısa/uzun çıktı
+- zorunlu çekim tablosu yok
+
+Commitler:
+- `2fcee87ab1a51f9ef99794e5de7f3de81d4e8c46` — genel output contract doğrulayıcı
+- `8d45feb12bdac4404fab89bece83a7384596b841` — çekim paketi kalite sözleşmesi
+- `bf6c21a0c65129d8d67e3c20686b74b5afe45f7a` — kalite sözleşmesi 0-token testleri
+- `0d2e2119b63070b94a2f8899ffd4cfcd037d978a` — smoke test entegrasyonu
+
+Doğrulama:
+- AI Router Smoke Test Run #4 — run id `33012888617`: SUCCESS
+- Router + kalite sözleşmesi yerel testi: SUCCESS
+- Canlı AI adımları: SKIPPED
+- Harici AI isteği: 0
+- AI tokenı: 0
+
+## Şu anda tam olarak neredeyiz?
+
+1. Ana içerik hattındaki Eren onayı/seçimi/handoff güvenlikleri çalışıyor.
+2. Çekim Paketi Ajanının Router'lı v4 sürümü 0-token testten geçti ve gerçek handoff yolu v4'e bağlandı.
+3. Çoklu sağlayıcı Router altyapısı var ve 0-token testleri geçiyor.
+4. Çıktı kalite sözleşmesi var ve 0-token testleri geçiyor.
+5. Henüz canlı provider fallback testi yapılmadı ve bu turda gerçek AI tokenı harcanmadı.
+
+## Bir sonraki mantıklı adım
+
+**Kalite sözleşmesini Router'ın gerçek provider döngüsüne bağlamak.**
+
+Hedef davranış:
+
+`Anthropic cevap verir → kalite sözleşmesi geçerse kabul`
+
+Geçmezse:
+
+`Anthropic çıktısı reddedilir → OpenAI denenir → o da geçmezse DeepSeek → sonra Qwen`
+
+Böylece yalnız API/limit hatasında değil, **kalitesiz çıktıda da otomatik fallback** yapılacak.
+
+Bu bağlantı da önce sahte çıktılarla 0-token test edilecek; canlı AI testi daha sonra ayrı karar olarak açılacak.
