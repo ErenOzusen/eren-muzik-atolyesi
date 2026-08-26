@@ -101,6 +101,24 @@
         "Fiziksel taşınabilirlik ile yükseltilmiş ses ihtiyacını karıştırma.",
         "Maliyet iddialarını güncel ve karşılaştırılabilir fiyat olmadan doğrulanmış sayma."
       ]
+    },
+    "correction": {
+      "scenario_count": 3,
+      "max_base_chars": 24000,
+      "max_qc_chars": 18000,
+      "max_final_check_chars": 12000,
+      "max_total_input_chars": 48000,
+      "max_model_output": 4500,
+      "domain_rules": [
+        "Orijinal ton, ilk duyulan akor, tüm akorlar, capo şekilleri, gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyonu birbirinden ayır.",
+        "Akor, nota, perde, ritim, ölçü ve TAB gösterimlerinin birbiriyle uyumunu koru.",
+        "Dört dörtlük ölçüde nota değerlerini ve TAB hizalamasını eksiksiz doğrula.",
+        "Bas gitarın ritim, armoni ve melodiyle ilişkili olabileceğini kabul et; pedagojik benzetmeleri gerçek gibi sunma.",
+        "Fiziksel taşınabilirlik ile yükseltilmiş ses ihtiyacını karıştırma; gerektiğinde amfi, kulaklık amfisi veya ses arabirimini belirt.",
+        "Maliyet, indirim ve kampanya iddialarını güncel doğrulama olmadan ekleme.",
+        "Bilinen bir esere dayanmayan çalışmayı özgün egzersiz olarak adlandır.",
+        "Son teknik kontrol raporunu yalnızca kaynak nihai Issue ile açıkça eşleşiyorsa uygula."
+      ]
     }
   },
   "approval": {
