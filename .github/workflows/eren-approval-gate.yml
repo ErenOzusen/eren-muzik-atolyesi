@@ -17,8 +17,7 @@ jobs:
   approve-content:
     if: >-
       github.event.issue.pull_request == null &&
-      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
-      github.event.comment.user.login == github.repository_owner
+      startsWith(github.event.issue.title, 'Nihai Senaryolar')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -28,25 +27,117 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
 
     steps:
-      - name: Eren onayını doğrula ve kaydet
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Merkezi onay ayarlarını doğrula
         shell: bash
         run: |
           set -euo pipefail
 
-          RAW_COMMENT=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
-          NORMALIZED_COMMENT=$(printf '%s' "$RAW_COMMENT" \
-            | tr '[:lower:]' '[:upper:]' \
-            | tr -d '[:space:]')
+          PROFILE=.github/config/business-profile.json
+          python3 .github/scripts/validate_business_config.py \
+            --config "$PROFILE" \
+            --output /tmp/approval-profile-validation.md \
+            --test-mode true
 
-          if [[ "$NORMALIZED_COMMENT" != "ONAYLIYORUM" ]]; then
+          {
+            echo "EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")"
+            echo "PRODUCTION_COMMAND=$(jq -r '.approval.production_command' "$PROFILE")"
+            echo "TEST_COMMAND=$(jq -r '.approval.test_command' "$PROFILE")"
+            echo "APPROVAL_REQUIRED=$(jq -r '.approval.required' "$PROFILE")"
+            echo "ALLOW_UNAPPROVED=$(jq -r '.approval.allow_publication_without_owner_approval' "$PROFILE")"
+            echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')"
+          } >> "$GITHUB_ENV"
+
+      - name: Eren onayını güvenli biçimde doğrula ve kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          normalize() {
+            python3 -c 'import sys; print("".join(sys.stdin.read().split()).casefold())'
+          }
+
+          RAW_COMMENT=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+          COMMENT_AUTHOR=$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")
+          NORMALIZED_COMMENT=$(printf '%s' "$RAW_COMMENT" | normalize)
+          NORMALIZED_PRODUCTION=$(printf '%s' "$PRODUCTION_COMMAND" | normalize)
+          NORMALIZED_TEST=$(printf '%s' "$TEST_COMMAND" | normalize)
+
+          if [[ "$NORMALIZED_COMMENT" != "$NORMALIZED_PRODUCTION" \
+             && "$NORMALIZED_COMMENT" != "$NORMALIZED_TEST" ]]; then
             echo "Yorum onay komutu değil; işlem yapılmadı."
             exit 0
           fi
 
-          if gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
-            | grep -qx 'eren-onayli'; then
+          if [[ "$APPROVAL_REQUIRED" != "true" || "$ALLOW_UNAPPROVED" != "false" ]]; then
+            echo "Merkezi profil onay güvenliği beklenen durumda değil."
+            exit 1
+          fi
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "Onay komutu yetkili işletme sahibi tarafından yazılmadı: $COMMENT_AUTHOR"
+            exit 1
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels,url > /tmp/approval-issue.json
+          ISSUE_TITLE=$(jq -r '.title' /tmp/approval-issue.json)
+          ISSUE_URL=$(jq -r '.url' /tmp/approval-issue.json)
+          jq -r '.body // ""' /tmp/approval-issue.json > /tmp/approval-body.md
+          jq -r '.labels[].name' /tmp/approval-issue.json > /tmp/approval-labels.txt
+
+          if [[ "$ISSUE_TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Onay hedefi Nihai Senaryolar Issue'su değil."
+            exit 1
+          fi
+
+          if ! grep -Eq "^\*\*Kalite kontrol raporu:\*\* https://github\.com/${GH_REPO//\//\/}/issues/[0-9]+([[:space:]]*)$" /tmp/approval-body.md; then
+            echo "Açık ve bu repoya ait Kalite Kontrol Raporu bağlantısı bulunamadı."
+            exit 1
+          fi
+
+          if grep -qx 'duzeltme-gerekiyor' /tmp/approval-labels.txt; then
+            echo "Issue hâlâ duzeltme-gerekiyor etiketini taşıyor; Eren onayı kaydedilemez."
+            exit 1
+          fi
+
+          HAS_WAITING=false
+          HAS_APPROVED=false
+          grep -qx 'eren-onayi-bekliyor' /tmp/approval-labels.txt && HAS_WAITING=true || true
+          grep -qx 'eren-onayli' /tmp/approval-labels.txt && HAS_APPROVED=true || true
+
+          if [[ "$HAS_WAITING" == "true" && "$HAS_APPROVED" == "true" ]]; then
+            echo "Tutarsız onay durumu: Issue hem onaylı hem onay bekliyor. Önce eski onay geçersizleştirilmeli."
+            exit 1
+          fi
+
+          BODY_SHA=$(sha256sum /tmp/approval-body.md | awk '{print $1}')
+
+          if [[ "$NORMALIZED_COMMENT" == "$NORMALIZED_TEST" ]]; then
+            {
+              echo "### Eren Onay Kapısı — sıfır-token test başarılı"
+              echo "- Issue: $ISSUE_URL"
+              echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
+              echo "- QC bağlantısı: doğrulandı"
+              echo "- Düzeltme bloklayıcısı: yok"
+              echo "- Onay bekliyor etiketi: $HAS_WAITING"
+              echo "- Mevcut onay etiketi: $HAS_APPROVED"
+              echo "- Issue gövde SHA-256: $BODY_SHA"
+              echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+              echo "- Issue/etiket değişikliği: yapılmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [[ "$HAS_APPROVED" == "true" ]]; then
             echo "Bu içerik daha önce Eren tarafından onaylanmış."
             exit 0
+          fi
+
+          if [[ "$HAS_WAITING" != "true" ]]; then
+            echo "Issue eren-onayi-bekliyor etiketini taşımıyor; üretim onayı reddedildi."
+            exit 1
           fi
 
           gh label create "eren-onayli" \
@@ -60,26 +151,30 @@ jobs:
             --force
 
           gh issue edit "$ISSUE_NUMBER" \
-            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
-          gh issue edit "$ISSUE_NUMBER" \
-            --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
+            --remove-label "eren-onayi-bekliyor"
 
           gh issue edit "$ISSUE_NUMBER" \
             --add-label "eren-onayli" \
             --add-label "cekime-hazir"
 
-          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
+          <!-- EREN_APPROVAL_V2 body_sha256=$BODY_SHA profile_sha=$PROFILE_FILE_SHA -->
           ## ✅ Eren onayı kaydedildi
 
           Nihai senaryolar Eren tarafından onaylandı.
 
           **Durum:** Çekime hazır  
-          **Sıradaki aşama:** Çekim paketinin hazırlanması ve ham videoların kaydedilmesi
+          **Sıradaki aşama:** Çekim paketi yalnızca manuel olarak çalıştırılabilir.
           MESSAGE
           )"
 
-          ISSUE_URL=$(gh issue view "$ISSUE_NUMBER" --json url --jq '.url')
-
-          echo "### Eren onayı kaydedildi" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Issue: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Durum: Çekime hazır" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Eren onayı güvenle kaydedildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
+            echo "- QC bağlantısı: doğrulandı"
+            echo "- Issue gövde SHA-256: $BODY_SHA"
+            echo "- Durum: Çekime hazır"
+            echo "- Sonraki ajan: otomatik başlatılmadı"
+            echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
+          } >> "$GITHUB_STEP_SUMMARY"
