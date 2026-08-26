@@ -148,7 +148,7 @@ jobs:
               echo "- Web araması: 0"
               echo "- Issue/etiket değişikliği: yok"
               if [[ "$DISPATCH_TEST" == "true" ]]; then
-                echo "- Sonraki adım: Çekim Paketi Ajanına test_mode=true dispatch edilecek"
+                echo "- Sonraki adım: Router'lı Çekim Paketi Ajanına test_mode=true dispatch edilecek"
               else
                 echo "- Çekim Paketi Ajanı: başlatılmadı"
               fi
@@ -187,8 +187,7 @@ jobs:
               exit 1
             fi
 
-            gh issue view "$ISSUE_NUMBER" --comments --json comments \
-              --jq '.comments[].body // ""' > /tmp/comments.txt
+            gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
             HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
             if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
               echo "Seçim Kapısının geçerli handoff işareti bulunamadı."
@@ -206,7 +205,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Çekim Paketi Ajanına 0-token test dispatch gönder
+      - name: Router'lı Çekim Paketi Ajanına 0-token test dispatch gönder
         if: env.TEST_MODE == 'true' && env.DISPATCH_TEST == 'true'
         shell: bash
         run: |
@@ -215,27 +214,18 @@ jobs:
           jq -n \
             --arg issue "$ISSUE_NUMBER" \
             --arg scenario "$EXPECTED_SCENARIO" \
-            '{
-              ref: "main",
-              inputs: {
-                test_mode: true,
-                test_issue_number: $issue,
-                test_scenario: $scenario
-              }
-            }' > /tmp/test-dispatch.json
+            '{ref:"main",inputs:{test_mode:true,test_issue_number:$issue,test_scenario:$scenario}}' > /tmp/test-dispatch.json
 
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GH_REPO/actions/workflows/filming-package-agent-v3.yml.yml/dispatches" \
+          gh api --method POST -H "Accept: application/vnd.github+json" \
+            "repos/$GH_REPO/actions/workflows/filming-package-agent-v4-router.yml/dispatches" \
             --input /tmp/test-dispatch.json
 
           {
-            echo "### 0-token dispatch gönderildi"
+            echo "### 0-token Router dispatch gönderildi"
             echo "- Test kaynak Issue: #$ISSUE_NUMBER"
             echo "- Test senaryosu: $EXPECTED_SCENARIO"
-            echo "- Çekim Paketi Ajanı test_mode=true"
-            echo "- Claude çağrısı beklenmiyor"
+            echo "- Router'lı Çekim Paketi Ajanı test_mode=true"
+            echo "- Hiçbir AI sağlayıcısına canlı çağrı beklenmiyor"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Çekim Paketi Ajanını kesin handoff ile başlat
@@ -247,18 +237,9 @@ jobs:
           jq -n \
             --arg issue "$ISSUE_NUMBER" \
             --arg scenario "$EXPECTED_SCENARIO" \
-            '{
-              ref: "main",
-              inputs: {
-                test_mode: false,
-                source_issue_number: $issue,
-                source_scenario: $scenario
-              }
-            }' > /tmp/dispatch.json
+            '{ref:"main",inputs:{test_mode:false,source_issue_number:$issue,source_scenario:$scenario}}' > /tmp/dispatch.json
 
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
+          gh api --method POST -H "Accept: application/vnd.github+json" \
             "repos/$GH_REPO/actions/workflows/filming-package-agent-v3.yml.yml/dispatches" \
             --input /tmp/dispatch.json
 
