@@ -81,6 +81,21 @@
       "domain_rules": [
         "SEKTÖRE ÖZEL DÜZELTME KURALINI BURAYA YAZIN."
       ]
+    },
+    "final_technical_control": {
+      "max_final_chars": 24000,
+      "max_qc_chars": 18000,
+      "max_total_input_chars": 36000,
+      "max_model_output": 1800,
+      "max_blockers": 3,
+      "max_improvements": 5,
+      "require_explicit_qc_link": true,
+      "authoritative_facts": [
+        "İŞLETME SAHİBİNİN BAĞLAYICI UZMAN BİLGİSİNİ BURAYA YAZIN."
+      ],
+      "domain_rules": [
+        "SEKTÖRE ÖZEL SON TEKNİK KONTROL KURALINI BURAYA YAZIN."
+      ]
     }
   },
   "approval": {
