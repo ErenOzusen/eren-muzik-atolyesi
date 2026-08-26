@@ -1,0 +1,155 @@
+name: MoneyPrinterTurbo Compatibility Test
+
+"on":
+  push:
+    paths:
+      - ".github/scripts/moneyprinter_payload_adapter.py"
+      - ".github/scripts/test_moneyprinter_payload_adapter.py"
+      - ".github/workflows/moneyprinter-compatibility-test.yml"
+  workflow_dispatch:
+    inputs:
+      test_issue_number:
+        description: "sistem-testi Nihai Senaryolar Issue numarası"
+        required: true
+        default: "37"
+        type: string
+      test_scenario:
+        description: "Test senaryosu: 1, 2 veya 3"
+        required: true
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  moneyprinter-zero-cost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ inputs.test_issue_number || '37' }}
+      SCENARIO: ${{ inputs.test_scenario || '2' }}
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Adapter yerel testlerini çalıştır
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/moneyprinter_payload_adapter.py
+          python3 .github/scripts/test_moneyprinter_payload_adapter.py
+
+      - name: Sistem-testi senaryosunu ayıkla
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels > /tmp/issue.json
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          grep -qx 'sistem-testi' /tmp/labels.txt
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          [[ "$TITLE" == Nihai\ Senaryolar* ]]
+          jq -r '.body // ""' /tmp/issue.json > /tmp/all-scripts.md
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          text = Path('/tmp/all-scripts.md').read_text(encoding='utf-8')
+          n = os.environ['SCENARIO']
+          m = re.search(rf'(?ms)^##\s+SENARYO\s+{n}:.*?(?=^##\s+SENARYO\s+[123]:|^---\s*$|\Z)', text)
+          if not m:
+              raise SystemExit(f'SENARYO {n} bulunamadı')
+          Path('/tmp/selected-script.md').write_text(m.group(0).strip() + '\n', encoding='utf-8')
+          PY
+
+      - name: MoneyPrinterTurbo payload üret
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/moneyprinter_payload_adapter.py \
+            --script-file /tmp/selected-script.md \
+            --output-file /tmp/mpt-payload.json \
+            --aspect 9:16
+          jq -e '.video_aspect == "9:16"' /tmp/mpt-payload.json >/dev/null
+          jq -e '.video_source == "local"' /tmp/mpt-payload.json >/dev/null
+          jq -e '.voice_name == "no-voice"' /tmp/mpt-payload.json >/dev/null
+          jq -e '.bgm_volume == 0' /tmp/mpt-payload.json >/dev/null
+
+      - name: MoneyPrinterTurbo v1.3.5 kaynak kodunu al
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v1.3.5 https://github.com/harry0703/MoneyPrinterTurbo.git /tmp/mpt
+
+      - name: CLI bağımlılıklarını kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check -q \
+            pydantic==2.12.5 toml==0.10.2 loguru==0.7.3
+
+      - name: Gerçek v1.3.5 CLI şemasını doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/mpt
+          export PYTHONPATH=/tmp/mpt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import cli
+
+          payload = json.loads(Path('/tmp/mpt-payload.json').read_text(encoding='utf-8'))
+          script = payload['video_script']
+          argv = [
+              '--video-script', script,
+              '--video-source', 'local',
+              '--stop-at', 'script',
+              '--video-aspect', payload['video_aspect'],
+              '--voice-name', 'no-voice',
+              '--bgm-type', 'none',
+              '--no-subtitle-enabled',
+          ]
+          args = cli.parse_args(argv)
+          params = cli.build_video_params(args)
+
+          assert params.video_script == script
+          assert str(params.video_aspect.value if hasattr(params.video_aspect, 'value') else params.video_aspect) == '9:16'
+          assert params.video_source == 'local'
+          assert params.voice_name == 'no-voice'
+          assert params.bgm_type == ''
+          assert params.subtitle_enabled is False
+          assert args.stop_at == 'script'
+
+          # En kritik davranış: hazır senaryo varsa generate_script LLM çağrısı yapmaz.
+          from app.services import task
+          result = task.generate_script('compat-test', params)
+          assert result == script
+          print('MoneyPrinterTurbo v1.3.5 custom-script compatibility: OK')
+          PY
+
+      - name: Güvenli test özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### MoneyPrinterTurbo uygunluk testi başarılı"
+            echo "- Kaynak: sistem-testi Issue #$ISSUE_NUMBER / Senaryo $SCENARIO"
+            echo "- MPT sürümü: v1.3.5"
+            echo "- Onaylı senaryo doğrudan video_script olarak kabul edildi"
+            echo "- 9:16: doğrulandı"
+            echo "- local video source: doğrulandı"
+            echo "- voice/TTS: kapalı"
+            echo "- BGM: kapalı"
+            echo "- altyazı: kapalı"
+            echo "- stop-at script: aktif"
+            echo "- Harici LLM/API/video çağrısı: yapılmadı"
+            echo "- Gerçek harcama: \$0"
+            echo "- MP4 üretimi: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
