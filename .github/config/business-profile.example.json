@@ -70,6 +70,17 @@
       "domain_rules": [
         "SEKTÖRE ÖZEL DOĞRULAMA KURALINI BURAYA YAZIN."
       ]
+    },
+    "correction": {
+      "scenario_count": 3,
+      "max_base_chars": 24000,
+      "max_qc_chars": 18000,
+      "max_final_check_chars": 12000,
+      "max_total_input_chars": 48000,
+      "max_model_output": 4500,
+      "domain_rules": [
+        "SEKTÖRE ÖZEL DÜZELTME KURALINI BURAYA YAZIN."
+      ]
     }
   },
   "approval": {
