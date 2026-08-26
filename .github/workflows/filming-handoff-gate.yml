@@ -41,6 +41,7 @@ jobs:
        github.event.issue.pull_request == null &&
        startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
        (startsWith(github.event.comment.body, 'TEST HANDOFF ') ||
+        startsWith(github.event.comment.body, 'TEST ÇEKİMİ BAŞLAT ') ||
         startsWith(github.event.comment.body, 'ÇEKİMİ BAŞLAT ')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -58,6 +59,7 @@ jobs:
           set -euo pipefail
 
           START_FILMING=false
+          DISPATCH_TEST=false
           if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
             PROFILE=.github/config/business-profile.json
             EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
@@ -73,6 +75,10 @@ jobs:
             if [[ "$NORMALIZED" =~ ^TEST[[:space:]]+HANDOFF[[:space:]]+([123])$ ]]; then
               EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
               TEST_MODE=true
+            elif [[ "$NORMALIZED" =~ ^TEST[[:space:]]+ÇEKİMİ[[:space:]]+BAŞLAT[[:space:]]+([123])$ ]]; then
+              EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
+              TEST_MODE=true
+              DISPATCH_TEST=true
             elif [[ "$NORMALIZED" =~ ^ÇEKİMİ[[:space:]]+BAŞLAT[[:space:]]+([123])$ ]]; then
               EXPECTED_SCENARIO="${BASH_REMATCH[1]}"
               TEST_MODE=false
@@ -94,6 +100,7 @@ jobs:
             echo "EXPECTED_SCENARIO=$EXPECTED_SCENARIO"
             echo "TEST_MODE=$TEST_MODE"
             echo "START_FILMING=$START_FILMING"
+            echo "DISPATCH_TEST=$DISPATCH_TEST"
           } >> "$GITHUB_ENV"
 
       - name: Issue ve seçim sözleşmesini doğrula
@@ -140,60 +147,95 @@ jobs:
               echo "- AI kullanımı: 0 token"
               echo "- Web araması: 0"
               echo "- Issue/etiket değişikliği: yok"
-              echo "- Çekim Paketi Ajanı: başlatılmadı"
+              if [[ "$DISPATCH_TEST" == "true" ]]; then
+                echo "- Sonraki adım: Çekim Paketi Ajanına test_mode=true dispatch edilecek"
+              else
+                echo "- Çekim Paketi Ajanı: başlatılmadı"
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if [[ "$STATE" != "OPEN" ]]; then
-            echo "Gerçek üretim yalnız açık Nihai Senaryolar Issue'sundan başlatılabilir: state=$STATE"
-            exit 1
-          fi
-          if grep -qx 'sistem-testi' /tmp/labels.txt; then
-            echo "Sistem testi gerçek üretim handoff'una giremez."
-            exit 1
-          fi
-
-          for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
-            if ! grep -qx "$REQUIRED" /tmp/labels.txt; then
-              echo "Gerçek handoff için zorunlu etiket eksik: $REQUIRED"
+          else
+            if [[ "$STATE" != "OPEN" ]]; then
+              echo "Gerçek üretim yalnız açık Nihai Senaryolar Issue'sundan başlatılabilir: state=$STATE"
               exit 1
             fi
-          done
+            if grep -qx 'sistem-testi' /tmp/labels.txt; then
+              echo "Sistem testi gerçek üretim handoff'una giremez."
+              exit 1
+            fi
 
-          if grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt; then
-            echo "Düzeltme gereken içerik çekime devredilemez."
-            exit 1
+            for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
+              if ! grep -qx "$REQUIRED" /tmp/labels.txt; then
+                echo "Gerçek handoff için zorunlu etiket eksik: $REQUIRED"
+                exit 1
+              fi
+            done
+
+            if grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt; then
+              echo "Düzeltme gereken içerik çekime devredilemez."
+              exit 1
+            fi
+
+            mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/labels.txt || true)
+            if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
+              echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
+              exit 1
+            fi
+
+            ACTUAL_SCENARIO="${SELECTION_LABELS[0]##*-}"
+            if [[ "$ACTUAL_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
+              echo "Handoff uyuşmazlığı: beklenen=$EXPECTED_SCENARIO etiket=$ACTUAL_SCENARIO"
+              exit 1
+            fi
+
+            gh issue view "$ISSUE_NUMBER" --comments --json comments \
+              --jq '.comments[].body // ""' > /tmp/comments.txt
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
+            if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
+              echo "Seçim Kapısının geçerli handoff işareti bulunamadı."
+              exit 1
+            fi
+
+            {
+              echo "### Çekim handoff kapısı — üretim doğrulaması başarılı"
+              echo "- Kaynak: $URL"
+              echo "- Issue: $ISSUE_NUMBER"
+              echo "- Senaryo: $ACTUAL_SCENARIO"
+              echo "- State: $STATE"
+              echo "- AI kullanımı (kapı): 0 token"
+              echo "- Seçim Kapısı işareti: doğrulandı"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/labels.txt || true)
-          if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
-            echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
-            exit 1
-          fi
+      - name: Çekim Paketi Ajanına 0-token test dispatch gönder
+        if: env.TEST_MODE == 'true' && env.DISPATCH_TEST == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          ACTUAL_SCENARIO="${SELECTION_LABELS[0]##*-}"
-          if [[ "$ACTUAL_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
-            echo "Handoff uyuşmazlığı: beklenen=$EXPECTED_SCENARIO etiket=$ACTUAL_SCENARIO"
-            exit 1
-          fi
+          jq -n \
+            --arg issue "$ISSUE_NUMBER" \
+            --arg scenario "$EXPECTED_SCENARIO" \
+            '{
+              ref: "main",
+              inputs: {
+                test_mode: true,
+                test_issue_number: $issue,
+                test_scenario: $scenario
+              }
+            }' > /tmp/test-dispatch.json
 
-          gh issue view "$ISSUE_NUMBER" --comments --json comments \
-            --jq '.comments[].body // ""' > /tmp/comments.txt
-          HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
-          if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
-            echo "Seçim Kapısının geçerli handoff işareti bulunamadı."
-            exit 1
-          fi
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GH_REPO/actions/workflows/filming-package-agent-v3.yml.yml/dispatches" \
+            --input /tmp/test-dispatch.json
 
           {
-            echo "### Çekim handoff kapısı — üretim doğrulaması başarılı"
-            echo "- Kaynak: $URL"
-            echo "- Issue: $ISSUE_NUMBER"
-            echo "- Senaryo: $ACTUAL_SCENARIO"
-            echo "- State: $STATE"
-            echo "- AI kullanımı (kapı): 0 token"
-            echo "- Seçim Kapısı işareti: doğrulandı"
+            echo "### 0-token dispatch gönderildi"
+            echo "- Test kaynak Issue: #$ISSUE_NUMBER"
+            echo "- Test senaryosu: $EXPECTED_SCENARIO"
+            echo "- Çekim Paketi Ajanı test_mode=true"
+            echo "- Claude çağrısı beklenmiyor"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Çekim Paketi Ajanını kesin handoff ile başlat
