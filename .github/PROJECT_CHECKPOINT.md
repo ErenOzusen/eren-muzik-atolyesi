@@ -13,25 +13,27 @@ Bu dosya, Eren Müzik Atölyesi çok ajanlı içerik otomasyonu projesinde kald�
 3. Hız
 4. Token tasarrufu
 
-Üretim zinciri otomatik olarak açılmayacak. Testler önce `test_mode=true` ve mümkün olduğunda 0 token ile yapılacak.
+Üretim zinciri kullanıcı onayı olmadan AI harcaması başlatmayacak. Testler önce `test_mode=true` ve mümkün olduğunda 0 token ile yapılacak.
 
-## Doğrulanmış akış
+## Doğrulanmış ana akış
 
-`QC → Düzeltme Ajanı → Nihai Senaryolar → Eren Onay Kapısı → Eren Senaryo Seçimi → Çekim Paketi Ajanı`
+`QC → Düzeltme Ajanı → Nihai Senaryolar → Eren Onay Kapısı → Eren Senaryo Seçimi → Çekim Handoff Güvenlik Kapısı → Çekim Paketi Ajanı`
 
 ### 1. Eren Onay Kapısı
 
-- Güçlendirildi.
+Workflow: `.github/workflows/eren-approval-gate.yml`
+
 - Yalnız `Nihai Senaryolar` Issue'larında çalışıyor.
 - Merkezi profilden yetkili GitHub sahibini ve onay komutunu okuyor.
 - QC bağlantısını zorunlu tutuyor.
 - `duzeltme-gerekiyor` varsa gerçek onayı reddediyor.
 - `TEST ONAYLIYORUM` 0-token testidir ve Issue/etiket değiştirmez.
 - 0-token test başarıyla geçti.
+- Job filtresi artık yalnız `ONAYLIYORUM` veya `TEST ONAYLIYORUM` yorumlarında runner açıyor; ilgisiz yorumlar job başlamadan eleniyor.
 
 ### 2. Eski onay geçersizleştirme
 
-Yeni workflow: `.github/workflows/approval-invalidation-gate.yml`
+Workflow: `.github/workflows/approval-invalidation-gate.yml`
 
 - Nihai Issue gövdesi sonradan değişirse eski `eren-onayli`, `cekime-hazir`, `cekim-paketi-hazir` durumları kaldırılır.
 - İçerik yeniden `eren-onayi-bekliyor` durumuna döner.
@@ -45,7 +47,7 @@ Yeni workflow: `.github/workflows/approval-invalidation-gate.yml`
 
 ### 4. Eren Üretim Senaryosu Seçim Kapısı
 
-Yeni workflow: `.github/workflows/eren-production-selection-gate.yml`
+Workflow: `.github/workflows/eren-production-selection-gate.yml`
 
 Amaç: Düzeltme Ajanı 3 nihai senaryo ürettiği için Çekim Paketi Ajanının hangi senaryoyu kullanacağını tahmin etmesini engellemek.
 
@@ -60,34 +62,87 @@ Gerçek seçimde:
 
 - Önce `eren-onayli + cekime-hazir` zorunlu.
 - `duzeltme-gerekiyor` varsa seçim yapılamaz.
-- Seçim `uretime-secildi` ve `uretim-senaryo-N` etiketleriyle kaydedilir.
-- Sonraki ajan otomatik başlamaz.
+- Seçim `uretime-secildi` ve tam bir `uretim-senaryo-N` etiketiyle kaydedilir.
+- Yorum içine deterministik handoff işareti yazılır:
+  `<!-- FILMING_HANDOFF_V1 issue=N scenario=S -->`
+- Böylece kaynak Issue numarası ve senaryo birbirine kriptografik olmayan ama açık ve deterministik bir sözleşmeyle bağlanır.
+- `SEÇ N` tek başına Çekim Paketi Ajanını veya Claude'u başlatmaz.
+- Job filtresi artık yalnız geçerli `SEÇ N / TEST SEÇ N` yorumlarında runner açıyor.
+- 0-token seçim kapısı testi başarıyla geçti.
 
-0-token seçim kapısı testi başarıyla geçti.
+### 5. Çekim Handoff Güvenlik Kapısı
 
-### 5. Çekim Paketi Ajanı güvenlik güncellemesi
+Workflow: `.github/workflows/filming-handoff-gate.yml`
+
+Amaç: Eren'in seçtiği senaryonun yanlış Issue veya yanlış senaryo ile Çekim Paketi Ajanına aktarılmasını engellemek.
+
+Test komutu:
+
+- `TEST HANDOFF 1/2/3`
+
+Gerçek üretim başlatma komutu:
+
+- `ÇEKİMİ BAŞLAT 1`
+- `ÇEKİMİ BAŞLAT 2`
+- `ÇEKİMİ BAŞLAT 3`
+
+Güvenlikler:
+
+- Yalnız merkezi profildeki yetkili GitHub sahibi yorum komutu verebilir.
+- Issue numarası ve beklenen senaryo açıkça çözülür.
+- Hedef Issue mutlaka `Nihai Senaryolar` olmalıdır.
+- Beklenen senaryo başlığı kaynak Issue içinde bulunmalıdır.
+- Test modunda yalnız `sistem-testi` kabul edilir.
+- Test modunda AI çağrısı, Issue/etiket değişikliği veya sonraki ajan tetikleme yoktur.
+- Gerçek modda Issue açık olmalıdır.
+- `sistem-testi` gerçek üretime giremez.
+- `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
+- `duzeltme-gerekiyor` varsa aktarım reddedilir.
+- Tam olarak bir `uretim-senaryo-1/2/3` etiketi zorunludur.
+- Komuttaki senaryo ile etiket senaryosu birebir eşleşmelidir.
+- Seçim Kapısının `FILMING_HANDOFF_V1` işareti zorunludur.
+- Yalnız tüm kontroller geçip Eren ayrıca `ÇEKİMİ BAŞLAT N` dediğinde Çekim Paketi Ajanı exact Issue + exact senaryo girdileriyle dispatch edilir.
+
+Doğrulanmış testler:
+
+- Issue #37 / Senaryo 2 ile `TEST HANDOFF 2` çalıştırıldı.
+- Handoff Run #1: SUCCESS.
+- Yeni explicit-start mantığı sonrasında Handoff Run #2: SUCCESS.
+- Run #2'de `Çekim Paketi Ajanını kesin handoff ile başlat` adımı beklendiği gibi `skipped`.
+- AI kullanımı: 0 token.
+- Gerçek üretim: yok.
+
+### 6. Çekim Paketi Ajanı — deterministik kaynak devralma
 
 Workflow: `.github/workflows/filming-package-agent-v3.yml.yml`
+
+Paket sürümü: `6`
 
 Güncel güvenlikler:
 
 - Varsayılan `test_mode=true`.
 - Test modunda Claude/API çağrısı yok.
 - Test modunda gerçek Issue veya etiket değişikliği yok.
-- Gerçek üretimde `eren-onayli + cekime-hazir + uretime-secildi` zorunlu.
-- Tam olarak bir `uretim-senaryo-1/2/3` etiketi zorunlu.
+- Gerçek üretimde artık 'en güncel uygun Issue' aranmaz.
+- Gerçek üretimde `source_issue_number` zorunludur.
+- Gerçek üretimde `source_scenario` zorunludur.
+- Exact kaynak Issue açılır ve doğrulanır.
+- Issue açık olmalıdır.
+- `eren-onayli + cekime-hazir + uretime-secildi` zorunludur.
+- Tam olarak bir `uretim-senaryo-1/2/3` etiketi zorunludur.
+- Input senaryo ile etiket senaryosu eşleşmek zorundadır.
 - `sistem-testi` gerçek üretim kaynağı olamaz.
-- 3 senaryolu Nihai Issue'dan yalnız seçilen senaryo Python ile deterministik olarak ayıklanır.
-- Böylece gereksiz 3 senaryoyu modele göndermeyerek token tasarrufu sağlanır.
+- `duzeltme-gerekiyor` varsa durur.
+- Kaynak Issue yorumlarında exact `FILMING_HANDOFF_V1 issue=N scenario=S` işareti zorunludur.
+- 3 senaryolu Nihai Issue'dan yalnız seçilen tek senaryo Python ile deterministik olarak ayıklanır.
+- Yalnız bu tek senaryo modele gönderilir; gereksiz token tüketimi önlenir.
+- Aynı kaynak gövde + paket sürümü + senaryo için güncel paket zaten varsa yeniden AI çağrısı yapılmaz.
 
-## Son yapılan test
+### 7. Eski Çekim Paketi 0-token testi
 
-Kullanıcı GitHub Actions'ta `Çekim Paketi Ajanı → Run workflow` çalıştırdı.
+Önceki Run #3:
 
-Sonuç:
-
-- Run #3: `SUCCESS`
-- Commit: `487f2c6a2b0bb911a5dbb36fa8b307eadbb82b44`
+- `SUCCESS`
 - `TEST_MODE=true`
 - `TEST_SCENARIO=2`
 - Seçilen senaryo deterministik olarak doğru ayıklandı.
@@ -104,20 +159,35 @@ Issue #22 eski sistemden gelen tek senaryolu gerçek Nihai Senaryo kaydıdır.
 Onun Çekim Paketi #23 zaten daha önce oluşturulmuştur.
 Bu kayıt tekrar çalıştırılmayacak; gereksiz token harcanmayacak.
 
-## Yeni üretim akışı bundan sonra
+## Yeni gerçek üretim akışı
 
 `3 Nihai Senaryo`
 → Eren `ONAYLIYORUM`
 → Eren `SEÇ 1 / SEÇ 2 / SEÇ 3`
+→ seçim etiketi + handoff marker
+→ Eren `ÇEKİMİ BAŞLAT 1 / 2 / 3`
+→ Handoff Kapısı exact Issue + exact senaryoyu doğrular
 → yalnız seçilen tek senaryo
 → Çekim Paketi Ajanı
+→ yalnız burada gerekli olduğunda Claude çağrısı
+
+Önemli: `SEÇ N` AI harcaması başlatmaz. Gerçek Çekim Paketi AI çağrısı ancak Eren ayrıca `ÇEKİMİ BAŞLAT N` komutunu verdiğinde açılır.
+
+## Bu turdaki commitler
+
+- `72401500ce45231864d2d35cb69d8d1ce44e2705` — deterministik seçim handoff marker
+- `ac480bbc05fe13a62385a732fa50074280c9cab4` — 0-token handoff test komutu
+- `733beee50f95dc197aa659eb7644abd8757e412e` — Çekim Paketi Ajanında exact Issue/senaryo zorunluluğu
+- `4064963413197ff47d0429b1efec2762c00786c5` — explicit `ÇEKİMİ BAŞLAT N` kapısı
+- `75f4814a33e1c70a26e09bd989f7ec518546c7b3` — Onay Kapısında ilgisiz yorumları job öncesi eleme
+- `1f03eb63aecf297b37b15936621048992a3dc4ef` — Seçim Kapısında ilgisiz yorumları job öncesi eleme
 
 ## Tam burada durduk
 
+Çekim hattının güvenli devralma mimarisi tamamlandı ve 0-token regresyon testi geçti.
+
 Bir sonraki mantıklı adım:
 
-**`SEÇ N` sonrasında Çekim Paketi Ajanının güvenli devralma bağlantısını tamamlamak.**
+**Gerçek AI çağrısı yapmadan, `ÇEKİMİ BAŞLAT N → workflow_dispatch → Çekim Paketi Ajanı` dispatch sözleşmesini dry-run/test modunda uçtan uca doğrulayacak bir test yolu eklemek.**
 
-Bunu yaparken önce otomatik zincir açılmayacak ve gerçek Claude çağrısı yapılmadan güvenlik bağlantısı kurulacak/test edilecek.
-
-Daha sonraki aşamalarda, mevcut güvenli üretim akışını bozmadan çoklu AI Router / provider fallback mimarisi entegre edilecek.
+Bunun ardından çoklu AI Router / provider fallback mimarisi, mevcut güvenlik kapılarını bozmadan entegre edilebilir.
