@@ -29,8 +29,9 @@ def load_json(path: str) -> dict[str, Any]:
 def resolve_endpoint(provider: dict[str, Any]) -> str:
     env_name = provider.get("endpoint_env")
     if isinstance(env_name, str) and os.getenv(env_name):
-        return os.environ[env_name]
-    endpoint = provider.get("endpoint") or provider.get("default_endpoint")
+        endpoint = os.environ[env_name].strip()
+    else:
+        endpoint = provider.get("endpoint") or provider.get("default_endpoint")
     if not isinstance(endpoint, str) or not endpoint.startswith("https://"):
         return ""
     return endpoint
@@ -64,7 +65,23 @@ def request_json(url: str, headers: dict[str, str], payload: dict[str, Any], tim
         return 599, {"error": {"message": str(exc)}}
 
 
-def call_anthropic(endpoint: str, api_key: str, model: str, prompt: str, max_tokens: int, timeout: int) -> dict[str, Any]:
+def call_anthropic(
+    endpoint: str,
+    api_key: str,
+    model: str,
+    system_prompt: str,
+    prompt: str,
+    max_tokens: int,
+    timeout: int,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system_prompt.strip():
+        payload["system"] = system_prompt
+
     status, data = request_json(
         endpoint,
         {
@@ -72,11 +89,7 @@ def call_anthropic(endpoint: str, api_key: str, model: str, prompt: str, max_tok
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         },
-        {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        },
+        payload,
         timeout,
     )
     text = ""
@@ -98,7 +111,20 @@ def call_anthropic(endpoint: str, api_key: str, model: str, prompt: str, max_tok
     }
 
 
-def call_openai_chat(endpoint: str, api_key: str, model: str, prompt: str, max_tokens: int, timeout: int) -> dict[str, Any]:
+def call_openai_chat(
+    endpoint: str,
+    api_key: str,
+    model: str,
+    system_prompt: str,
+    prompt: str,
+    max_tokens: int,
+    timeout: int,
+) -> dict[str, Any]:
+    messages: list[dict[str, str]] = []
+    if system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
     status, data = request_json(
         endpoint,
         {
@@ -107,7 +133,7 @@ def call_openai_chat(endpoint: str, api_key: str, model: str, prompt: str, max_t
         },
         {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": max_tokens,
             "stream": False,
         },
@@ -155,10 +181,17 @@ def error_message(result: dict[str, Any]) -> str:
     return f"HTTP {result.get('http_status')} / stop={result.get('stop_reason')}"
 
 
+def usage_totals(attempts: list[dict[str, Any]]) -> tuple[int, int]:
+    input_tokens = sum(int(item.get("input_tokens") or 0) for item in attempts)
+    output_tokens = sum(int(item.get("output_tokens") or 0) for item in attempts)
+    return input_tokens, output_tokens
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--prompt-file", required=True)
+    parser.add_argument("--system-file", default="")
     parser.add_argument("--output-file", required=True)
     parser.add_argument("--meta-file", required=True)
     parser.add_argument("--max-tokens", required=True, type=int)
@@ -174,6 +207,7 @@ def main() -> None:
     timeout = int(routing.get("timeout_seconds") or 120)
     retry_statuses = set(routing.get("retry_http_statuses") or [408, 429, 500, 502, 503, 504])
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+    system_prompt = Path(args.system_file).read_text(encoding="utf-8") if args.system_file else ""
 
     attempts: list[dict[str, Any]] = []
 
@@ -202,9 +236,9 @@ def main() -> None:
         started = time.monotonic()
         try:
             if style == "anthropic_messages":
-                result = call_anthropic(endpoint, api_key, model, prompt, args.max_tokens, timeout)
+                result = call_anthropic(endpoint, api_key, model, system_prompt, prompt, args.max_tokens, timeout)
             elif style == "openai_chat":
-                result = call_openai_chat(endpoint, api_key, model, prompt, args.max_tokens, timeout)
+                result = call_openai_chat(endpoint, api_key, model, system_prompt, prompt, args.max_tokens, timeout)
             else:
                 attempts.append({"provider": provider_name, "status": "skipped", "reason": "unsupported_api_style"})
                 continue
@@ -233,12 +267,17 @@ def main() -> None:
             attempt["status"] = "success"
             attempts.append(attempt)
             Path(args.output_file).write_text(result["text"].strip() + "\n", encoding="utf-8")
+            total_input_tokens, total_output_tokens = usage_totals(attempts)
             meta = {
                 "provider": provider_name,
                 "model": model,
                 "input_tokens": result.get("input_tokens", 0),
                 "output_tokens": result.get("output_tokens", 0),
+                "total_input_tokens": total_input_tokens,
+                "total_output_tokens": total_output_tokens,
                 "stop_reason": result.get("stop_reason"),
+                "system_chars": len(system_prompt),
+                "prompt_chars": len(prompt),
                 "attempts": attempts,
             }
             Path(args.meta_file).write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -254,7 +293,21 @@ def main() -> None:
             # the next configured provider is still allowed to run.
             pass
 
-    Path(args.meta_file).write_text(json.dumps({"attempts": attempts}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    total_input_tokens, total_output_tokens = usage_totals(attempts)
+    Path(args.meta_file).write_text(
+        json.dumps(
+            {
+                "total_input_tokens": total_input_tokens,
+                "total_output_tokens": total_output_tokens,
+                "system_chars": len(system_prompt),
+                "prompt_chars": len(prompt),
+                "attempts": attempts,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
     print("Hiçbir yapılandırılmış AI sağlayıcısı kullanılabilir çıktı üretemedi.", file=sys.stderr)
     print(json.dumps(attempts, ensure_ascii=False, indent=2), file=sys.stderr)
     raise SystemExit(1)
