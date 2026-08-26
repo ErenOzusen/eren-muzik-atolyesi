@@ -25,6 +25,11 @@ def yaml_quote(text: str) -> str:
     return '"' + text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
 
 
+def as_blockquote(text: str) -> str:
+    """Render source text without letting its Markdown headings become VibeFrame beats."""
+    return "\n".join(">" if not line else f"> {line}" for line in text.splitlines())
+
+
 def make_project(script: str, output: Path, title: str, duration: int, aspect: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
     (output / "scenes").mkdir(exist_ok=True)
@@ -55,8 +60,9 @@ Gereksiz efekt yok; kısa ve anlaşılır geçişler.
 """
 
     # Deliberately no narration/video/backdrop/music cues here. The approved
-    # script stays in the scene body so VibeFrame can validate/project-plan it
-    # without resolving a paid provider during the zero-cost compatibility test.
+    # source remains byte-for-byte in APPROVED_SCRIPT.md. In the scene body it
+    # is quoted so headings such as "## SENARYO" cannot be misread as new beats.
+    quoted_script = as_blockquote(script)
     scene = f"""---
 type: Scene
 duration: {duration}
@@ -64,10 +70,9 @@ duration: {duration}
 
 # Onaylı Senaryo
 
-{script}
+{quoted_script}
 
-## Üretim notu
-Bu dry-run testinde ücretli asset cue'su yoktur. Gerçek çekim daha sonra `media/` içinden referans edilir.
+Üretim notu: Bu dry-run testinde ücretli asset cue'su yoktur. Gerçek çekim daha sonra `media/` içinden referans edilir.
 """
 
     (output / "STORYBOARD.md").write_text(storyboard, encoding="utf-8")
@@ -81,12 +86,12 @@ def main() -> None:
     parser.add_argument("--script-file", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--title", default="Eren Müzik Atölyesi Test Videosu")
-    parser.add_argument("--duration", type=int, default=30)
+    parser.add_argument("--duration", type=int, default=10)
     parser.add_argument("--aspect", choices=["9:16", "16:9", "1:1"], default="9:16")
     args = parser.parse_args()
 
-    if args.duration < 5 or args.duration > 180:
-        raise SystemExit("Süre 5-180 saniye aralığında olmalı.")
+    if args.duration < 5 or args.duration > 15:
+        raise SystemExit("Uyumluluk testinde beat süresi 5-15 saniye aralığında olmalı.")
 
     script = clean_script(Path(args.script_file).read_text(encoding="utf-8"))
     make_project(script, Path(args.output_dir), args.title, args.duration, args.aspect)
