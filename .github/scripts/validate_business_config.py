@@ -70,6 +70,11 @@ def validate(profile: dict[str, Any]) -> list[str]:
     content = profile.get("content") if isinstance(profile.get("content"), dict) else {}
     research = content.get("research") if isinstance(content.get("research"), dict) else {}
     script = content.get("script") if isinstance(content.get("script"), dict) else {}
+    quality_control = (
+        content.get("quality_control")
+        if isinstance(content.get("quality_control"), dict)
+        else {}
+    )
     approval = profile.get("approval") if isinstance(profile.get("approval"), dict) else {}
     cost = profile.get("cost_control") if isinstance(profile.get("cost_control"), dict) else {}
     assets = profile.get("assets") if isinstance(profile.get("assets"), dict) else {}
@@ -195,6 +200,37 @@ def validate(profile: dict[str, Any]) -> list[str]:
         errors,
     )
 
+    require(
+        isinstance(quality_control.get("max_script_chars"), int)
+        and 10_000 <= quality_control["max_script_chars"] <= 60_000,
+        "Kalite kontrol senaryo veri sınırı 10.000–60.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(quality_control.get("max_model_output"), int)
+        and 2_000 <= quality_control["max_model_output"] <= 6_000,
+        "Kalite kontrol çıktı token bütçesi 2.000–6.000 olmalı.",
+        errors,
+    )
+    require(
+        isinstance(quality_control.get("target_report_output_tokens"), int)
+        and 1_000 <= quality_control["target_report_output_tokens"]
+        <= quality_control.get("max_model_output", 0),
+        "Kalite kontrol rapor hedefi 1.000 token ile model çıktı bütçesi arasında olmalı.",
+        errors,
+    )
+    require(
+        isinstance(quality_control.get("max_web_searches"), int)
+        and 1 <= quality_control["max_web_searches"] <= 3,
+        "Kalite kontrol web arama sınırı 1–3 olmalı.",
+        errors,
+    )
+    require(
+        nonempty_unique_list(quality_control.get("domain_rules"), maximum=20),
+        "Kalite kontrol için 1–20 benzersiz sektör doğrulama kuralı gerekli.",
+        errors,
+    )
+
     require(approval.get("required") is True, "İşletme sahibi onayı zorunlu olmalı.", errors)
     require(nonempty_text(approval.get("production_command"), 3, 80), "Gerçek onay komutu gerekli.", errors)
     require(nonempty_text(approval.get("test_command"), 3, 80), "Test onay komutu gerekli.", errors)
@@ -246,6 +282,7 @@ def main() -> None:
     content = profile["content"]
     research = content["research"]
     script = content["script"]
+    quality_control = content["quality_control"]
     approval = profile["approval"]
     cost = profile["cost_control"]
     assets = profile["assets"]
@@ -262,7 +299,7 @@ def main() -> None:
 
 # ⚙️ {business['brand_name']} — MARKA VE İŞLETME YAPILANDIRMA RAPORU
 
-> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma ve Senaryo ajanları merkezi profile bağlıdır; diğer ajanların kontrollü geçişi sürüyor.
+> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma ve Senaryo ajanları merkezi profile bağlıdır; Kalite Kontrol Ajanının kontrollü bağlantı testi sıradadır.
 
 ## 1. İşletme Kimliği
 
@@ -295,6 +332,10 @@ def main() -> None:
 - **Haftalık senaryo sayısı:** {script['idea_count']}
 - **Senaryo hedef uzunluğu:** {script['target_min_words']}–{script['target_max_words']} kelime
 - **Senaryo çıktı bütçesi:** {script['max_model_output']} token
+- **Kalite kontrol veri sınırı:** {quality_control['max_script_chars']} karakter
+- **Kalite kontrol çıktı bütçesi:** {quality_control['max_model_output']} token
+- **Kalite kontrol web arama sınırı:** {quality_control['max_web_searches']}
+- **Sektörel doğrulama kuralı:** {len(quality_control['domain_rules'])}
 - **Ana çağrı:** {offer['primary_cta']}
 - **Rezervasyon bağlantısı:** {offer['reservation_url']}
 
@@ -330,7 +371,9 @@ def main() -> None:
 - **Haftalık Araştırma workflow bağlantısı:** ✅ Eren'in açık onayıyla hazır
 - **Haftalık Senaryo Ajanı profil ayarları:** ✅ Hazır
 - **Haftalık Senaryo workflow bağlantısı:** ✅ Eren'in açık onayıyla hazır
-- **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
+- **Kalite Kontrol Ajanı profil ayarları:** ✅ Hazır
+- **Kalite Kontrol workflow bağlantısı:** ⏳ Sıfır-token test bekliyor
+- **Diğer ajanların profile bağlanması:** ⏳ Kalite Kontrol testinden sonra
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
 - Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
