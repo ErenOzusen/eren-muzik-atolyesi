@@ -75,6 +75,7 @@ def validate(profile: dict[str, Any]) -> list[str]:
         if isinstance(content.get("quality_control"), dict)
         else {}
     )
+    correction = content.get("correction") if isinstance(content.get("correction"), dict) else {}
     approval = profile.get("approval") if isinstance(profile.get("approval"), dict) else {}
     cost = profile.get("cost_control") if isinstance(profile.get("cost_control"), dict) else {}
     assets = profile.get("assets") if isinstance(profile.get("assets"), dict) else {}
@@ -231,6 +232,57 @@ def validate(profile: dict[str, Any]) -> list[str]:
         errors,
     )
 
+    require(
+        correction.get("scenario_count") == script.get("idea_count") == 3,
+        "Düzeltme ajanı senaryo sayısı senaryo ajanıyla eşleşmeli ve tam olarak 3 olmalı.",
+        errors,
+    )
+    require(
+        isinstance(correction.get("max_base_chars"), int)
+        and 8_000 <= correction["max_base_chars"] <= 40_000,
+        "Düzeltme temel metin sınırı 8.000–40.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(correction.get("max_qc_chars"), int)
+        and 4_000 <= correction["max_qc_chars"] <= 30_000,
+        "Düzeltme kalite raporu sınırı 4.000–30.000 karakter olmalı.",
+        errors,
+    )
+    require(
+        isinstance(correction.get("max_final_check_chars"), int)
+        and 2_000 <= correction["max_final_check_chars"] <= 20_000,
+        "Düzeltme son teknik kontrol sınırı 2.000–20.000 karakter olmalı.",
+        errors,
+    )
+    source_cap_sum = sum(
+        value
+        for value in (
+            correction.get("max_base_chars"),
+            correction.get("max_qc_chars"),
+            correction.get("max_final_check_chars"),
+        )
+        if isinstance(value, int)
+    )
+    require(
+        isinstance(correction.get("max_total_input_chars"), int)
+        and 15_000 <= correction["max_total_input_chars"] <= 80_000
+        and correction["max_total_input_chars"] <= source_cap_sum,
+        "Düzeltme toplam girdi sınırı 15.000–80.000 karakter olmalı ve kaynak sınırları toplamını aşmamalı.",
+        errors,
+    )
+    require(
+        isinstance(correction.get("max_model_output"), int)
+        and 2_500 <= correction["max_model_output"] <= 6_000,
+        "Düzeltme çıktı token bütçesi 2.500–6.000 olmalı.",
+        errors,
+    )
+    require(
+        nonempty_unique_list(correction.get("domain_rules"), maximum=20),
+        "Düzeltme ajanı için 1–20 benzersiz sektör kuralı gerekli.",
+        errors,
+    )
+
     require(approval.get("required") is True, "İşletme sahibi onayı zorunlu olmalı.", errors)
     require(nonempty_text(approval.get("production_command"), 3, 80), "Gerçek onay komutu gerekli.", errors)
     require(nonempty_text(approval.get("test_command"), 3, 80), "Test onay komutu gerekli.", errors)
@@ -283,6 +335,7 @@ def main() -> None:
     research = content["research"]
     script = content["script"]
     quality_control = content["quality_control"]
+    correction = content["correction"]
     approval = profile["approval"]
     cost = profile["cost_control"]
     assets = profile["assets"]
@@ -299,7 +352,7 @@ def main() -> None:
 
 # ⚙️ {business['brand_name']} — MARKA VE İŞLETME YAPILANDIRMA RAPORU
 
-> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo ve Kalite Kontrol ajanları merkezi profile bağlıdır; diğer ajanların kontrollü geçişi sürüyor.
+> Profil doğrulandı. Dosyada secret, token, parola veya API anahtarı bulunmuyor. Haftalık Araştırma, Senaryo ve Kalite Kontrol ajanları merkezi profile bağlıdır; Düzeltme Ajanının kontrollü bağlantı testi sıradadır.
 
 ## 1. İşletme Kimliği
 
@@ -336,6 +389,9 @@ def main() -> None:
 - **Kalite kontrol çıktı bütçesi:** {quality_control['max_model_output']} token
 - **Kalite kontrol web arama sınırı:** {quality_control['max_web_searches']}
 - **Sektörel doğrulama kuralı:** {len(quality_control['domain_rules'])}
+- **Düzeltme toplam girdi sınırı:** {correction['max_total_input_chars']} karakter
+- **Düzeltme çıktı bütçesi:** {correction['max_model_output']} token
+- **Düzeltme sektörel kuralı:** {len(correction['domain_rules'])}
 - **Ana çağrı:** {offer['primary_cta']}
 - **Rezervasyon bağlantısı:** {offer['reservation_url']}
 
@@ -373,7 +429,9 @@ def main() -> None:
 - **Haftalık Senaryo workflow bağlantısı:** ✅ Eren'in açık onayıyla hazır
 - **Kalite Kontrol Ajanı profil ayarları:** ✅ Hazır
 - **Kalite Kontrol workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
-- **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
+- **Düzeltme Ajanı profil ayarları:** ✅ Hazır
+- **Düzeltme workflow bağlantısı:** ⏳ Sıfır-token test bekliyor
+- **Diğer ajanların profile bağlanması:** ⏳ Düzeltme testinden sonra
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
 - Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
