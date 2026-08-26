@@ -130,17 +130,17 @@ def call_openai_chat(
 
     status, data = request_json(
         endpoint,
-        api_key=api_key if False else {
+        {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        payload={
+        {
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
             "stream": False,
         },
-        timeout=timeout,
+        timeout,
     )
     text = ""
     finish_reason = None
