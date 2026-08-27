@@ -213,6 +213,7 @@ jobs:
           python3 -m py_compile .github/scripts/video_orchestrator.py
           python3 -m json.tool .github/config/video-orchestrator.json >/dev/null
           python3 .github/scripts/test_video_orchestrator.py
+          python3 .github/scripts/test_video_engine_routing_contract.py
 
           export EXPECTED_SCENARIO
           python3 - <<'PY'
