@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
 
           if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            echo "Bu ajanı yalnızca yetkili repo sahibi çalıştırabilir."
             exit 1
           fi
 

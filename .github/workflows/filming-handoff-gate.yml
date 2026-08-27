@@ -361,7 +361,7 @@ jobs:
             echo "- Kesin senaryo: $EXPECTED_SCENARIO"
             echo "- Video modu: $VIDEO_MODE"
             echo "- Önerilen video motoru: $VIDEO_ENGINE"
-            echo "- Başlatma komutu: Eren tarafından açıkça verildi"
+            echo "- Başlatma komutu: Yetkili işletme sahibi tarafından açıkça verildi"
             echo "- Bu kapıda AI kullanımı: 0 token"
             echo "- Çekim Paketi AI sağlayıcısı ayrı Router tarafından seçilecek"
             echo "- Video motoru henüz başlatılmıyor"
