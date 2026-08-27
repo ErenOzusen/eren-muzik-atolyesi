@@ -4,7 +4,7 @@
   "min_chars": 800,
   "max_chars": 30000,
   "required_regex": [
-    "^#\\s+🎥\\s+EREN MÜZİK ATÖLYESİ\\s+—\\s+TELEFONLA ÇEKİM PAKETİ",
+    "^#\\s+🎥\\s+\\S(?:.*\\S)?\\s+—\\s+TELEFONLA ÇEKİM PAKETİ\\s*$",
     "^##\\s+1\\.\\s+.*Ortak Hazırlık",
     "^##\\s+2\\.\\s+.*(Oda|Telefon).*Yerleş",
     "^##\\s+3\\.\\s+.*Senaryo.*Çekim Planı",

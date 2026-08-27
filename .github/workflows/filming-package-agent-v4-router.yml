@@ -343,38 +343,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          REQUIRED_PATTERNS=(
-            '^##[[:space:]]+1\.[[:space:]].*Ortak Hazırlık'
-            '^##[[:space:]]+2\.[[:space:]].*(Oda|Telefon).*Yerleş'
-            '^##[[:space:]]+3\.[[:space:]].*Senaryo.*Çekim Planı'
-            '^##[[:space:]]+4\.[[:space:]].*(Shorts|Reels)'
-            '^##[[:space:]]+5\.[[:space:]].*Çekim.*Sıra'
-            '^##[[:space:]]+6\.[[:space:]].*(Çekim Sonu|Dosya Kontrol)'
-          )
-          for pattern in "${REQUIRED_PATTERNS[@]}"; do
-            if ! grep -Eiq "$pattern" /tmp/filming-package.md; then
-              echo "Zorunlu bölüm eksik; Issue yayımlanmadı: $pattern"
-              exit 1
-            fi
-          done
-          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-6]\.' /tmp/filming-package.md)
-          if [[ "$SECTION_COUNT" -ne 6 ]]; then
-            echo "Tam olarak altı numaralı bölüm gerekli; bulunan: $SECTION_COUNT"
-            exit 1
-          fi
-          if grep -Eiq '^##[[:space:]]+[0-9]+\.[[:space:]]+Senaryo[[:space:]]+[123]' /tmp/filming-package.md; then
-            echo "Tek senaryo paketine ek senaryo başlığı eklendi."
-            exit 1
-          fi
-          if grep -Eqi 'onay(ı|i)?.*bekleniyor|onay.*bekle' /tmp/filming-package.md; then
-            echo "Eski onay bekleme uyarısı çıktıya taşındı."
-            exit 1
-          fi
-          PACKAGE_CHARS=$(wc -c < /tmp/filming-package.md)
-          if [[ "$PACKAGE_CHARS" -gt 30000 ]]; then
-            echo "Çekim paketi 30.000 karakter sınırını aştı."
-            exit 1
-          fi
+          python3 .github/scripts/output_contract.py \
+            --contract .github/config/contracts/filming-package.json \
+            --input-file /tmp/filming-package.md \
+            --report-file /tmp/filming-package-contract-report.json
+
+          PACKAGE_CHARS=$(python3 -c \
+            'from pathlib import Path; print(len(Path("/tmp/filming-package.md").read_text(encoding="utf-8")))')
           echo "FILMING_PACKAGE_CHARS=$PACKAGE_CHARS" >> "$GITHUB_ENV"
 
           {
