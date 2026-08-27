@@ -89,7 +89,7 @@ jobs:
           python3 .github/scripts/vibeframe_project_adapter.py \
             --script-file /tmp/selected-script.md \
             --output-dir /tmp/vibeframe-test \
-            --title "Eren Müzik Atölyesi — VibeFrame Test" \
+            --profile .github/config/business-profile.json \
             --duration 10 \
             --aspect 9:16
           test -s /tmp/vibeframe-test/STORYBOARD.md

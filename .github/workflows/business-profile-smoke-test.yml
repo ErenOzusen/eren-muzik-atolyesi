@@ -23,6 +23,8 @@ on:
       - ".github/scripts/final_technical_decision_contract.mjs"
       - ".github/scripts/test_final_technical_decision_portability.mjs"
       - ".github/scripts/test_raw_video_intake_portability.mjs"
+      - ".github/scripts/vibeframe_project_adapter.py"
+      - ".github/scripts/test_vibeframe_project_adapter.py"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -61,6 +63,7 @@ jobs:
           python3 .github/scripts/test_build_system_audit.py
           node .github/scripts/test_final_technical_decision_portability.mjs
           node .github/scripts/test_raw_video_intake_portability.mjs
+          python3 .github/scripts/test_vibeframe_project_adapter.py
 
       - name: Sifir-token ozetini yaz
         shell: bash
