@@ -252,51 +252,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > /tmp/system-prompt.txt <<'PROMPT'
-          Sen Eren Müzik Atölyesi'nin telefonla çekim yönetmeni ve prodüksiyon planlayıcısısın.
-          Görevin, Eren tarafından onaylanan tek senaryoyu DEĞİŞTİRMEDEN uygulanabilir,
-          kısa ve çekim sırasında doğrudan kullanılabilir bir pakete dönüştürmektir.
+          node .github/scripts/build_filming_package_prompt.mjs \
+            --profile .github/config/business-profile.json \
+            --system-output /tmp/system-prompt.txt \
+            --metadata-output /tmp/filming-profile-metadata.json
 
-          EREN'İN MEVCUT İMKÂNLARI:
-          - Tek bir telefon
-          - Elektro gitar
-          - Bas gitar
-          - Bas gitar amfisi
-          - Piyano
-
-          OLMAYAN EKİPMANLAR:
-          - Tripod, harici mikrofon, stüdyo ışığı, ses kartı
-          - İkinci telefon veya kamera, teleprompter, kulaklık, harici metronom
-
-          ZORUNLU KURALLAR:
-          1. Yeni ekipman satın aldırma ve olmayan ekipmanı varmış gibi yazma.
-          2. Telefon desteği için yalnız güvenli ev çözümleri öner ve düşme kontrolü yaptır.
-          3. Pencere ışığını kullan; pencere Eren'in arkasında kalmasın.
-          4. Ana videoyu yatay, Shorts/Reels kesitini ayrıca dikey çektir.
-          5. Telefon destekliyorsa arka kamera ve 1080p/30 fps kullan; pil/depolama/Rahatsız Etmeyin kontrolü ekle.
-          6. Sessiz oda ve kısa deneme kaydı kullan; ses patlıyorsa telefonu güvenli biçimde uzaklaştır.
-          7. Onaylı konuşma metnini, akorları, TAB'ları, notaları, ritimleri ve CTA'yı değiştirme.
-          8. Tek telefonla aynı anda iki açı isteme; farklı açıları ayrı çekimler olarak planla.
-          9. Her sahnede kadraj, hareket, ses/ışık ve hata kontrolü açık olsun.
-          10. Yalnız kaynakta bulunan seçilmiş tek senaryo için paket üret.
-          11. Telefon konumunu mümkün olduğunca az değiştiren çekim sırası oluştur.
-          12. Çıktıyı kısa ve uygulanabilir tut.
-
-          ZORUNLU ÇIKTI BİÇİMİ:
-          # 🎥 EREN MÜZİK ATÖLYESİ — TELEFONLA ÇEKİM PAKETİ
-          ## 1. Çekimden Önce Ortak Hazırlık
-          ## 2. Oda ve Telefon Yerleşimi
-          ## 3. Seçilen Senaryo Çekim Planı
-          Markdown tablo: Sıra | Bölüm | Telefon/Kadraj | Eren'in Yapacağı | Ses/Işık | Kontrol
-          ## 4. Shorts/Reels Dikey Çekimi
-          ## 5. En Verimli Çekim Sırası
-          ## 6. Çekim Sonu Dosya Kontrolü
-
-          Yalnızca nihai Markdown metnini yaz. Ön açıklama, özür veya kod bloğu ekleme.
-          PROMPT
+          REQUEST_INTRO=$(jq -r '.request_intro' /tmp/filming-profile-metadata.json)
 
           {
-            echo "Aşağıdaki Eren onaylı ve üretime açıkça seçilmiş tek senaryo için telefonla çekim paketi hazırla."
+            echo "$REQUEST_INTRO"
             echo "Kaynak: $FINAL_URL"
             echo "Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
             echo
@@ -371,6 +335,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          EQUIPMENT_SUMMARY=$(jq -r '.equipment_summary' /tmp/filming-profile-metadata.json)
+
           {
             echo "<!-- source-body-sha256: $SOURCE_SHA -->"
             echo "<!-- package-version: $PACKAGE_VERSION -->"
@@ -378,7 +344,7 @@ jobs:
             echo "**Kaynak onaylı senaryo:** $FINAL_URL"
             echo "**Seçilen içerik:** Senaryo $SELECTED_SCENARIO — $SELECTED_TITLE"
             echo "**AI sağlayıcısı:** $FILMING_PROVIDER / $FILMING_MODEL"
-            echo "**Mevcut imkânlar:** Telefon, elektro gitar, bas gitar, bas amfisi, piyano"
+            echo "**Mevcut ekipmanlar:** $EQUIPMENT_SUMMARY"
             echo "**Plan türü:** Ek ekipman satın almadan telefonla çekim"
             echo
             cat /tmp/filming-package.md

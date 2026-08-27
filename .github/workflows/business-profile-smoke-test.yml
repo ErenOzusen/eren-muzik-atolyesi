@@ -7,7 +7,10 @@ on:
       - ".github/config/business-profile.json"
       - ".github/scripts/validate_business_config.py"
       - ".github/scripts/test_validate_business_config.py"
+      - ".github/scripts/build_filming_package_prompt.mjs"
+      - ".github/scripts/test_build_filming_package_prompt.mjs"
       - ".github/scripts/fixtures/**"
+      - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/business-profile-smoke-test.yml"
 
 permissions:
@@ -27,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/test_validate_business_config.py
+          node .github/scripts/test_build_filming_package_prompt.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash
