@@ -14,7 +14,7 @@ name: YouTube Yayın Hazırlık Ajanı
         default: "26"
         type: string
       thumbnail_choice:
-        description: "Eren'in thumbnail seçimi (testte PENDING kalabilir)"
+        description: "İşletme sahibinin thumbnail seçimi (testte PENDING kalabilir)"
         required: true
         default: "PENDING"
         type: choice
@@ -23,12 +23,6 @@ name: YouTube Yayın Hazırlık Ajanı
           - A
           - B
           - C
-      reservation_url:
-        description: "Açıklamada kullanılacak ders/rezervasyon bağlantısı"
-        required: true
-        default: "https://eren-muzik-atolyesi.vercel.app"
-        type: string
-
 permissions:
   contents: read
   issues: write
@@ -50,17 +44,19 @@ jobs:
       TEST_MODE: ${{ inputs.test_mode }}
       THUMBNAIL_NUMBER: ${{ inputs.thumbnail_package_issue }}
       THUMBNAIL_CHOICE: ${{ inputs.thumbnail_choice }}
-      RESERVATION_URL: ${{ inputs.reservation_url }}
-      YOUTUBE_PACKAGE_VERSION: "1"
+      YOUTUBE_PACKAGE_VERSION: "2"
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
       - name: Çalıştıranı ve girdileri doğrula
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            echo "Bu ajanı yalnızca repo sahibi çalıştırabilir."
             exit 1
           fi
 
@@ -76,11 +72,6 @@ jobs:
 
           if [[ ! "$THUMBNAIL_CHOICE" =~ ^(PENDING|A|B|C)$ ]]; then
             echo "Thumbnail seçimi yalnızca PENDING, A, B veya C olabilir."
-            exit 1
-          fi
-
-          if [[ ! "$RESERVATION_URL" =~ ^https://[^[:space:]]+$ ]]; then
-            echo "Rezervasyon bağlantısı geçerli bir https adresi olmalı."
             exit 1
           fi
 
@@ -119,7 +110,7 @@ jobs:
               exit 1
             fi
             if [[ "$THUMBNAIL_CHOICE" == "PENDING" ]]; then
-              echo "Gerçek yayın paketi için Eren'in thumbnail seçimi gerekli."
+              echo "Gerçek yayın paketi için işletme sahibinin thumbnail seçimi gerekli."
               exit 1
             fi
           fi
@@ -142,7 +133,7 @@ jobs:
 
           if ! jq -e '.labels | any(.name == "eren-onayli")' \
             /tmp/final.json > /dev/null; then
-            echo "Kaynak Nihai Senaryo Eren tarafından onaylanmamış."
+            echo "Kaynak Nihai Senaryo yetkili işletme sahibi tarafından onaylanmamış."
             exit 1
           fi
 
@@ -156,7 +147,7 @@ jobs:
             {
               cat /tmp/final.md /tmp/thumbnail.md
               echo "$THUMBNAIL_CHOICE"
-              echo "$RESERVATION_URL"
+              cat .github/config/business-profile.json
             } \
               | sed '/<!--/,/-->/d' \
               | sha256sum \
@@ -199,10 +190,6 @@ jobs:
             echo "SKIP_YOUTUBE=$SKIP_YOUTUBE"
           } >> "$GITHUB_ENV"
 
-      - name: Kaynak kodu al
-        if: env.SKIP_YOUTUBE != 'true'
-        uses: actions/checkout@v4
-
       - name: YouTube yayın paketini üret ve doğrula
         if: env.SKIP_YOUTUBE != 'true'
         shell: bash
@@ -216,7 +203,7 @@ jobs:
             --final-url "$FINAL_URL" \
             --thumbnail-url "$THUMBNAIL_URL" \
             --thumbnail-choice "$THUMBNAIL_CHOICE" \
-            --reservation-url "$RESERVATION_URL" \
+            --profile .github/config/business-profile.json \
             --test-mode "$TEST_MODE"
 
           if [[ ! -s /tmp/youtube-package.md ]]; then
@@ -268,6 +255,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          OWNER_DISPLAY_NAME=$(jq -r '.business.owner_display_name' \
+            .github/config/business-profile.json)
+
           {
             echo "<!-- youtube-package-version: $YOUTUBE_PACKAGE_VERSION -->"
             echo "<!-- youtube-source-sha256: $SOURCE_SHA -->"
@@ -289,7 +279,7 @@ jobs:
           else
             gh label create "eren-yayin-onayi-bekliyor" \
               --color "FBCA04" \
-              --description "YouTube yükleme ve yayın için Eren'in açık onayını bekliyor" \
+              --description "YouTube yükleme ve yayın için $OWNER_DISPLAY_NAME tarafından verilecek açık onayı bekliyor" \
               --force
             gh label create "youtube-yayin-paketi-hazir" \
               --color "0E8A16" \

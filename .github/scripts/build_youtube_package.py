@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -58,6 +59,17 @@ def extract_thumbnail_options(thumbnail_source: str) -> dict[str, str]:
     return options
 
 
+def turkish_upper(value: str) -> str:
+    return value.replace("i", "İ").replace("ı", "I").upper()
+
+
+def load_profile(path: str) -> dict:
+    profile = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise SystemExit("Business profile kökte bir JSON nesnesi olmalı.")
+    return profile
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--final", required=True)
@@ -66,9 +78,22 @@ def main() -> None:
     parser.add_argument("--final-url", required=True)
     parser.add_argument("--thumbnail-url", required=True)
     parser.add_argument("--thumbnail-choice", choices=("PENDING", "A", "B", "C"), required=True)
-    parser.add_argument("--reservation-url", required=True)
+    parser.add_argument("--profile", required=True)
     parser.add_argument("--test-mode", choices=("true", "false"), required=True)
     args = parser.parse_args()
+
+    profile = load_profile(args.profile)
+    business = profile["business"]
+    offer = profile["offer"]
+    content = profile["content"]
+    brand = business["brand_name"]
+    owner = business["owner_display_name"]
+    category = business["category"]
+    services = ", ".join(offer["services"])
+    reservation_url = offer["reservation_url"]
+    primary_cta = offer["primary_cta"]
+    approval_command = profile["approval"]["production_command"]
+    content_topics = ", ".join(content["content_topics"])
 
     final_source = remove_comments(read_text(args.final))
     thumbnail_source = remove_comments(read_text(args.thumbnail))
@@ -79,10 +104,10 @@ def main() -> None:
     flow_headings = extract_flow_headings(final_source)
     thumbnail_options = extract_thumbnail_options(thumbnail_source)
 
-    if not re.fullmatch(r"https://[^\s]+", args.reservation_url):
+    if not re.fullmatch(r"https://[^\s]+", reservation_url):
         raise SystemExit("Rezervasyon bağlantısı geçerli bir https adresi olmalı.")
     if args.test_mode == "false" and args.thumbnail_choice == "PENDING":
-        raise SystemExit("Gerçek yayın paketi için Eren'in thumbnail seçimi gerekli.")
+        raise SystemExit(f"Gerçek yayın paketi için {owner} thumbnail seçimi gerekli.")
 
     hashtag_list = re.findall(r"#[^\s#]+", hashtags)
     if not hashtag_list:
@@ -94,14 +119,14 @@ def main() -> None:
     chapter_rows.append("- `[ZAMAN EKLENECEK]` Kapanış ve çağrı")
 
     selected_copy = (
-        "Henüz seçilmedi — Eren'in kararı bekleniyor"
+        f"Henüz seçilmedi — {owner} kararı bekleniyor"
         if args.thumbnail_choice == "PENDING"
         else f"Seçenek {args.thumbnail_choice} — {thumbnail_options[args.thumbnail_choice]}"
     )
     status = (
         "🧪 Yüklemesiz sistem testi — gerçek YouTube kaydı veya yayın işlemi değildir"
         if args.test_mode == "true"
-        else "📺 YouTube yayın hazırlık paketi — Eren'in son onayını bekliyor"
+        else f"📺 YouTube yayın hazırlık paketi — {owner} tarafından son onay bekleniyor"
     )
     source_sha = hashlib.sha256(
         (
@@ -111,13 +136,13 @@ def main() -> None:
             + "\n"
             + args.thumbnail_choice
             + "\n"
-            + args.reservation_url
+            + json.dumps(profile, ensure_ascii=False, sort_keys=True)
         ).encode("utf-8")
     ).hexdigest()
 
     output = f"""> **Durum:** {status}
 
-# ▶️ EREN MÜZİK ATÖLYESİ — YOUTUBE YAYIN HAZIRLIK PAKETİ
+# ▶️ {turkish_upper(brand)} — YOUTUBE YAYIN HAZIRLIK PAKETİ
 
 > Bu paket yalnızca metadata ve yayın kontrol taslağıdır. Video, altyazı veya thumbnail yüklenmedi; görünürlük ve zamanlama ayarlanmadı.
 
@@ -125,10 +150,13 @@ def main() -> None:
 
 - **Kaynak thumbnail paketi:** {args.thumbnail_url}
 - **Kaynak onaylı senaryo:** {args.final_url}
+- **İşletme kategorisi:** {category}
+- **Hizmetler:** {services}
+- **İçerik konuları:** {content_topics}
 - **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması
 - **YouTube API kullanımı:** 0
 - **Yükleme/yayın işlemi:** 0
-- **Onay kuralı:** Eren bu yayın paketi için açık onay vermeden video yüklenemez veya yayımlanamaz
+- **Onay kuralı:** {owner} bu yayın paketi için `{approval_command}` komutuyla açık onay vermeden video yüklenemez veya yayımlanamaz
 
 ## 2. Video Başlığı
 
@@ -147,12 +175,12 @@ def main() -> None:
 Bu videoda:
 {description_bullets}
 
-Ders ve rezervasyon: {args.reservation_url}
+{primary_cta}: {reservation_url}
 
 {hashtags}
 ```
 
-- Rezervasyon bağlantısı açılarak Eren tarafından son kez kontrol edilmelidir.
+- Rezervasyon bağlantısı açılarak {owner} tarafından son kez kontrol edilmelidir.
 - Kaynakta bulunmayan başarı, süre veya sonuç vaadi eklenmemiştir.
 
 ## 4. Hashtag, Anahtar Kelime ve Oynatma Listesi
@@ -174,7 +202,7 @@ Ders ve rezervasyon: {args.reservation_url}
 - **Seçenek A:** `{thumbnail_options['A']}`
 - **Seçenek B:** `{thumbnail_options['B']}`
 - **Seçenek C:** `{thumbnail_options['C']}`
-- Eren bir seçenek belirlemeden thumbnail dosyası oluşturulamaz veya yüklenemez.
+- {owner} bir seçenek belirlemeden thumbnail dosyası oluşturulamaz veya yüklenemez.
 
 ## 7. Yükleme ve Görünürlük Durumu
 
@@ -187,16 +215,16 @@ Ders ve rezervasyon: {args.reservation_url}
 - **Görünürlük:** Ayarlanmadı
 - **Yayın tarihi/saati:** Ayarlanmadı
 
-## 8. Eren'in Son Yayın Kontrol Listesi
+## 8. {owner} Son Yayın Kontrol Listesi
 
 - [ ] Gerçek video baştan sona izlendi mi?
 - [ ] Başlık, açıklama, hashtagler ve oynatma listesi doğru mu?
 - [ ] Rezervasyon bağlantısı açılıyor ve doğru sayfaya gidiyor mu?
 - [ ] Gerçek videodan zaman kodları eklendi mi?
 - [ ] Zamanlanmış SRT dosyası videoyla birebir uyumlu mu?
-- [ ] Eren thumbnail seçimini yaptı ve son görseli onayladı mı?
+- [ ] {owner} thumbnail seçimini yaptı ve son görseli onayladı mı?
 - [ ] Telif hakkı bulunan müzik veya görsel var mı?
-- [ ] Eren bu yayın paketi Issue'suna `ONAYLIYORUM` yazdı mı?
+- [ ] {owner} bu yayın paketi Issue'suna `{approval_command}` yazdı mı?
 - [ ] Açık onay verilmeden yükleme ve yayın yapılmadığı doğrulandı mı?
 """
 
