@@ -27,6 +27,7 @@ on:
       - ".github/scripts/test_vibeframe_project_adapter.py"
       - ".github/scripts/test_runtime_message_portability.mjs"
       - ".github/scripts/test_legacy_workflow_cleanup.mjs"
+      - ".github/scripts/test_owner_approval_portability.mjs"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -39,6 +40,7 @@ on:
       - ".github/workflows/raw-video-intake-gate.yml"
       - ".github/workflows/business-config-agent.yml"
       - ".github/workflows/filming-handoff-gate.yml"
+      - ".github/workflows/eren-approval-gate.yml"
       - ".github/workflows/business-profile-smoke-test.yml"
 
 permissions:
@@ -70,6 +72,7 @@ jobs:
           python3 .github/scripts/test_vibeframe_project_adapter.py
           node .github/scripts/test_runtime_message_portability.mjs
           node .github/scripts/test_legacy_workflow_cleanup.mjs
+          node .github/scripts/test_owner_approval_portability.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash

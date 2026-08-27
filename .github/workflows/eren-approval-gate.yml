@@ -1,4 +1,4 @@
-name: Eren Onay Kapısı
+name: İşletme Sahibi Onay Kapısı
 
 on:
   issue_comment:
@@ -17,9 +17,7 @@ jobs:
   approve-content:
     if: >-
       github.event.issue.pull_request == null &&
-      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
-      (github.event.comment.body == 'ONAYLIYORUM' ||
-       github.event.comment.body == 'TEST ONAYLIYORUM')
+      startsWith(github.event.issue.title, 'Nihai Senaryolar')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -45,6 +43,7 @@ jobs:
 
           {
             echo "EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")"
+            echo "OWNER_DISPLAY_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")"
             echo "PRODUCTION_COMMAND=$(jq -r '.approval.production_command' "$PROFILE")"
             echo "TEST_COMMAND=$(jq -r '.approval.test_command' "$PROFILE")"
             echo "APPROVAL_REQUIRED=$(jq -r '.approval.required' "$PROFILE")"
@@ -52,7 +51,7 @@ jobs:
             echo "PROFILE_FILE_SHA=$(sha256sum "$PROFILE" | awk '{print $1}')"
           } >> "$GITHUB_ENV"
 
-      - name: Eren onayını güvenli biçimde doğrula ve kaydet
+      - name: İşletme sahibi onayını güvenli biçimde doğrula ve kaydet
         shell: bash
         run: |
           set -euo pipefail
@@ -100,7 +99,7 @@ jobs:
           fi
 
           if grep -qx 'duzeltme-gerekiyor' /tmp/approval-labels.txt; then
-            echo "Issue hâlâ duzeltme-gerekiyor etiketini taşıyor; Eren onayı kaydedilemez."
+            echo "Issue hâlâ duzeltme-gerekiyor etiketini taşıyor; işletme sahibi onayı kaydedilemez."
             exit 1
           fi
 
@@ -118,7 +117,7 @@ jobs:
 
           if [[ "$NORMALIZED_COMMENT" == "$NORMALIZED_TEST" ]]; then
             {
-              echo "### Eren Onay Kapısı — sıfır-token test başarılı"
+              echo "### İşletme Sahibi Onay Kapısı — sıfır-token test başarılı"
               echo "- Issue: $ISSUE_URL"
               echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
               echo "- QC bağlantısı: doğrulandı"
@@ -133,7 +132,7 @@ jobs:
           fi
 
           if [[ "$HAS_APPROVED" == "true" ]]; then
-            echo "Bu içerik daha önce Eren tarafından onaylanmış."
+            echo "Bu içerik daha önce $OWNER_DISPLAY_NAME tarafından onaylanmış."
             exit 0
           fi
 
@@ -144,7 +143,7 @@ jobs:
 
           gh label create "eren-onayli" \
             --color "0E8A16" \
-            --description "İçerik Eren tarafından onaylandı" \
+            --description "İçerik $OWNER_DISPLAY_NAME tarafından onaylandı" \
             --force
 
           gh label create "cekime-hazir" \
@@ -161,9 +160,9 @@ jobs:
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
           <!-- EREN_APPROVAL_V2 body_sha256=$BODY_SHA profile_sha=$PROFILE_FILE_SHA -->
-          ## ✅ Eren onayı kaydedildi
+          ## ✅ İşletme sahibi onayı kaydedildi
 
-          Nihai senaryolar Eren tarafından onaylandı.
+          Nihai senaryolar $OWNER_DISPLAY_NAME tarafından onaylandı.
 
           **Durum:** Çekime hazır  
           **Sıradaki aşama:** Çekim paketi yalnızca manuel olarak çalıştırılabilir.
@@ -171,7 +170,7 @@ jobs:
           )"
 
           {
-            echo "### Eren onayı güvenle kaydedildi"
+            echo "### İşletme sahibi onayı güvenle kaydedildi"
             echo "- Issue: $ISSUE_URL"
             echo "- Yetkili kullanıcı: $COMMENT_AUTHOR"
             echo "- QC bağlantısı: doğrulandı"
