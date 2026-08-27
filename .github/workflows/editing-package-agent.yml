@@ -43,13 +43,16 @@ jobs:
       EDITING_PACKAGE_VERSION: "4"
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
       - name: Çalıştıranı ve çalışma modunu doğrula
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            echo "Bu ajanı yalnızca repo sahibi çalıştırabilir."
             exit 1
           fi
 
@@ -199,7 +202,7 @@ jobs:
 
           if ! jq -e '.labels | any(.name == "eren-onayli")' \
             /tmp/final.json > /dev/null; then
-            echo "Kaynak Nihai Senaryolar Eren tarafından onaylanmamış."
+            echo "Kaynak Nihai Senaryolar yetkili işletme sahibi tarafından onaylanmamış."
             exit 1
           fi
 
@@ -331,61 +334,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > /tmp/system-prompt.txt <<'PROMPT'
-          Sen Eren Müzik Atölyesi'nin video kurgu planlayıcısısın.
-
-          Görevin; Eren tarafından onaylanmış tek senaryoyu, telefonla çekim paketini ve
-          güvenli teslim kaydını kullanarak uygulanabilir bir KURGU PLANI hazırlamaktır.
-          Ham video dosyalarına erişimin yoktur. Videoyu izlemiş, sesi ölçmüş veya kesin
-          kesim noktalarını görmüş gibi davranamazsın.
-
-          ZORUNLU KURALLAR:
-          1. Onaylı konuşma metnini, akorları, TAB'ları, notaları, ritimleri ve CTA'yı değiştirme.
-          2. Yalnızca kaynaklarda adı geçen dosyaları ve sahneleri kullan; yeni çekim veya
-             mevcut olmayan B-roll uydurma.
-          3. Ham görüntü görülmediği için kesin saniye/timecode uydurma. Kesimleri "cümlenin
-             başı", "nefes sonrası", "gösterim başladığında" gibi gözlenebilir işaretlerle tarif et.
-          4. Ana video için 16:9, Shorts/Reels için 9:16 ve kaynakla uyumlu 1080p/30 fps öner.
-          5. Konuşmanın anlaşılabilirliği önceliklidir. Müzik eklenirse yalnızca telifsiz ve
-             konuşmayı bastırmayacak düşük düzey öner; zorunlu tutma.
-          6. Otomatik altyazının Türkçe müzik terimlerini yanlış yazabileceğini belirt ve
-             yayın öncesi elle kontrol listesi ver.
-          7. Gösterim ile konuşmayı senaryodaki anlam sırasını bozmadan eşleştir.
-          8. Hızlandırma, yapay yakınlaştırma, yoğun geçiş veya dikkat dağıtan efekt kullanma.
-          9. Ana video ile dikey kısa videoyu ayrı çıktı olarak planla.
-          10. Yeni bilgi, pazarlama iddiası, kampanya, fiyat veya ekipman önerisi üretme.
-          11. Çıktı kısa ve uygulanabilir olsun. Ana video tablosu en fazla 10 satır,
-              ekran yazıları en fazla 8 madde, ses planı en fazla 6 madde, dikey kurgu
-              en fazla 8 adım ve son kontrol listesi en fazla 10 madde içersin.
-          12. Aynı talimatı farklı bölümlerde tekrarlama. Kaynak metinleri uzun uzun
-              yeniden yazma; yalnızca kurgu kararını uygulamak için gereken kısa alıntıları kullan.
-          13. Kaynak ve dosya haritası en fazla 8 madde olsun. Tablo hücreleri en fazla
-              12 kelime, diğer maddeler tek cümle ve en fazla 16 kelime olsun.
-          14. Toplam çıktıyı 2.800 token altında hedefle. Konuşma metnini yeniden yazma;
-              giriş/çıkış işaretlerinde yalnızca en fazla 6 kelimelik kısa ifadeler kullan.
-          15. Kaynak nihai senaryo Eren tarafından onaylanmıştır. "Eren\'in onayı bekleniyor",
-              "onay gelmeden" veya onayın eksik olduğunu söyleyen hiçbir durum cümlesi yazma.
-
-          ZORUNLU ÇIKTI BİÇİMİ:
-          # ✂️ EREN MÜZİK ATÖLYESİ — KURGU PAKETİ
-          > Ham video görülmeden hazırlanmış uygulama planıdır; kesin kesimler görüntü izlenirken belirlenir.
-          ## 1. Kaynak ve Dosya Haritası
-          Kaynaklarda bulunan dosya/sahne eşleşmeleri; olmayan dosya uydurma.
-          ## 2. Ana Video Kurgu Akışı
-          Markdown tablo: Sıra | Kaynak Dosya/Sahne | Giriş İşareti | Çıkış İşareti | Görüntü | Ses | Kesme Notu
-          ## 3. Ekran Yazıları ve Altyazı Planı
-          Kısa ekran yazıları ve mutlaka elle kontrol edilecek terimler.
-          ## 4. Ses Düzeni
-          Konuşma, enstrüman sesi, gürültü ve varsa telifsiz müzik için pratik plan.
-          ## 5. Shorts/Reels Kurgu Akışı
-          9:16 dikey çıktı; kaynak kısa metni değiştirmeden kesme ve altyazı planı.
-          ## 6. Dışa Aktarma Ayarları
-          Ana video ve kısa video için ayrı, kaynakla uyumlu ayarlar.
-          ## 7. Eren'in Son Kontrol Listesi
-          Yayın öncesi işaretlenebilir kısa liste. Son madde Eren'in yayın onayı olsun.
-
-          Yalnızca nihai Markdown metnini yaz. Kod bloğu, özür veya ön açıklama ekleme.
-          PROMPT
+          node .github/scripts/build_editing_package_prompt.mjs \
+            --profile .github/config/business-profile.json \
+            --system-output /tmp/system-prompt.txt \
+            --metadata-output /tmp/editing-profile-metadata.json
 
           jq -n \
             --rawfile system /tmp/system-prompt.txt \
@@ -464,7 +416,7 @@ jobs:
             '^##[[:space:]]+2\.[[:space:]].*Ana Video.*Kurgu'
             '^##[[:space:]]+3\.[[:space:]].*(Ekran Yazı|Altyazı)'
             '^##[[:space:]]+4\.[[:space:]].*Ses'
-            '^##[[:space:]]+5\.[[:space:]].*(Shorts|Reels)'
+            '^##[[:space:]]+5\.[[:space:]].*(Kısa|Dikey|Shorts|Reels).*Kurgu'
             '^##[[:space:]]+6\.[[:space:]].*(Dışa Aktarma|Disa Aktarma)'
             '^##[[:space:]]+7\.[[:space:]].*Son Kontrol'
           )
@@ -536,7 +488,8 @@ jobs:
             if [[ "$TEST_MODE" == "true" ]]; then
               echo "> **Durum:** 🧪 Videosuz sistem testi — gerçek teslim veya yayın kaydı değildir"
             else
-              echo "> **Durum:** ✂️ Kurgu planı hazır — Eren'in kontrolünü bekliyor"
+              REVIEW_STATUS=$(jq -r '.review_status' /tmp/editing-profile-metadata.json)
+              echo "> **Durum:** $REVIEW_STATUS"
             fi
             echo
             echo "**Kaynak teslim kaydı:** $INTAKE_URL"
