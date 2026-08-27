@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -88,18 +89,19 @@ def build_copy_options(title: str, final_source: str) -> tuple[str, str, str, st
     return question_copy, benefit_copy, routine_copy, duration
 
 
-def detect_subject(title: str) -> str:
+def detect_subject(title: str, topics: list[str], category: str) -> str:
     lowered = title.casefold()
-    for keyword, label in (
-        ("piyano", "piyano"),
-        ("bas gitar", "bas gitar"),
-        ("gitar", "gitar"),
-        ("müzik teori", "müzik teorisi"),
-        ("armoni", "armoni"),
-    ):
-        if keyword in lowered:
-            return label
-    return "videonun ana konusu"
+    for topic in sorted(topics, key=len, reverse=True):
+        if topic.casefold() in lowered:
+            return topic
+    return category
+
+
+def load_profile(path: str) -> dict:
+    profile = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise SystemExit("Business profile kökte bir JSON nesnesi olmalı.")
+    return profile
 
 
 def main() -> None:
@@ -109,17 +111,45 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--final-url", required=True)
     parser.add_argument("--subtitle-url", required=True)
+    parser.add_argument("--profile", required=True)
     parser.add_argument("--test-mode", choices=("true", "false"), required=True)
     args = parser.parse_args()
+
+    profile = load_profile(args.profile)
+    business = profile["business"]
+    content = profile["content"]
+    assets = profile["assets"]
+    brand = business["brand_name"]
+    owner = business["owner_display_name"]
+    category = business["category"]
+    topics = content["content_topics"]
+    brand_colors = ", ".join(assets["brand_colors"])
+    color_guidance = (
+        f"Profilde tanımlı marka renkleri: {brand_colors}."
+        if brand_colors
+        else "Profilde tanımlı marka rengi yok; kaynak materyalle uyumlu tek vurgu rengi seç."
+    )
+    logo_guidance = (
+        f"Profildeki logo kaynağı kullanılabilir: {assets['logo_path']}."
+        if assets["logo_path"]
+        else "Profilde logo kaynağı tanımlı değil; logo kullanımını zorunlu tutma."
+    )
+    asset_notes = assets["notes"] or "Ek görsel varlık notu yok."
 
     final_source = remove_comments(read_text(args.final))
     subtitle_source = remove_comments(read_text(args.subtitle))
     seo_title = extract_bold_field(final_source, "SEO Başlığı")
     hook = extract_script_section(final_source, "KANCA")
     option_a, option_b, option_c, duration = build_copy_options(seo_title, final_source)
-    subject = detect_subject(seo_title)
+    subject = detect_subject(seo_title, topics, category)
     source_sha = hashlib.sha256(
-        (final_source + "\n" + subtitle_source).encode("utf-8")
+        (
+            final_source
+            + "\n"
+            + subtitle_source
+            + "\n"
+            + json.dumps(profile, ensure_ascii=False, sort_keys=True)
+        ).encode("utf-8")
     ).hexdigest()
 
     number_hint = "Üç küçük 1–2–3 işaretiyle yöntem sayısını destekle." if re.search(
@@ -133,12 +163,12 @@ def main() -> None:
     status = (
         "🧪 Videosuz sistem testi — gerçek kapak görseli veya yayın kaydı değildir"
         if args.test_mode == "true"
-        else "🎨 Thumbnail hazırlık paketi — görsel üretimi ve Eren onayı bekleniyor"
+        else f"🎨 Thumbnail hazırlık paketi — görsel üretimi ve {owner} onayı bekleniyor"
     )
 
     output = f"""> **Durum:** {status}
 
-# 🖼️ EREN MÜZİK ATÖLYESİ — THUMBNAIL HAZIRLIK PAKETİ
+# 🖼️ {turkish_upper(brand)} — THUMBNAIL HAZIRLIK PAKETİ
 
 > Bu paket yalnızca tasarım brifidir. Görsel üretilmedi, dosya yüklenmedi ve yayın işlemi yapılmadı.
 
@@ -147,16 +177,18 @@ def main() -> None:
 - **Kaynak altyazı paketi:** {args.subtitle_url}
 - **Kaynak onaylı senaryo:** {args.final_url}
 - **SEO başlığı:** {seo_title}
+- **İşletme kategorisi:** {category}
+- **İçerik konusu:** {subject}
 - **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması, 0 görsel üretimi
 - **İddia koruması:** Kapak yazıları yalnızca onaylı başlık ve senaryodaki ifadelerden türetildi
-- **Yayın durumu:** Eren seçim yapmadan görsel üretilemez veya yayınlanamaz
+- **Yayın durumu:** {owner} seçim yapmadan görsel üretilemez veya yayınlanamaz
 
 ## 2. Seçenek A — Arama Niyeti
 
 ### Seçenek A
 
 - **Kapak yazısı:** `{option_a}`
-- **Kompozisyon:** Eren solda; {subject} sağda ve net biçimde görünür. Yüz ifadesi merak uyandırır ama abartılı olmaz.
+- **Kompozisyon:** {owner} solda; {subject} sağda ve net biçimde görünür. Yüz ifadesi merak uyandırır ama abartılı olmaz.
 - **Görsel hiyerarşi:** Yazı en büyük unsur, yüz ikinci, {subject} üçüncü unsur.
 - **Amaç:** İzleyicinin başlıktaki temel soruyu bir bakışta anlaması.
 
@@ -165,7 +197,7 @@ def main() -> None:
 ### Seçenek B
 
 - **Kapak yazısı:** `{option_b}`
-- **Kompozisyon:** Eren ve {subject} aynı karede; sade arka plan ve güçlü ön plan ayrımı kullan.
+- **Kompozisyon:** {owner} ve {subject} aynı karede; sade arka plan ve güçlü ön plan ayrımı kullan.
 - **Sayı desteği:** {number_hint}
 - **Amaç:** Videonun öğretici ve uygulanabilir yapısını göstermek.
 
@@ -174,7 +206,7 @@ def main() -> None:
 ### Seçenek C
 
 - **Kapak yazısı:** `{option_c}`
-- **Kompozisyon:** {subject.capitalize()} yakın planı ana görsel; Eren daha küçük ikincil odak olabilir.
+- **Kompozisyon:** {subject.capitalize()} yakın planı ana görsel; {owner} daha küçük ikincil odak olabilir.
 - **Süre desteği:** {timer_hint}
 - **Amaç:** Kaynakta gerçekten bulunan uygulanabilir rutin veya kancayı öne çıkarmak.
 
@@ -182,28 +214,30 @@ def main() -> None:
 
 - Kapak yazısı en fazla 5 kelime olmalı; mobil ekranda küçültmeden okunmalı.
 - Tek ana fikir, tek yüz ifadesi ve tek görsel odak kullanılmalı.
-- Yüksek kontrastlı koyu/açık ayrımı ve yalnızca bir marka vurgu rengi kullanılmalı.
+- {color_guidance}
+- {logo_guidance}
+- **Profil görsel notu:** {asset_notes}
 - SEO başlığı kapakta bütünüyle tekrarlanmamalı.
-- Kaynakta bulunmayan sonuç, süre, yüzde, öğrenci sayısı veya başarı vaadi eklenmemeli.
+- Kaynakta bulunmayan sonuç, süre, yüzde, kişi sayısı veya başarı vaadi eklenmemeli.
 - Logo kullanılacaksa küçük tutulmalı; yazı ve yüzün önüne geçmemeli.
 
 ## 6. Gerekli Görsel Malzeme
 
-- [ ] Yatay kadrajda Eren’in net yüz fotoğrafı
+- [ ] Yatay kadrajda {owner} için kullanılabilir, izinli bir görsel
 - [ ] {subject.capitalize()} net görünen yakın veya orta plan fotoğrafı
 - [ ] Seçenekler için yazısız temiz arka plan karesi
 - [ ] Işık, kadraj ve netlik kontrolü
-- [ ] Kullanılacak bütün görsellerin Eren’e ait veya kullanım izni alınmış olması
+- [ ] Kullanılacak bütün görsellerin işletmeye ait veya kullanım izni alınmış olması
 
-## 7. Eren’in Seçim ve Son Kontrol Listesi
+## 7. {owner} Seçim ve Son Kontrol Listesi
 
 - [ ] Seçenek A, B ve C mobil boyutta karşılaştırıldı mı?
 - [ ] Kapak yazısı videonun gerçek içeriğiyle birebir uyumlu mu?
 - [ ] Kaynakta olmayan bir vaat veya sayı var mı?
-- [ ] Yüz, enstrüman ve yazı birbirini kapatıyor mu?
+- [ ] Görünen kişi, ana konu ve yazı birbirini kapatıyor mu?
 - [ ] Türkçe karakterler ve marka adı doğru mu?
-- [ ] Eren seçimini `KAPAK A`, `KAPAK B` veya `KAPAK C` olarak verdi mi?
-- [ ] Seçilen kapak Eren’in son onayı olmadan yüklenmedi mi?
+- [ ] {owner} seçimini `KAPAK A`, `KAPAK B` veya `KAPAK C` olarak verdi mi?
+- [ ] Seçilen kapak {owner} tarafından son onay verilmeden yüklenmedi mi?
 """
 
     if len(re.findall(r"(?m)^## [1-7]\.", output)) != 7:
