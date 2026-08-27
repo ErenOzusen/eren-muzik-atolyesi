@@ -5,10 +5,14 @@ name: Video Orchestrator Smoke Test
     paths:
       - ".github/config/video-orchestrator.json"
       - ".github/scripts/video_orchestrator.py"
+      - ".github/scripts/validate_video_orchestrator.py"
       - ".github/scripts/vibeframe_project_adapter.py"
       - ".github/scripts/moneyprinter_payload_adapter.py"
       - ".github/scripts/test_video_orchestrator.py"
+      - ".github/scripts/test_validate_video_orchestrator.py"
       - ".github/scripts/test_video_engine_routing_contract.py"
+      - ".github/scripts/fixtures/second-business-profile.json"
+      - ".github/scripts/fixtures/second-business-video-orchestrator.json"
       - ".github/workflows/video-orchestrator-smoke-test.yml"
   workflow_dispatch:
 
@@ -28,7 +32,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile .github/scripts/video_orchestrator.py
+          python3 -m py_compile .github/scripts/validate_video_orchestrator.py
           python3 -m json.tool .github/config/video-orchestrator.json >/dev/null
+          python3 .github/scripts/test_validate_video_orchestrator.py
           python3 .github/scripts/test_video_orchestrator.py
           python3 .github/scripts/test_video_engine_routing_contract.py
 

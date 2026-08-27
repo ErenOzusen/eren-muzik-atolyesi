@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "default_auto_mode": "human",
+  "generation_dispatch_enabled": false,
+  "premium_ai_manual_only": true,
+  "modes": {
+    "human": {
+      "engine": "vibeframe",
+      "engine_status": "compatibility_verified",
+      "requires_raw_video": true,
+      "allows_ai_broll": false,
+      "next_stage": "raw-video-intake-gate"
+    },
+    "hybrid": {
+      "engine": "vibeframe",
+      "engine_status": "compatibility_verified",
+      "requires_raw_video": true,
+      "allows_ai_broll": true,
+      "next_stage": "raw-video-intake-gate"
+    },
+    "faceless": {
+      "engine": "moneyprinterturbo",
+      "engine_status": "compatibility_verified",
+      "requires_raw_video": false,
+      "allows_ai_broll": true,
+      "next_stage": "moneyprinter-production-adapter"
+    },
+    "premium_ai": {
+      "engine": "openreels",
+      "engine_status": "research_only",
+      "requires_raw_video": false,
+      "allows_ai_broll": true,
+      "next_stage": "openreels-adapter-not-enabled"
+    }
+  },
+  "signals": {
+    "human_required": [
+      "uygulamalı göster",
+      "klinik kamerada göster",
+      "doğru tekniği göster",
+      "muayene sürecini anlat",
+      "kameraya anlat"
+    ],
+    "hybrid_support": [
+      "b-roll",
+      "ekranda göster",
+      "grafik",
+      "animasyon",
+      "röntgen görseli",
+      "şema",
+      "görsel destek"
+    ],
+    "faceless_preferred": [
+      "bilmeniz gereken",
+      "ilginç bilgi",
+      "nedir",
+      "neden",
+      "karşılaştırma",
+      "liste",
+      "5 bilgi",
+      "3 neden"
+    ]
+  },
+  "thresholds": {
+    "faceless_min_matches": 1,
+    "hybrid_min_matches": 1
+  },
+  "safeguards": {
+    "owner_approval_before_paid_generation": true,
+    "owner_approval_before_publication": true,
+    "never_auto_select_premium_ai": true,
+    "prefer_real_media_when_human_required": true
+  }
+}
