@@ -5,7 +5,10 @@ name: Video Orchestrator Smoke Test
     paths:
       - ".github/config/video-orchestrator.json"
       - ".github/scripts/video_orchestrator.py"
+      - ".github/scripts/vibeframe_project_adapter.py"
+      - ".github/scripts/moneyprinter_payload_adapter.py"
       - ".github/scripts/test_video_orchestrator.py"
+      - ".github/scripts/test_video_engine_routing_contract.py"
       - ".github/workflows/video-orchestrator-smoke-test.yml"
   workflow_dispatch:
 
@@ -27,6 +30,7 @@ jobs:
           python3 -m py_compile .github/scripts/video_orchestrator.py
           python3 -m json.tool .github/config/video-orchestrator.json >/dev/null
           python3 .github/scripts/test_video_orchestrator.py
+          python3 .github/scripts/test_video_engine_routing_contract.py
 
       - name: Örnek karar dosyalarını üret
         shell: bash
