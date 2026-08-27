@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import textwrap
 from pathlib import Path
@@ -77,6 +78,17 @@ def render_cues(cues: list[str]) -> str:
     return "\n\n".join(f"[{index:03d}]\n{cue}" for index, cue in enumerate(cues, 1))
 
 
+def turkish_upper(value: str) -> str:
+    return value.replace("i", "İ").replace("ı", "I").upper()
+
+
+def load_profile(path: str) -> dict:
+    profile = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise SystemExit("Business profile kökte bir JSON nesnesi olmalı.")
+    return profile
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--final", required=True)
@@ -84,8 +96,18 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--final-url", required=True)
     parser.add_argument("--editing-url", required=True)
+    parser.add_argument("--profile", required=True)
     parser.add_argument("--test-mode", choices=("true", "false"), required=True)
     args = parser.parse_args()
+
+    profile = load_profile(args.profile)
+    business = profile["business"]
+    content = profile["content"]
+    brand = business["brand_name"]
+    owner = business["owner_display_name"]
+    category = business["category"]
+    control_terms = list(dict.fromkeys([brand, category, *content["content_topics"]]))
+    control_term_lines = "\n".join(f"- {term}" for term in control_terms)
 
     final_source = remove_comments(read_text(args.final))
     editing_source = remove_comments(read_text(args.editing))
@@ -108,12 +130,12 @@ def main() -> None:
     status = (
         "🧪 Videosuz sistem testi — gerçek zaman kodu veya yayın dosyası değildir"
         if args.test_mode == "true"
-        else "📝 Altyazı hazırlık paketi — Eren'in zamanlama ve yayın onayını bekliyor"
+        else f"📝 Altyazı hazırlık paketi — {owner} tarafından zamanlama ve yayın onayı bekleniyor"
     )
 
     output = f"""> **Durum:** {status}
 
-# 💬 EREN MÜZİK ATÖLYESİ — ALTYAZI HAZIRLIK PAKETİ
+# 💬 {turkish_upper(brand)} — ALTYAZI HAZIRLIK PAKETİ
 
 > Ham video görülmediği için zaman kodu üretilmemiştir. Aşağıdaki metinler onaylı senaryodan değiştirilmeden bölünmüştür.
 
@@ -143,12 +165,7 @@ def main() -> None:
 
 ## 5. Elle Kontrol Edilecek Yazımlar
 
-- Eren Müzik Atölyesi
-- piyano
-- motor beceri / motor becerisi
-- sağ el / sol el
-- on beş dakika
-- “Birinci yol”, “İkinci yol”, “Üçüncü yol” sıralaması
+{control_term_lines}
 
 ## 6. Gerçek Videoda Zamanlama ve Dışa Aktarma
 
@@ -156,19 +173,19 @@ def main() -> None:
 2. Her bloğu duyulan ilk kelimede başlat, son kelimenin bitiminde kapat.
 3. Bir ekranda en fazla iki satır ve satır başına en fazla 42 karakter kullan.
 4. Ana videoda 16:9, Shorts/Reels'te 9:16 güvenli altyazı alanını kontrol et.
-5. Otomatik zamanlama kullanılırsa bütün Türkçe müzik terimlerini elle karşılaştır.
+5. Otomatik zamanlama kullanılırsa {category} kategorisine ve içerik konularına özgü terimleri elle karşılaştır.
 6. Son kontrolden sonra ana video ve Shorts/Reels için ayrı SRT dışa aktar.
 
-## 7. Eren'in Son Kontrol Listesi
+## 7. {owner} Son Kontrol Listesi
 
 - [ ] Altyazı metni videoda söylenenlerle birebir aynı mı?
 - [ ] Her blok doğru kelimede başlayıp doğru kelimede bitiyor mu?
 - [ ] İki satır ve 42 karakter sınırı korunuyor mu?
-- [ ] Müzik terimleri ve marka adı doğru yazılmış mı?
-- [ ] Altyazı yüzü, elleri veya piyano tuşlarını kapatıyor mu?
+- [ ] Kategori/içerik terimleri ve marka adı doğru yazılmış mı?
+- [ ] Altyazı önemli yüzleri, nesneleri veya gösterim alanını kapatıyor mu?
 - [ ] Ana video ve Shorts/Reels ayrı kontrol edildi mi?
 - [ ] Zaman kodlarında çakışma veya boşluk hatası var mı?
-- [ ] Eren altyazılı videoyu izledi ve yayın için onayladı mı?
+- [ ] {owner} altyazılı videoyu izledi ve yayın için onayladı mı?
 """
 
     if re.search(r"\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->", output):

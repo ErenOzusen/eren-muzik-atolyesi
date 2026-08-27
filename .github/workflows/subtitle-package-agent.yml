@@ -34,16 +34,19 @@ jobs:
       RUN_ACTOR: ${{ github.actor }}
       TEST_MODE: ${{ inputs.test_mode }}
       EDITING_NUMBER: ${{ inputs.editing_package_issue }}
-      SUBTITLE_PACKAGE_VERSION: "1"
+      SUBTITLE_PACKAGE_VERSION: "2"
 
     steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
       - name: Çalıştıranı ve girdileri doğrula
         shell: bash
         run: |
           set -euo pipefail
 
           if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            echo "Bu ajanı yalnızca repo sahibi çalıştırabilir."
             exit 1
           fi
 
@@ -116,7 +119,7 @@ jobs:
 
           if ! jq -e '.labels | any(.name == "eren-onayli")' \
             /tmp/final.json > /dev/null; then
-            echo "Kaynak Nihai Senaryo Eren tarafından onaylanmamış."
+            echo "Kaynak Nihai Senaryo yetkili işletme sahibi tarafından onaylanmamış."
             exit 1
           fi
 
@@ -167,10 +170,6 @@ jobs:
             echo "SKIP_SUBTITLE=$SKIP_SUBTITLE"
           } >> "$GITHUB_ENV"
 
-      - name: Kaynak kodu al
-        if: env.SKIP_SUBTITLE != 'true'
-        uses: actions/checkout@v4
-
       - name: Altyazı hazırlık paketini üret ve doğrula
         if: env.SKIP_SUBTITLE != 'true'
         shell: bash
@@ -183,6 +182,7 @@ jobs:
             --output /tmp/subtitle-package.md \
             --final-url "$FINAL_URL" \
             --editing-url "$EDITING_URL" \
+            --profile .github/config/business-profile.json \
             --test-mode "$TEST_MODE"
 
           if [[ ! -s /tmp/subtitle-package.md ]]; then
@@ -226,6 +226,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          OWNER_DISPLAY_NAME=$(jq -r '.business.owner_display_name' \
+            .github/config/business-profile.json)
+
           {
             echo "<!-- subtitle-package-version: $SUBTITLE_PACKAGE_VERSION -->"
             echo "<!-- subtitle-source-sha256: $SOURCE_SHA -->"
@@ -247,7 +250,7 @@ jobs:
           else
             gh label create "eren-onayi-bekliyor" \
               --color "FBCA04" \
-              --description "Yayın öncesi Eren onayını bekliyor" \
+              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
               --force
             gh label create "altyazi-paketi-hazir" \
               --color "0E8A16" \
