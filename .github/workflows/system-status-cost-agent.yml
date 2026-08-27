@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
 
           if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi Eren çalıştırabilir."
+            echo "Bu ajanı yalnızca repository sahibi çalıştırabilir."
             exit 1
           fi
 
@@ -106,7 +106,9 @@ jobs:
             --issues-json /tmp/issues.json \
             --root-issue "$ROOT_ISSUE" \
             --output /tmp/system-audit.md \
-            --test-mode "$TEST_MODE"
+            --test-mode "$TEST_MODE" \
+            --profile .github/config/business-profile.json \
+            --repository "$GH_REPO"
 
           if [[ ! -s /tmp/system-audit.md ]]; then
             echo "Sistem durum raporu boş üretildi."

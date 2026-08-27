@@ -107,9 +107,30 @@ def parse_usage_markers(body: str) -> list[tuple[str, dict[str, int | str]]]:
     return markers
 
 
-def issue_link(issue: dict) -> str:
+def turkish_upper(value: str) -> str:
+    return value.translate(str.maketrans({"i": "İ", "ı": "I"})).upper()
+
+
+def load_business(profile_path: str) -> tuple[str, str, str]:
+    profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
+    business = profile.get("business") or {}
+    required = ("brand_name", "owner_display_name", "github_owner")
+    missing = [key for key in required if not str(business.get(key, "")).strip()]
+    if missing:
+        raise SystemExit(f"İşletme profilinde zorunlu alan eksik: {', '.join(missing)}")
+    return tuple(str(business[key]).strip() for key in required)
+
+
+def validate_repository(repository: str) -> str:
+    repository = repository.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise SystemExit("Repository owner/name biçiminde olmalı.")
+    return repository
+
+
+def issue_link(issue: dict, repository: str) -> str:
     number = int(issue["number"])
-    url = issue.get("url") or f"https://github.com/ErenOzusen/eren-muzik-atolyesi/issues/{number}"
+    url = issue.get("url") or f"https://github.com/{repository}/issues/{number}"
     return f"[#{number}]({url})"
 
 
@@ -119,7 +140,12 @@ def main() -> None:
     parser.add_argument("--root-issue", type=int, required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--test-mode", choices=("true", "false"), required=True)
+    parser.add_argument("--profile", required=True)
+    parser.add_argument("--repository", required=True)
     args = parser.parse_args()
+
+    brand_name, owner_display_name, github_owner = load_business(args.profile)
+    repository = validate_repository(args.repository)
 
     raw_issues = json.loads(Path(args.issues_json).read_text(encoding="utf-8"))
     issues = {int(issue["number"]): issue for issue in raw_issues}
@@ -141,13 +167,13 @@ def main() -> None:
         state = "Açık" if issue.get("state", "OPEN").upper() == "OPEN" else "Kapalı"
         label_text = ", ".join(f"`{label}`" for label in labels) or "—"
         stage_rows.append(
-            f"| {stage} | {issue_link(issue)} | {mode} | {state} | {label_text} |"
+            f"| {stage} | {issue_link(issue, repository)} | {mode} | {state} | {label_text} |"
         )
 
         markers = parse_usage_markers(issue.get("body", ""))
         if not markers:
             missing_usage_issues += 1
-            usage_rows.append(f"| {issue_link(issue)} | {stage} | Kayıt yok | — | — | — |")
+            usage_rows.append(f"| {issue_link(issue, repository)} | {stage} | Kayıt yok | — | — | — |")
             continue
 
         recorded_issues += 1
@@ -166,11 +192,11 @@ def main() -> None:
             issue_web += int(values.get("web_search", 0)) if isinstance(values.get("web_search", 0), int) else 0
         total_tokens = issue_input + issue_output
         if total_tokens == 0:
-            zero_ai_issues.append(issue_link(issue))
+            zero_ai_issues.append(issue_link(issue, repository))
         else:
-            nonzero_ai_issues.append(issue_link(issue))
+            nonzero_ai_issues.append(issue_link(issue, repository))
         usage_rows.append(
-            f"| {issue_link(issue)} | {stage} | `{', '.join(marker_names)}` | "
+            f"| {issue_link(issue, repository)} | {stage} | `{', '.join(marker_names)}` | "
             f"{issue_input:,} | {issue_output:,} | {issue_web:,} |"
         )
 
@@ -204,13 +230,17 @@ def main() -> None:
 
     output = f"""> **Durum:** {status}
 
-# 📊 EREN MÜZİK ATÖLYESİ — SİSTEM DURUM VE MALİYET RAPORU
+# 📊 {turkish_upper(brand_name)} — SİSTEM DURUM VE MALİYET RAPORU
 
 > Rapor GitHub Issue kayıtlarından deterministik olarak üretildi. AI modeli veya web araması kullanılmadı; kaynak Issue'lar değiştirilmedi.
 
 ## 1. Denetim Özeti
 
-- **Kök paket:** {issue_link(root)} — {root.get('title', '')}
+- **İşletme:** {brand_name}
+- **İşletme sahibi:** {owner_display_name}
+- **Yetkili GitHub sahibi:** @{github_owner}
+- **Repository:** `{repository}`
+- **Kök paket:** {issue_link(root, repository)} — {root.get('title', '')}
 - **Zincirde bulunan Issue sayısı:** {len(chain)}
 - **Beklenen aşama sayısı:** {len(STAGES)}
 - **Aşama bütünlüğü:** {'✅ Tam' if chain_complete else '⚠️ Eksik'}
@@ -257,7 +287,7 @@ def main() -> None:
 
 - **Test yayın onay kapısı:** {'✅ Geçti' if approval_tested else '⏳ Bekliyor'}
 - **YouTube yükleme/yayın sayacı:** {'✅ 0 / 0' if upload_zero else '⚠️ Doğrulanamadı'}
-- **Gerçek medya dosyaları:** {'Eren tarafından sonraya bırakıldı; henüz sağlanmadı' if media_deferred else 'Durum ayrıca incelenmeli'}
+- **Gerçek medya dosyaları:** {f'{owner_display_name} tarafından sonraya bırakıldı; henüz sağlanmadı' if media_deferred else 'Durum ayrıca incelenmeli'}
 - **Herkese açık yayın:** Yapılmadı
 - Bu rapor etiket eklemez, kaynak Issue'lara yorum yazmaz ve üretim durumunu değiştirmez.
 

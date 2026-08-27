@@ -18,6 +18,8 @@ on:
       - ".github/scripts/build_youtube_package.py"
       - ".github/scripts/test_build_youtube_package.py"
       - ".github/scripts/test_youtube_publication_approval_portability.mjs"
+      - ".github/scripts/build_system_audit.py"
+      - ".github/scripts/test_build_system_audit.py"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -25,6 +27,7 @@ on:
       - ".github/workflows/thumbnail-package-agent.yml"
       - ".github/workflows/youtube-publication-package-agent.yml"
       - ".github/workflows/youtube-publication-approval-gate.yml"
+      - ".github/workflows/system-status-cost-agent.yml"
       - ".github/workflows/business-profile-smoke-test.yml"
 
 permissions:
@@ -50,6 +53,7 @@ jobs:
           python3 .github/scripts/test_build_thumbnail_package.py
           python3 .github/scripts/test_build_youtube_package.py
           node .github/scripts/test_youtube_publication_approval_portability.mjs
+          python3 .github/scripts/test_build_system_audit.py
 
       - name: Sifir-token ozetini yaz
         shell: bash
