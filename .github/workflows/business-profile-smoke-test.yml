@@ -26,6 +26,7 @@ on:
       - ".github/scripts/vibeframe_project_adapter.py"
       - ".github/scripts/test_vibeframe_project_adapter.py"
       - ".github/scripts/test_runtime_message_portability.mjs"
+      - ".github/scripts/test_legacy_workflow_cleanup.mjs"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -68,6 +69,7 @@ jobs:
           node .github/scripts/test_raw_video_intake_portability.mjs
           python3 .github/scripts/test_vibeframe_project_adapter.py
           node .github/scripts/test_runtime_message_portability.mjs
+          node .github/scripts/test_legacy_workflow_cleanup.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash
