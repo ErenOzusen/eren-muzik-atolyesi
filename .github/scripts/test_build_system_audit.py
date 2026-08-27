@@ -108,7 +108,7 @@ def main() -> None:
     assert "**Yetkili GitHub sahibi:** @ErenOzusen" in current
     assert "https://github.com/ErenOzusen/eren-muzik-atolyesi/issues/9" in current
 
-    assert "MAVI DIS KLINIGI — SİSTEM DURUM VE MALİYET RAPORU" in second
+    assert "MAVİ DİS KLİNİGİ — SİSTEM DURUM VE MALİYET RAPORU" in second
     assert "**İşletme sahibi:** Klinik Yoneticisi" in second
     assert "**Yetkili GitHub sahibi:** @mavi-dis-demo" in second
     assert "https://github.com/mavi-dis-demo/ornek-repo/issues/9" in second
