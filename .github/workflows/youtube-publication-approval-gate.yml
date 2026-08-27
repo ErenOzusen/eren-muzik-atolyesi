@@ -1,4 +1,4 @@
-name: Eren Son Yayın Onay Kapısı
+name: YouTube Son Yayın Onay Kapısı
 
 "on":
   issue_comment:
@@ -17,7 +17,6 @@ jobs:
   approve-publication:
     if: >-
       github.event.issue.pull_request == null &&
-      github.event.comment.user.login == github.repository_owner &&
       (startsWith(github.event.issue.title, 'YouTube Yayın Paketi') ||
       startsWith(github.event.issue.title, 'TEST YouTube Yayın Paketi'))
     runs-on: ubuntu-latest
@@ -27,12 +26,27 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
 
     steps:
-      - name: Eren'in son yayın onayını doğrula ve kaydet
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: İşletme sahibinin son yayın onayını doğrula ve kaydet
         shell: bash
         run: |
           set -euo pipefail
+
+          PROFILE=.github/config/business-profile.json
+          EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
+          OWNER_DISPLAY_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")
+          PRODUCTION_COMMAND=$(jq -r '.approval.production_command' "$PROFILE")
+          TEST_COMMAND=$(jq -r '.approval.test_command' "$PROFILE")
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "Onay komutu yetkili işletme sahibi tarafından yazılmadı: $COMMENT_AUTHOR"
+            exit 0
+          fi
 
           gh issue view "$ISSUE_NUMBER" \
             --json title,body,url,state,labels > /tmp/youtube-package.json
@@ -48,9 +62,12 @@ jobs:
           fi
 
           RAW_COMMENT=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
-          NORMALIZED_COMMENT=$(printf '%s' "$RAW_COMMENT" \
-            | tr '[:lower:]' '[:upper:]' \
-            | tr -d '[:space:]')
+          normalize_command() {
+            printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]'
+          }
+          NORMALIZED_COMMENT=$(normalize_command "$RAW_COMMENT")
+          NORMALIZED_PRODUCTION_COMMAND=$(normalize_command "$PRODUCTION_COMMAND")
+          NORMALIZED_TEST_COMMAND=$(normalize_command "$TEST_COMMAND")
 
           IS_TEST=false
           if jq -e '.labels | any(.name == "sistem-testi")' \
@@ -59,8 +76,8 @@ jobs:
           fi
 
           if [[ "$IS_TEST" == "true" ]]; then
-            if [[ "$NORMALIZED_COMMENT" != "TESTONAYLIYORUM" ]]; then
-              echo "Test paketi yalnızca TEST ONAYLIYORUM komutunu kabul eder."
+            if [[ "$NORMALIZED_COMMENT" != "$NORMALIZED_TEST_COMMAND" ]]; then
+              echo "Test paketi yalnızca profil test onay komutunu kabul eder: $TEST_COMMAND"
               exit 0
             fi
 
@@ -84,7 +101,7 @@ jobs:
 
             if jq -e '.labels | any(.name == "test-yayin-onayli")' \
               /tmp/youtube-package.json > /dev/null; then
-              echo "Bu test yayın paketi daha önce Eren tarafından onaylanmış."
+              echo "Bu test yayın paketi daha önce $OWNER_DISPLAY_NAME tarafından onaylanmış."
               exit 0
             fi
 
@@ -95,17 +112,8 @@ jobs:
 
             gh issue edit "$ISSUE_NUMBER" --add-label "test-yayin-onayli"
 
-            gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
-          ## 🧪 Test yayın onayı kaydedildi
-
-          Eren'in `TEST ONAYLIYORUM` komutu doğrulandı.
-
-          **Test sonucu:** Onay kapısı geçti  
-          **Video yükleme:** Yapılmadı  
-          **YouTube yayını:** Yapılmadı  
-          **Üretim etiketi:** Değiştirilmedi
-          MESSAGE
-          )"
+            TEST_COMMENT=$(printf '## 🧪 Test yayın onayı kaydedildi\n\n%s kullanıcısının `%s` komutu doğrulandı.\n\n**Test sonucu:** Onay kapısı geçti  \n**Video yükleme:** Yapılmadı  \n**YouTube yayını:** Yapılmadı  \n**Üretim etiketi:** Değiştirilmedi' "$OWNER_DISPLAY_NAME" "$TEST_COMMAND")
+            gh issue comment "$ISSUE_NUMBER" --body "$TEST_COMMENT"
 
             {
               echo "### Test yayın onayı kaydedildi"
@@ -117,7 +125,7 @@ jobs:
             exit 0
           fi
 
-          if [[ "$NORMALIZED_COMMENT" != "ONAYLIYORUM" ]]; then
+          if [[ "$NORMALIZED_COMMENT" != "$NORMALIZED_PRODUCTION_COMMAND" ]]; then
             echo "Yorum gerçek yayın onay komutu değil; işlem yapılmadı."
             exit 0
           fi
@@ -129,7 +137,7 @@ jobs:
 
           if ! jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor")' \
             /tmp/youtube-package.json > /dev/null; then
-            echo "Gerçek paket Eren'in yayın onayını bekleyen durumda değil."
+            echo "Gerçek paket $OWNER_DISPLAY_NAME kullanıcısının yayın onayını bekleyen durumda değil."
             exit 1
           fi
 
@@ -142,18 +150,18 @@ jobs:
 
           if jq -e '.labels | any(.name == "eren-yayin-onayli")' \
             /tmp/youtube-package.json > /dev/null; then
-            echo "Bu yayın paketi daha önce Eren tarafından onaylanmış."
+            echo "Bu yayın paketi daha önce $OWNER_DISPLAY_NAME tarafından onaylanmış."
             exit 0
           fi
 
           gh label create "eren-yayin-onayli" \
             --color "0E8A16" \
-            --description "YouTube yayın paketi Eren tarafından son kez onaylandı" \
+            --description "YouTube yayın paketi $OWNER_DISPLAY_NAME tarafından son kez onaylandı" \
             --force
 
           gh label create "yayina-hazir" \
             --color "1D76DB" \
-            --description "Bütün medya dosyaları ve Eren onayıyla yayına hazır" \
+            --description "Bütün medya dosyaları ve $OWNER_DISPLAY_NAME onayıyla yayına hazır" \
             --force
 
           gh issue edit "$ISSUE_NUMBER" \
@@ -162,19 +170,11 @@ jobs:
             --add-label "eren-yayin-onayli" \
             --add-label "yayina-hazir"
 
-          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
-          ## ✅ Eren'in son yayın onayı kaydedildi
-
-          Video, zamanlanmış SRT ve thumbnail hazırlık kanıtları doğrulandı. Eren'in açık `ONAYLIYORUM` komutu kaydedildi.
-
-          **Durum:** Yayına hazır  
-          **Otomatik yayın:** Bu onay kapısı yayın yapmaz  
-          **Sıradaki aşama:** Ayrı yayın ajanının güvenlik kontrolleri
-          MESSAGE
-          )"
+          APPROVAL_COMMENT=$(printf '## ✅ %s kullanıcısının son yayın onayı kaydedildi\n\nVideo, zamanlanmış SRT ve thumbnail hazırlık kanıtları doğrulandı. `%s` komutu kaydedildi.\n\n**Durum:** Yayına hazır  \n**Otomatik yayın:** Bu onay kapısı yayın yapmaz  \n**Sıradaki aşama:** Ayrı yayın ajanının güvenlik kontrolleri' "$OWNER_DISPLAY_NAME" "$PRODUCTION_COMMAND")
+          gh issue comment "$ISSUE_NUMBER" --body "$APPROVAL_COMMENT"
 
           {
-            echo "### Eren'in son yayın onayı kaydedildi"
+            echo "### $OWNER_DISPLAY_NAME kullanıcısının son yayın onayı kaydedildi"
             echo "- Issue: $ISSUE_URL"
             echo "- Durum: yayına hazır"
             echo "- Otomatik yayın: yapılmadı"
