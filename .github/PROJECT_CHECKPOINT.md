@@ -165,18 +165,65 @@ Doğrulama:
 4. Çıktı kalite sözleşmesi var ve 0-token testleri geçiyor.
 5. Henüz canlı provider fallback testi yapılmadı ve bu turda gerçek AI tokenı harcanmadı.
 
+## 27.08.2026 — Video motoru ve Orchestrator güncellemesi
+
+### Tamamlanan bağlantılar
+
+- VibeFrame gerçek çekim / hibrit yolunun ana motor adayı olarak doğrulandı.
+- MoneyPrinterTurbo yüz göstermeyen video yolunun ana motor adayı olarak doğrulandı.
+- Her iki motor için adapter katmanı kuruldu; onaylı senaryo adapter içinde değiştirilmeden korunuyor.
+- VibeFrame 0-key / `--dry-run --max-cost 0` uygunluk testi geçti.
+- MoneyPrinterTurbo v1.3.5 custom-script uygunluk testi geçti.
+- Deterministik Video Orchestrator kuruldu:
+  - `human → vibeframe`
+  - `hybrid → vibeframe`
+  - `faceless → moneyprinterturbo`
+  - `premium_ai → openreels` yalnız manuel ve araştırma aşamasında
+- Orchestrator kararı artık Çekim Handoff Güvenlik Kapısı içinde seçilen tek senaryodan üretiliyor.
+- Ayrı ve güvenilmez `workflow_run` bağlantısı kaldırıldı; rota kararı doğrudan handoff içinde veriliyor.
+- Gerçek para harcayan motor dispatch'i ve ücretli üretim kapalı kalıyor.
+
+### Yeni çapraz-adapter kalite sözleşmesi
+
+Yeni test:
+- `.github/scripts/test_video_engine_routing_contract.py`
+
+Bu test şunları 0 token ve 0 ağ çağrısıyla doğrular:
+- otomatik mod doğru üretim yolunu seçiyor
+- human/hybrid senaryosu VibeFrame projesine değişmeden taşınıyor
+- faceless senaryosu MoneyPrinterTurbo `video_script` alanına değişmeden taşınıyor
+- TTS, müzik, altyazı ve provider çağrıları testte kapalı
+- premium AI otomatik seçilmiyor ve üretime geçmiyor
+- bütün rotalarda `dispatch_enabled=false`
+- bütün rotalarda `paid_generation_allowed=false`
+
+GitHub doğrulaması:
+- Video Orchestrator Smoke Test Run #2
+- Run id: `33080096920`
+- Sonuç: `SUCCESS`
+- AI/API/video çağrısı: 0
+- Harcama: 0
+
+## Şu anda tam olarak neredeyiz?
+
+1. Araştırma → senaryo → QC → düzeltme → son teknik kontrol → Eren onayı → senaryo seçimi zinciri çalışıyor.
+2. Router'lı Çekim Paketi Ajanı güvenli handoff'a bağlı.
+3. AI Router kalite sözleşmesi geçmeyen çıktıda sıradaki sağlayıcıya geçebiliyor.
+4. Video Orchestrator, seçilen içeriği human / hybrid / faceless üretim rotasına ayırabiliyor.
+5. VibeFrame ve MoneyPrinterTurbo adapter sözleşmeleri GitHub Actions'ta 0 maliyetle doğrulandı.
+6. Gerçek ham video teslimi yapılmadı.
+7. Gerçek MP4 üretimi, harici video provider çağrısı ve YouTube yayını yapılmadı.
+8. Ücretli video üretimi ve otomatik yayın Eren'in açık onayı olmadan açılamaz.
+
 ## Bir sonraki mantıklı adım
 
-**Kalite sözleşmesini Router'ın gerçek provider döngüsüne bağlamak.**
+Videolar gelmeden ilerleyebileceğimiz sıradaki iş: **taşınabilirlik / ikinci işletme çoğaltma denetimi**.
 
-Hedef davranış:
+Hedef:
+- Workflow ve scriptlerde kalan sabit `Eren`, marka adı ve repo sahibi bağımlılıklarını deterministik olarak bulmak.
+- Bunları merkezi işletme profiline taşımak.
+- Örnek ikinci işletme profiliyle 0-token çoğaltma testi yapmak.
+- Eren Müzik Atölyesi üretim ayarlarını değiştirmeden, aynı sistemi yeni bir işletmeye kurulabilir hale getirmek.
 
-`Anthropic cevap verir → kalite sözleşmesi geçerse kabul`
-
-Geçmezse:
-
-`Anthropic çıktısı reddedilir → OpenAI denenir → o da geçmezse DeepSeek → sonra Qwen`
-
-Böylece yalnız API/limit hatasında değil, **kalitesiz çıktıda da otomatik fallback** yapılacak.
-
-Bu bağlantı da önce sahte çıktılarla 0-token test edilecek; canlı AI testi daha sonra ayrı karar olarak açılacak.
+Gerçek medya geldiğinde paralel üretim yolu:
+`Ham Video Teslim Kapısı → VibeFrame edit/remix planı → altyazı → thumbnail → YouTube yayın paketi → Eren son onayı`
