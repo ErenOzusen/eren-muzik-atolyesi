@@ -277,7 +277,7 @@ jobs:
           - "Uygulanan QC düzeltmeleri" beyanına güvenme; gerçek metni kontrol et.
           - Yalnızca kanıtlayabildiğin nesnel yanlış, gerçek çelişki veya çekimi engelleyen eksik veri varsa DÜZELTME GEREKİYOR kararı ver.
           - Her bloklayıcı bulgu için "Metindeki hangi iki bilgi aynı anda doğru olamaz?" sorusunu cevapla. Cevap yoksa bulguyu küçük iyileştirmeye taşı.
-          - Yalnızca üslup veya daha ayrıntılı söyleyiş önerisi varsa EREN ONAYINA HAZIR kararı ver.
+          - Yalnızca üslup veya daha ayrıntılı söyleyiş önerisi varsa ONAYA HAZIR kararı ver.
 
           ÇIKTI SÖZLEŞMESİ:
           - İlk satır tam olarak: # 🔍 $BRAND_NAME — SON TEKNİK KONTROL
@@ -286,7 +286,7 @@ jobs:
           - "## Küçük İyileştirmeler" altında en fazla $FTC_MAX_IMPROVEMENTS kısa madde yaz.
           - "## GENEL KARAR" bölümüyle bitir.
           - Son satır aşağıdaki iki seçenekten tam olarak biri olsun:
-            GENEL KARAR: ✅ EREN ONAYINA HAZIR
+            GENEL KARAR: ✅ ONAYA HAZIR
             GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR
           - Yalnızca Markdown raporunu döndür; kod çiti veya ön açıklama ekleme.
           PROMPT
@@ -359,22 +359,14 @@ jobs:
             exit 1
           fi
 
-          READY_COUNT=$(grep -c '^GENEL KARAR: ✅ EREN ONAYINA HAZIR$' /tmp/final-check.md || true)
-          FIX_COUNT=$(grep -c '^GENEL KARAR: ⚠️ DÜZELTME GEREKİYOR$' /tmp/final-check.md || true)
-          if [[ $((READY_COUNT + FIX_COUNT)) -ne 1 ]]; then
-            echo "Son teknik kontrol raporu tam olarak bir geçerli GENEL KARAR içermiyor."
-            exit 1
-          fi
-          if ! tail -n 1 /tmp/final-check.md | grep -Eq '^GENEL KARAR: (✅ EREN ONAYINA HAZIR|⚠️ DÜZELTME GEREKİYOR)$'; then
-            echo "GENEL KARAR raporun son satırı değil."
-            exit 1
-          fi
+          FTC_DECISION=$(node .github/scripts/final_technical_decision_contract.mjs /tmp/final-check.md)
 
           INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
           OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
           {
             echo "FTC_INPUT_TOKENS=$INPUT_TOKENS"
             echo "FTC_OUTPUT_TOKENS=$OUTPUT_TOKENS"
+            echo "FTC_DECISION=$FTC_DECISION"
           } >> "$GITHUB_ENV"
 
       - name: Kontrol raporunu ve onay etiketlerini yayınla
@@ -386,8 +378,8 @@ jobs:
           RUN_DATE=$(TZ="$BUSINESS_TIMEZONE" date +%d-%m-%Y)
           TITLE="Son Teknik Kontrol Raporu - $RUN_DATE"
 
-          if grep -q '^GENEL KARAR: ✅ EREN ONAYINA HAZIR$' /tmp/final-check.md; then
-            DECISION="✅ EREN ONAYINA HAZIR"
+          if [[ "$FTC_DECISION" == "ready" ]]; then
+            DECISION="✅ ONAYA HAZIR"
             REPORT_LABEL="son-kontrol-gecti"
             FINAL_LABEL="eren-onayi-bekliyor"
           else
