@@ -63,7 +63,6 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      REPOSITORY_OWNER: ${{ github.repository_owner }}
       RUN_ACTOR: ${{ github.actor }}
       PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
       VIDEO_FORMAT: ${{ inputs.video_format }}
@@ -75,13 +74,28 @@ jobs:
       READY_FOR_EDITING: ${{ inputs.ready_for_editing }}
 
     steps:
-      - name: Eren'i ve teslim bilgilerini doğrula
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Merkezi işletme profilini doğrula ve yükle
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE=.github/config/business-profile.json
+          python3 .github/scripts/validate_business_config.py --config "$PROFILE" --output /tmp/profile.md --test-mode true
+
+          echo "BRAND_NAME=$(jq -r '.business.brand_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "OWNER_NAME=$(jq -r '.business.owner_display_name' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "AUTHORIZED_GITHUB_OWNER=$(jq -r '.business.github_owner' "$PROFILE")" >> "$GITHUB_ENV"
+          echo "BUSINESS_TIMEZONE=$(jq -r '.business.timezone' "$PROFILE")" >> "$GITHUB_ENV"
+
+      - name: Yetkili kullanıcıyı ve teslim bilgilerini doğrula
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu kapıyı yalnızca repo sahibi Eren çalıştırabilir."
+          if [[ "$RUN_ACTOR" != "$AUTHORIZED_GITHUB_OWNER" ]]; then
+            echo "Bu kapıyı yalnızca profilde tanımlı yetkili GitHub kullanıcısı çalıştırabilir."
             exit 1
           fi
 
@@ -131,7 +145,7 @@ jobs:
             exit 1
           fi
 
-      - name: Çekim paketini ve Eren onayını doğrula
+      - name: Çekim paketini ve işletme sahibi onayını doğrula
         shell: bash
         run: |
           set -euo pipefail
@@ -168,7 +182,7 @@ jobs:
 
           if ! jq -e '.labels | any(.name == "eren-onayli")' \
             /tmp/final.json > /dev/null; then
-            echo "Kaynak Nihai Senaryolar Eren tarafından onaylanmamış."
+            echo "Kaynak Nihai Senaryolar yetkili işletme sahibi tarafından onaylanmamış."
             exit 1
           fi
 
@@ -192,7 +206,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          RUN_DATETIME=$(TZ=Europe/Istanbul date '+%d.%m.%Y %H:%M')
+          RUN_DATETIME=$(TZ="$BUSINESS_TIMEZONE" date '+%d.%m.%Y %H:%M')
           INTAKE_TITLE="Ham Video Teslimi - Çekim Paketi #$PACKAGE_NUMBER"
 
           escape_html() {
@@ -220,14 +234,15 @@ jobs:
             echo "<!-- raw-video-intake-version: 1 -->"
             echo "<!-- source-package-issue: #$PACKAGE_NUMBER -->"
             echo "<!-- intake-metadata-sha256: $METADATA_SHA -->"
-            echo "# 📥 EREN MÜZİK ATÖLYESİ — HAM VİDEO TESLİMİ"
+            echo "# 📥 $BRAND_NAME — HAM VİDEO TESLİMİ"
             echo
             echo "> **Durum:** 🟡 Kurgu bekliyor"
             echo
             echo "**Kaynak çekim paketi:** $PACKAGE_URL"
             echo "**Kaynak onaylı senaryo:** $FINAL_URL"
             echo "**Teslimi kaydeden:** @$RUN_ACTOR"
-            echo "**Teslim tarihi:** $RUN_DATETIME (Europe/Istanbul)"
+            echo "**Yetkili işletme sahibi:** $OWNER_NAME"
+            echo "**Teslim tarihi:** $RUN_DATETIME ($BUSINESS_TIMEZONE)"
             echo
             echo "## Teslim Bilgileri"
             echo
@@ -255,7 +270,7 @@ jobs:
             echo "- [ ] Ham videolar özel kanaldan kurgu sistemine aktarıldı"
             echo "- [ ] Kurgu taslağı oluşturuldu"
             echo "- [ ] Altyazılar kontrol edildi"
-            echo "- [ ] Eren'in nihai yayın onayı alındı"
+            echo "- [ ] Nihai yayın için işletme sahibi onayı alındı"
           } > /tmp/intake-body.md
 
           {

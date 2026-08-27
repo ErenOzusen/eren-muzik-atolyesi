@@ -22,6 +22,7 @@ on:
       - ".github/scripts/test_build_system_audit.py"
       - ".github/scripts/final_technical_decision_contract.mjs"
       - ".github/scripts/test_final_technical_decision_portability.mjs"
+      - ".github/scripts/test_raw_video_intake_portability.mjs"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -31,6 +32,7 @@ on:
       - ".github/workflows/youtube-publication-approval-gate.yml"
       - ".github/workflows/system-status-cost-agent.yml"
       - ".github/workflows/final-technical-check.yml"
+      - ".github/workflows/raw-video-intake-gate.yml"
       - ".github/workflows/business-profile-smoke-test.yml"
 
 permissions:
@@ -58,6 +60,7 @@ jobs:
           node .github/scripts/test_youtube_publication_approval_portability.mjs
           python3 .github/scripts/test_build_system_audit.py
           node .github/scripts/test_final_technical_decision_portability.mjs
+          node .github/scripts/test_raw_video_intake_portability.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash
