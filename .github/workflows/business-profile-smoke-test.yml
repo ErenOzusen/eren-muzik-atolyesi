@@ -1,0 +1,43 @@
+name: Business Profile Zero-Token Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/config/business-profile.json"
+      - ".github/scripts/validate_business_config.py"
+      - ".github/scripts/test_validate_business_config.py"
+      - ".github/scripts/fixtures/**"
+      - ".github/workflows/business-profile-smoke-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-business-profiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Isletme profili fixture'larini sifir-token dogrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_validate_business_config.py
+
+      - name: Sifir-token ozetini yaz
+        shell: bash
+        run: |
+          {
+            echo "### Business Profile Smoke Test"
+            echo "- Mevcut profil: gecti"
+            echo "- Ikinci sahte isletme profili: gecti"
+            echo "- Negatif fixture'lar: reddedildi"
+            echo "- Harici paket: yok"
+            echo "- Ag istegi: 0"
+            echo "- AI kullanimi: 0 token"
+            echo "- Issue yazimi: yok"
+          } >> "$GITHUB_STEP_SUMMARY"
