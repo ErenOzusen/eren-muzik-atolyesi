@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -86,6 +87,31 @@ def run_case(
     if not should_pass and output_path.exists():
         raise AssertionError(f"{config_path.name}: rejected fixture created a report")
 
+    if should_pass:
+        profile = json.loads(config_path.read_text(encoding="utf-8"))
+        report = output_path.read_text(encoding="utf-8")
+        expected_values = (
+            f"**Marka:** {profile['business']['brand_name']}",
+            f"**İşletme sahibi:** {profile['business']['owner_display_name']}",
+            f"**Yetkili GitHub hesabı:** `{profile['business']['github_owner']}`",
+            f"**Faaliyet alanı:** {profile['business']['category']}",
+            f"**Dil:** `{profile['business']['language']}`",
+            f"**Saat dilimi:** `{profile['business']['timezone']}`",
+            f"**Gerçek onay komutu:** `{profile['approval']['production_command']}`",
+            f"**Test onay komutu:** `{profile['approval']['test_command']}`",
+        )
+        for value in expected_values:
+            if value not in report:
+                raise AssertionError(
+                    f"{config_path.name}: profile value missing from report: {value!r}"
+                )
+        if config_path.name == "second-business-profile.json":
+            for hard_code in ("Eren", "EREN MÜZİK ATÖLYESİ"):
+                if hard_code in report:
+                    raise AssertionError(
+                        f"{config_path.name}: hidden business hard-code in report: {hard_code!r}"
+                    )
+
     print(f"ok: {config_path.name} -> {'pass' if passed else 'rejected'}")
 
 
@@ -95,6 +121,19 @@ def main() -> None:
         missing.append(str(VALIDATOR))
     if missing:
         raise SystemExit("Missing test input:\n- " + "\n- ".join(missing))
+
+    validator_source = VALIDATOR.read_text(encoding="utf-8")
+    for security_contract in (
+        "SENSITIVE_KEY_PATTERN",
+        "PLACEHOLDER_PATTERN",
+        "set(profile) == REQUIRED_ROOT_KEYS",
+        "allow_publication_without_owner_approval",
+        "https://[^\\s]+",
+    ):
+        if security_contract not in validator_source:
+            raise AssertionError(
+                f"validator security contract missing: {security_contract!r}"
+            )
 
     with tempfile.TemporaryDirectory(prefix="business-profile-smoke-") as temp_dir:
         output_dir = Path(temp_dir)

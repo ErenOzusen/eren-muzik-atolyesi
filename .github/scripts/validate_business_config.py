@@ -487,7 +487,7 @@ def main() -> None:
 - **Logo:** {assets['logo_path'] or 'Henüz eklenmedi'}
 - **Marka renkleri:** {', '.join(assets['brand_colors']) if assets['brand_colors'] else 'Henüz eklenmedi'}
 - **Not:** {assets['notes']}
-- Logo veya marka rengi bulunmaması otomasyonu durdurmaz; görsel üretim aşamasında Eren onayı gerekir.
+- Logo veya marka rengi bulunmaması otomasyonu durdurmaz; görsel üretim aşamasında {business['owner_display_name']} onayı gerekir.
 
 ## 7. Taşınabilirlik ve Geçiş Planı
 
@@ -495,18 +495,18 @@ def main() -> None:
 - **Kopyalanabilir boş şablon:** ✅ Hazır
 - **Secret bilgilerin profilden ayrılması:** ✅ Doğrulandı
 - **Haftalık Araştırma Ajanı profil ayarları:** ✅ Hazır
-- **Haftalık Araştırma workflow bağlantısı:** ✅ Eren'in açık onayıyla hazır
+- **Haftalık Araştırma workflow bağlantısı:** ✅ Yetkili işletme sahibi {business['owner_display_name']} onayıyla hazır
 - **Haftalık Senaryo Ajanı profil ayarları:** ✅ Hazır
-- **Haftalık Senaryo workflow bağlantısı:** ✅ Eren'in açık onayıyla hazır
+- **Haftalık Senaryo workflow bağlantısı:** ✅ Yetkili işletme sahibi {business['owner_display_name']} onayıyla hazır
 - **Kalite Kontrol Ajanı profil ayarları:** ✅ Hazır
-- **Kalite Kontrol workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
+- **Kalite Kontrol workflow bağlantısı:** ✅ Yetkili işletme sahibi {business['owner_display_name']} onayıyla hazır
 - **Düzeltme Ajanı profil ayarları:** ✅ Hazır
-- **Düzeltme workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
+- **Düzeltme workflow bağlantısı:** ✅ Yetkili işletme sahibi {business['owner_display_name']} onayıyla hazır
 - **Son Teknik Kontrol Ajanı profil ayarları:** ✅ Hazır
-- **Son Teknik Kontrol workflow bağlantısı:** ✅ Eren’in açık onayıyla hazır
+- **Son Teknik Kontrol workflow bağlantısı:** ✅ Yetkili işletme sahibi {business['owner_display_name']} onayıyla hazır
 - **Diğer ajanların profile bağlanması:** ⏳ Sıradaki aşama
 - **İkinci işletme ile çoğaltma testi:** ⏳ Profil geçişinden sonra
-- Geçişi tamamlanmamış ajanlar mevcut Eren Müzik Atölyesi ayarlarıyla aynı biçimde çalışmaya devam eder.
+- Geçişi tamamlanmamış ajanlar profildeki {business['brand_name']} ayarlarıyla aynı biçimde çalışmaya devam eder.
 """
 
     if len(re.findall(r"(?m)^## [1-7]\.", output)) != 7:
