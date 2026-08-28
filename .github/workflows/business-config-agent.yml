@@ -25,19 +25,26 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      REPOSITORY_OWNER: ${{ github.repository_owner }}
       RUN_ACTOR: ${{ github.actor }}
       TEST_MODE: ${{ inputs.test_mode }}
       CONFIG_VERSION: "1"
 
     steps:
-      - name: Çalıştıranı doğrula
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Yetkili GitHub kullanıcısını doğrula
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca yetkili repo sahibi çalıştırabilir."
+          CONFIG_OWNER=$(jq -er '.business.github_owner | select(type == "string" and length > 0)' \
+            .github/config/business-profile.json)
+          NORMALIZED_RUN_ACTOR=$(printf '%s' "$RUN_ACTOR" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+          NORMALIZED_CONFIG_OWNER=$(printf '%s' "$CONFIG_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+
+          if [[ "$NORMALIZED_RUN_ACTOR" != "$NORMALIZED_CONFIG_OWNER" ]]; then
+            echo "Bu ajanı yalnızca işletme profilinde yetkilendirilen GitHub hesabı çalıştırabilir."
             exit 1
           fi
 
@@ -45,9 +52,6 @@ jobs:
             echo "test_mode yalnızca true veya false olabilir."
             exit 1
           fi
-
-      - name: Kaynak kodu al
-        uses: actions/checkout@v4
 
       - name: İşletme profilini doğrula
         shell: bash
@@ -59,14 +63,10 @@ jobs:
             --output /tmp/business-config-report.md \
             --test-mode "$TEST_MODE"
 
-          CONFIG_OWNER=$(jq -r '.business.github_owner' .github/config/business-profile.json)
+          CONFIG_OWNER=$(jq -er '.business.github_owner | select(type == "string" and length > 0)' \
+            .github/config/business-profile.json)
           BRAND_NAME=$(jq -r '.business.brand_name' .github/config/business-profile.json)
           CONFIG_SHA=$(sha256sum .github/config/business-profile.json | awk '{print $1}')
-
-          if [[ "$CONFIG_OWNER" != "$REPOSITORY_OWNER" ]]; then
-            echo "Profildeki GitHub sahibi repo sahibiyle eşleşmiyor."
-            exit 1
-          fi
 
           if [[ ! -s /tmp/business-config-report.md ]]; then
             echo "Yapılandırma raporu boş üretildi."
