@@ -285,6 +285,10 @@ jobs:
               --color "FBCA04" \
               --description "YouTube yükleme ve yayın için $OWNER_DISPLAY_NAME tarafından verilecek açık onayı bekliyor" \
               --force
+            gh label create "publication-approval-pending" \
+              --color "FBCA04" \
+              --description "YouTube yükleme ve yayın için $OWNER_DISPLAY_NAME tarafından verilecek açık onayı bekliyor" \
+              --force
             gh label create "youtube-yayin-paketi-hazir" \
               --color "0E8A16" \
               --description "YouTube yayın hazırlık paketi tamamlandı" \
@@ -310,6 +314,7 @@ jobs:
           fi
 
           if [[ "$TEST_MODE" == "false" ]]; then
+            gh issue edit "$YOUTUBE_NUMBER" --add-label "publication-approval-pending"
             gh issue edit "$THUMBNAIL_NUMBER" --add-label "youtube-yayin-paketi-hazir"
             gh issue comment "$THUMBNAIL_NUMBER" \
               --body "▶️ YouTube yayın hazırlık paketi oluşturuldu: $YOUTUBE_URL"

@@ -146,7 +146,16 @@ def main() -> None:
     assert "https://eren-muzik-atolyesi.vercel.app" not in workflow
     assert "--reservation-url" not in workflow
     assert 'any(.name == "eren-onayli")' in workflow
-    assert '"eren-yayin-onayi-bekliyor"' in workflow
+
+    # Publication approval label migration Faz 1 — dual-write on the package agent side:
+    # the legacy pending label must still be produced, and the generic pending label
+    # must now be produced alongside it (neither replaces the other in this package).
+    assert '"eren-yayin-onayi-bekliyor"' in workflow, "legacy pending label kayboldu"
+    assert '"publication-approval-pending"' in workflow, "generic pending label eklenmedi"
+    assert (
+        'gh issue edit "$YOUTUBE_NUMBER" --add-label "publication-approval-pending"'
+        in workflow
+    ), "generic pending label yeni/güncellenen Issue'ya eklenmiyor"
 
     print("youtube_package_portability_ok ai_calls=0 api_calls=0 youtube_calls=0 video_calls=0")
 

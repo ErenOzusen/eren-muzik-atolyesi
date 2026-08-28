@@ -135,7 +135,7 @@ jobs:
             exit 1
           fi
 
-          if ! jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor")' \
+          if ! jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor" or .name == "publication-approval-pending")' \
             /tmp/youtube-package.json > /dev/null; then
             echo "Gerçek paket $OWNER_DISPLAY_NAME kullanıcısının yayın onayını bekleyen durumda değil."
             exit 1
@@ -148,13 +148,18 @@ jobs:
             exit 1
           fi
 
-          if jq -e '.labels | any(.name == "eren-yayin-onayli")' \
+          if jq -e '.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")' \
             /tmp/youtube-package.json > /dev/null; then
             echo "Bu yayın paketi daha önce $OWNER_DISPLAY_NAME tarafından onaylanmış."
             exit 0
           fi
 
           gh label create "eren-yayin-onayli" \
+            --color "0E8A16" \
+            --description "YouTube yayın paketi $OWNER_DISPLAY_NAME tarafından son kez onaylandı" \
+            --force
+
+          gh label create "publication-approved" \
             --color "0E8A16" \
             --description "YouTube yayın paketi $OWNER_DISPLAY_NAME tarafından son kez onaylandı" \
             --force
@@ -167,7 +172,10 @@ jobs:
           gh issue edit "$ISSUE_NUMBER" \
             --remove-label "eren-yayin-onayi-bekliyor" > /dev/null 2>&1 || true
           gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "publication-approval-pending" > /dev/null 2>&1 || true
+          gh issue edit "$ISSUE_NUMBER" \
             --add-label "eren-yayin-onayli" \
+            --add-label "publication-approved" \
             --add-label "yayina-hazir"
 
           APPROVAL_COMMENT=$(printf '## ✅ %s kullanıcısının son yayın onayı kaydedildi\n\nVideo, zamanlanmış SRT ve thumbnail hazırlık kanıtları doğrulandı. `%s` komutu kaydedildi.\n\n**Durum:** Yayına hazır  \n**Otomatik yayın:** Bu onay kapısı yayın yapmaz  \n**Sıradaki aşama:** Ayrı yayın ajanının güvenlik kontrolleri' "$OWNER_DISPLAY_NAME" "$PRODUCTION_COMMAND")
