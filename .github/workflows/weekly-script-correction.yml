@@ -343,7 +343,7 @@ jobs:
           - Tam olarak $CORRECTION_SCENARIO_COUNT senaryo üret.
           - İlk satır tam olarak: # 🎬 $BRAND_NAME — NİHAİ SENARYOLAR
           - Senaryo başlıklarını sırasıyla "## SENARYO 1:", "## SENARYO 2:", "## SENARYO 3:" biçiminde yaz.
-          - Her senaryoda başlık/amaç, süre/format, ilk 3 saniye kancası, zaman kodlu konuşma ve çekim akışı, ekran notları, kapanış/CTA, Shorts/Reels kesiti, SEO başlığı, açıklama ilk cümlesi, etiketler, playlist ve gerekiyorsa somut akor/TAB/nota bilgisi bulunsun.
+          - Her senaryoda başlık/amaç, süre/format, ilk 3 saniye kancası, zaman kodlu konuşma ve çekim akışı, ekran notları, kapanış/CTA, Shorts/Reels kesiti, SEO başlığı, açıklama ilk cümlesi, etiketler, playlist ve gerekiyorsa profile ve kaynak metne uygun somut alan bilgisi bulunsun.
           - Her senaryoda en fazla üç maddelik "Uygulanan QC düzeltmeleri" bölümü bulunsun; yalnızca gerçekten yapılan değişiklikleri yaz.
           - Yalnızca nihai Markdown metnini döndür; kod çiti veya ön açıklama ekleme.
           PROMPT
