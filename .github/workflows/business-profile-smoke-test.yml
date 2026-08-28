@@ -31,6 +31,7 @@ on:
       - ".github/scripts/test_runtime_message_portability.mjs"
       - ".github/scripts/test_legacy_workflow_cleanup.mjs"
       - ".github/scripts/test_owner_approval_portability.mjs"
+      - ".github/scripts/test_manual_package_owner_authorization_portability.mjs"
       - ".github/scripts/test_quality_control_portability.mjs"
       - ".github/scripts/test_script_correction_portability.mjs"
       - ".github/scripts/fixtures/**"
@@ -81,6 +82,7 @@ jobs:
           node .github/scripts/test_runtime_message_portability.mjs
           node .github/scripts/test_legacy_workflow_cleanup.mjs
           node .github/scripts/test_owner_approval_portability.mjs
+          node .github/scripts/test_manual_package_owner_authorization_portability.mjs
           node .github/scripts/test_quality_control_portability.mjs
           node .github/scripts/test_script_correction_portability.mjs
 
