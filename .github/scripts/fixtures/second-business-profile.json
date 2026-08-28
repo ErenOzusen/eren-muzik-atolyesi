@@ -37,6 +37,9 @@
       "Koruyucu bakim",
       "Cocuklarda dis sagligi"
     ],
+    "capture": {
+      "primary_device": "Klinik kamera"
+    },
     "research": {
       "lookback_days": 14,
       "youtube_channels": [

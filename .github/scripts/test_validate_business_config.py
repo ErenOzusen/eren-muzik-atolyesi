@@ -33,6 +33,16 @@ CASES = (
         False,
         "Kök alanlar şema sürümü 1 ile eşleşmiyor.",
     ),
+    (
+        FIXTURES / "invalid-capture-device-not-in-equipment.json",
+        False,
+        "Ana kayıt cihazı (primary_device), offer.available_equipment listesindeki bir ekipmanla birebir eşleşmelidir.",
+    ),
+    (
+        FIXTURES / "invalid-capture-device-empty.json",
+        False,
+        "Ana kayıt cihazı (primary_device) boş olmayan bir metin olmalı.",
+    ),
 )
 
 
@@ -89,6 +99,28 @@ def run_case(
 
     if should_pass:
         profile = json.loads(config_path.read_text(encoding="utf-8"))
+
+        primary_device = profile["content"]["capture"]["primary_device"]
+        if not isinstance(primary_device, str) or not primary_device.strip():
+            raise AssertionError(
+                f"{config_path.name}: content.capture.primary_device boş olmayan bir metin olmalı"
+            )
+        if primary_device not in profile["offer"]["available_equipment"]:
+            raise AssertionError(
+                f"{config_path.name}: content.capture.primary_device "
+                f"({primary_device!r}) offer.available_equipment içinde değil"
+            )
+        expected_primary_devices = {
+            "business-profile.json": "Telefon",
+            "second-business-profile.json": "Klinik kamera",
+        }
+        expected_device = expected_primary_devices.get(config_path.name)
+        if expected_device is not None and primary_device != expected_device:
+            raise AssertionError(
+                f"{config_path.name}: content.capture.primary_device beklenen "
+                f"{expected_device!r} yerine {primary_device!r}"
+            )
+
         report = output_path.read_text(encoding="utf-8")
         expected_values = (
             f"**Marka:** {profile['business']['brand_name']}",
@@ -99,6 +131,7 @@ def run_case(
             f"**Saat dilimi:** `{profile['business']['timezone']}`",
             f"**Gerçek onay komutu:** `{profile['approval']['production_command']}`",
             f"**Test onay komutu:** `{profile['approval']['test_command']}`",
+            f"**Ana çekim cihazı:** {profile['content']['capture']['primary_device']}",
         )
         for value in expected_values:
             if value not in report:
@@ -113,6 +146,31 @@ def run_case(
                     )
 
     print(f"ok: {config_path.name} -> {'pass' if passed else 'rejected'}")
+
+
+def check_example_profile_capture_consistency() -> None:
+    """business-profile.example.json is a placeholder template and is never run through
+    the validator (its ÖRNEK/placeholder values are intentionally rejected by
+    PLACEHOLDER_PATTERN). Still verify its content.capture.primary_device is internally
+    consistent with its own offer.available_equipment, so the template stays a valid
+    starting point once a real business fills in its values."""
+    example_path = REPO_ROOT / ".github/config/business-profile.example.json"
+    if not example_path.is_file():
+        raise SystemExit(f"Missing test input: {example_path}")
+
+    example_profile = json.loads(example_path.read_text(encoding="utf-8"))
+    example_device = example_profile["content"]["capture"]["primary_device"]
+    available_equipment = example_profile["offer"]["available_equipment"]
+    if not isinstance(example_device, str) or not example_device.strip():
+        raise AssertionError(
+            "business-profile.example.json: content.capture.primary_device boş olmayan bir metin olmalı"
+        )
+    if example_device not in available_equipment:
+        raise AssertionError(
+            "business-profile.example.json: content.capture.primary_device "
+            f"({example_device!r}) offer.available_equipment içinde değil ({available_equipment!r})"
+        )
+    print(f"ok: business-profile.example.json -> capture.primary_device {example_device!r} in available_equipment")
 
 
 def main() -> None:
@@ -134,6 +192,8 @@ def main() -> None:
             raise AssertionError(
                 f"validator security contract missing: {security_contract!r}"
             )
+
+    check_example_profile_capture_consistency()
 
     with tempfile.TemporaryDirectory(prefix="business-profile-smoke-") as temp_dir:
         output_dir = Path(temp_dir)

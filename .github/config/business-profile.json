@@ -41,6 +41,9 @@
       "Bas gitar",
       "Müzik teorisi"
     ],
+    "capture": {
+      "primary_device": "Telefon"
+    },
     "research": {
       "lookback_days": 14,
       "youtube_channels": [

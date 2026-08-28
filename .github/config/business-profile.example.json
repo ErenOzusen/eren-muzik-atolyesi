@@ -30,6 +30,9 @@
     "content_topics": [
       "KONU 1"
     ],
+    "capture": {
+      "primary_device": "MEVCUT EKİPMAN 1"
+    },
     "research": {
       "lookback_days": 14,
       "youtube_channels": [

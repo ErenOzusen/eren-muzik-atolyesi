@@ -4,6 +4,7 @@
   "offer": {"services": ["Test hizmeti"], "available_equipment": ["Test ekipmani"], "reservation_url": "https://approval-off.example/randevu", "primary_cta": "Talep olustur"},
   "content": {
     "primary_platform": "YouTube", "secondary_formats": ["YouTube Shorts"], "video_formats": ["16:9"], "content_topics": ["Guvenlik testi"],
+    "capture": {"primary_device": "Test ekipmani"},
     "research": {"lookback_days": 14, "youtube_channels": [{"name": "Security Fixture Channel", "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsecurityFixture001"}], "trend_feed_url": "https://trends.google.com/trending/rss?geo=TR", "news_extra_terms": ["guvenlik testi"], "news_country": "TR", "news_language": "tr", "minimum_youtube_feeds": 1, "minimum_news_feeds": 1, "idea_count": 5, "report_max_words": 900, "source_char_limit": 12000, "max_model_output": 2800},
     "script": {"idea_count": 3, "target_min_words": 400, "target_max_words": 500, "validation_min_words": 300, "validation_max_words": 650, "shorts_min_seconds": 30, "shorts_max_seconds": 60, "ideas_char_limit": 12000, "max_model_output": 4800},
     "quality_control": {"max_script_chars": 40000, "max_model_output": 4500, "target_report_output": 2500, "max_web_searches": 1, "domain_rules": ["Test iddialarini kanitlarla karsilastir."]},

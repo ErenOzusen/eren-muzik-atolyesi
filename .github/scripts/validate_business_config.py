@@ -107,6 +107,23 @@ def validate(profile: dict[str, Any]) -> list[str]:
     require(nonempty_unique_list(content.get("video_formats")), "En az bir video oranı gerekli.", errors)
     require(nonempty_unique_list(content.get("content_topics")), "En az bir içerik konusu gerekli.", errors)
 
+    capture = content.get("capture") if isinstance(content.get("capture"), dict) else {}
+    require(isinstance(content.get("capture"), dict), "content.capture bir nesne olmalı.", errors)
+    require(
+        nonempty_text(capture.get("primary_device")),
+        "Ana kayıt cihazı (primary_device) boş olmayan bir metin olmalı.",
+        errors,
+    )
+    available_equipment = (
+        offer.get("available_equipment") if isinstance(offer.get("available_equipment"), list) else []
+    )
+    require(
+        isinstance(capture.get("primary_device"), str)
+        and capture.get("primary_device") in available_equipment,
+        "Ana kayıt cihazı (primary_device), offer.available_equipment listesindeki bir ekipmanla birebir eşleşmelidir.",
+        errors,
+    )
+
     require(
         isinstance(research.get("lookback_days"), int) and 1 <= research["lookback_days"] <= 30,
         "Araştırma geriye bakış süresi 1–30 gün olmalı.",
@@ -438,6 +455,8 @@ def main() -> None:
 
 **Mevcut ekipman**
 {chr(10).join(f'- {item}' for item in offer['available_equipment'])}
+
+- **Ana çekim cihazı:** {content['capture']['primary_device']}
 
 ## 3. İçerik ve Dönüşüm Ayarları
 
