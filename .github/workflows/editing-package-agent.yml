@@ -35,7 +35,6 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      REPOSITORY_OWNER: ${{ github.repository_owner }}
       RUN_ACTOR: ${{ github.actor }}
       TEST_MODE: ${{ inputs.test_mode }}
       REQUESTED_PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
@@ -51,8 +50,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]; then
-            echo "Bu ajanı yalnızca repo sahibi çalıştırabilir."
+          CONFIG_OWNER=$(jq -er '.business.github_owner | select(type == "string" and length > 0)' \
+            .github/config/business-profile.json)
+          NORMALIZED_RUN_ACTOR=$(printf '%s' "$RUN_ACTOR" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+          NORMALIZED_CONFIG_OWNER=$(printf '%s' "$CONFIG_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+
+          if [[ "$NORMALIZED_RUN_ACTOR" != "$NORMALIZED_CONFIG_OWNER" ]]; then
+            echo "Bu ajanı yalnızca işletme profilinde yetkilendirilen GitHub hesabı çalıştırabilir."
             exit 1
           fi
 
