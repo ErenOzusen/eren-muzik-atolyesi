@@ -11,6 +11,9 @@ on:
       - ".github/scripts/test_build_filming_package_prompt.mjs"
       - ".github/scripts/build_editing_package_prompt.mjs"
       - ".github/scripts/test_build_editing_package_prompt.mjs"
+      - ".github/config/contracts/filming-package.json"
+      - ".github/scripts/output_contract.py"
+      - ".github/scripts/test_output_contract.py"
       - ".github/scripts/build_subtitle_package.py"
       - ".github/scripts/test_build_subtitle_package.py"
       - ".github/scripts/build_thumbnail_package.py"
@@ -66,6 +69,7 @@ jobs:
           python3 .github/scripts/test_validate_business_config.py
           node .github/scripts/test_build_filming_package_prompt.mjs
           node .github/scripts/test_build_editing_package_prompt.mjs
+          python3 .github/scripts/test_output_contract.py
           python3 .github/scripts/test_build_subtitle_package.py
           python3 .github/scripts/test_build_thumbnail_package.py
           python3 .github/scripts/test_build_youtube_package.py

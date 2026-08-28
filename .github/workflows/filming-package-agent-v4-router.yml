@@ -55,7 +55,7 @@ jobs:
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
-      PACKAGE_VERSION: "7"
+      PACKAGE_VERSION: "8"
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
       TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '' }}
       TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
@@ -336,6 +336,7 @@ jobs:
           set -euo pipefail
 
           EQUIPMENT_SUMMARY=$(jq -r '.equipment_summary' /tmp/filming-profile-metadata.json)
+          PRIMARY_DEVICE=$(jq -r '.primary_device' /tmp/filming-profile-metadata.json)
 
           {
             echo "<!-- source-body-sha256: $SOURCE_SHA -->"
@@ -344,13 +345,14 @@ jobs:
             echo "**Kaynak onaylı senaryo:** $FINAL_URL"
             echo "**Seçilen içerik:** Senaryo $SELECTED_SCENARIO — $SELECTED_TITLE"
             echo "**AI sağlayıcısı:** $FILMING_PROVIDER / $FILMING_MODEL"
+            echo "**Ana kayıt cihazı:** $PRIMARY_DEVICE"
             echo "**Mevcut ekipmanlar:** $EQUIPMENT_SUMMARY"
-            echo "**Plan türü:** Ek ekipman satın almadan telefonla çekim"
+            echo "**Plan türü:** Ek ekipman satın almadan mevcut kayıt cihazıyla çekim"
             echo
             cat /tmp/filming-package.md
           } > /tmp/package-body.md
 
-          gh label create "cekim-paketi" --color "5319E7" --description "Telefonla çekim planı ve kontrol listesi" --force
+          gh label create "cekim-paketi" --color "5319E7" --description "Çekim planı ve kontrol listesi" --force
           gh label create "cekim-paketi-hazir" --color "0E8A16" --description "Onaylı senaryo için çekim paketi hazır" --force
 
           if [[ -n "$EXISTING_NUMBER" ]]; then
@@ -361,7 +363,7 @@ jobs:
           fi
 
           gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir"
-          gh issue comment "$FINAL_NUMBER" --body "🎥 Telefonla çekim paketi hazırlandı: $PACKAGE_URL"
+          gh issue comment "$FINAL_NUMBER" --body "🎥 Çekim paketi hazırlandı: $PACKAGE_URL"
 
           {
             echo "### Çekim paketi hazırlandı"

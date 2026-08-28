@@ -26,6 +26,8 @@ async function assertProfile(profilePath, expected, forbidden) {
   for (const value of forbidden) {
     assert.ok(!rendered.includes(value), `Başka işletmeye ait değer promptta kaldı: ${value}`);
   }
+  assert.ok(rendered.includes("çekim paketini"), "Genel 'çekim paketini' ifadesi promptta yok");
+  assert.ok(!rendered.includes("telefonla çekim paketini"), "Cihaz-özel 'telefonla çekim paketini' ifadesi promptta kaldı");
   console.log(`ok editing prompt profile: ${profilePath}`);
 }
 

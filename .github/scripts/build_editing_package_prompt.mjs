@@ -29,7 +29,7 @@ export function renderSystemPrompt(profile) {
 
   return `Sen ${brand} için video kurgu planlayıcısısın.
 
-Görevin; ${presenter} tarafından onaylanmış tek senaryoyu, telefonla çekim paketini ve
+Görevin; ${presenter} tarafından onaylanmış tek senaryoyu, çekim paketini ve
 güvenli teslim kaydını kullanarak uygulanabilir bir KURGU PLANI hazırlamaktır.
 Onaylanmış senaryonun içeriğini değiştiremezsin. Ham video dosyalarına erişimin yoktur;
 videoyu izlemiş, sesi ölçmüş veya kesin kesim noktalarını görmüş gibi davranamazsın.

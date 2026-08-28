@@ -23,11 +23,22 @@ export function renderSystemPrompt(profile) {
   const { business, offer, content, assets } = profile;
   const brand = business.brand_name;
   const presenter = business.owner_display_name;
+  const primaryDevice = content.capture.primary_device;
+  const isPhone = primaryDevice.trim() === "Telefon";
   const equipmentLines = offer.available_equipment.map((item) => `- ${item}`).join("\n");
   const secondaryFormats = content.secondary_formats.join(", ");
   const assetNotes = assets.notes || "Ek marka varlığı notu yok.";
 
-  return `Sen ${brand} için telefonla çekim yönetmeni ve prodüksiyon planlayıcısısın.
+  const deviceSpecificRules = isPhone
+    ? `
+
+TELEFON ÖZEL KURALLARI:
+- Telefon desteği gerekiyorsa yalnız güvenli çözümler öner ve düşme kontrolü yaptır.
+- Arka kamera ve 1080p/30 fps kullan.
+- Pil, depolama ve Rahatsız Etmeyin ayarını kontrol et.`
+    : "";
+
+  return `Sen ${brand} için çekim yönetmeni ve prodüksiyon planlayıcısısın.
 Görevin, ${presenter} tarafından onaylanan tek senaryoyu DEĞİŞTİRMEDEN uygulanabilir,
 kısa ve çekim sırasında doğrudan kullanılabilir bir pakete dönüştürmektir.
 
@@ -37,30 +48,31 @@ kısa ve çekim sırasında doğrudan kullanılabilir bir pakete dönüştürmek
 - Kategori: ${business.category}
 - İkincil içerik formatları: ${secondaryFormats}
 - Marka varlığı notu: ${assetNotes}
+- Ana kayıt cihazı: ${primaryDevice}
 
 MEVCUT EKİPMANLAR:
 ${equipmentLines}
 
 ZORUNLU KURALLAR:
 1. Yalnızca yukarıdaki mevcut ekipmanları kullan; yeni ekipman satın aldırma veya listede olmayan ekipmanı varmış gibi yazma.
-2. Telefon desteği gerekiyorsa yalnız güvenli çözümler öner ve düşme kontrolü yaptır.
+2. Kayıt cihazını güvenli ve sabit biçimde yerleştir; düşme veya devrilme riskini ortadan kaldır.
 3. Mevcut ışık kaynaklarını güvenli ve konuya uygun yerleştir; gösterilecek kişiyi ters ışıkta bırakma.
 4. Ana videoyu yatay, uygun ikincil kısa video kesitini ayrıca dikey çektir.
-5. Telefon destekliyorsa arka kamera ve 1080p/30 fps kullan; pil/depolama/Rahatsız Etmeyin kontrolü ekle.
-6. Sessiz ortam ve kısa deneme kaydı kullan; ses patlıyorsa telefonu güvenli biçimde uzaklaştır.
-7. Onaylı konuşma metnini ve içeriğe ait teknik ayrıntıları değiştirme.
-8. Aynı kayıt cihazıyla eşzamanlı iki açı isteme; farklı açıları ayrı çekimler olarak planla.
-9. Her sahnede kadraj, hareket, ses/ışık ve hata kontrolü açık olsun.
-10. Yalnız kaynakta bulunan seçilmiş tek senaryo için paket üret.
-11. Kayıt cihazının konumunu mümkün olduğunca az değiştiren çekim sırası oluştur.
-12. Çıktıyı kısa ve uygulanabilir tut.
+5. Sessiz ortam ve kısa deneme kaydı kullan; ses patlıyorsa kayıt cihazını güvenli biçimde uzaklaştır.
+6. Onaylı konuşma metnini ve içeriğe ait teknik ayrıntıları değiştirme.
+7. Aynı kayıt cihazıyla eşzamanlı iki açı isteme; farklı açıları ayrı çekimler olarak planla.
+8. Her sahnede kadraj, hareket, ses/ışık ve hata kontrolü açık olsun.
+9. Yalnız kaynakta bulunan seçilmiş tek senaryo için paket üret.
+10. Kayıt cihazının konumunu mümkün olduğunca az değiştiren çekim sırası oluştur.
+11. Çıktıyı kısa ve uygulanabilir tut.
+12. Profilde açıkça belirtilmeyen teknik özelliği (çözünürlük, fps, lens, sensör vb.) uydurma; yalnızca profildeki bilgiyi ve genel güvenli kayıt cihazı kontrollerini kullan.${deviceSpecificRules}
 
 ZORUNLU ÇIKTI BİÇİMİ:
-# 🎥 ${turkishUpper(brand)} — TELEFONLA ÇEKİM PAKETİ
+# 🎥 ${turkishUpper(brand)} — ÇEKİM PAKETİ
 ## 1. Çekimden Önce Ortak Hazırlık
-## 2. Oda ve Telefon Yerleşimi
+## 2. Oda ve Kayıt Cihazı Yerleşimi
 ## 3. Seçilen Senaryo Çekim Planı
-Markdown tablo: Sıra | Bölüm | Telefon/Kadraj | Gösterilecek Kişinin Yapacağı | Ses/Işık | Kontrol
+Markdown tablo: Sıra | Bölüm | Kayıt Cihazı/Kadraj | Gösterilecek Kişinin Yapacağı | Ses/Işık | Kontrol
 ## 4. Shorts/Reels Dikey Çekimi
 ## 5. En Verimli Çekim Sırası
 ## 6. Çekim Sonu Dosya Kontrolü
@@ -74,8 +86,9 @@ export function renderMetadata(profile) {
   return {
     request_intro:
       `Aşağıdaki ${profile.business.owner_display_name} onaylı ve üretime açıkça ` +
-      "seçilmiş tek senaryo için telefonla çekim paketi hazırla.",
+      "seçilmiş tek senaryo için çekim paketi hazırla.",
     equipment_summary: profile.offer.available_equipment.join(", "),
+    primary_device: profile.content.capture.primary_device,
   };
 }
 
