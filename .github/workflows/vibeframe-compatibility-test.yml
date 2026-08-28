@@ -47,6 +47,7 @@ jobs:
           python3 .github/scripts/test_vibeframe_project_adapter.py
 
       - name: Sistem-testi senaryosunu ayıkla
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -83,6 +84,7 @@ jobs:
           PY
 
       - name: VibeFrame proje taslağını üret
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -98,6 +100,7 @@ jobs:
           cmp /tmp/selected-script.md /tmp/vibeframe-test/APPROVED_SCRIPT.md
 
       - name: VibeFrame CLI 0.115.2 kur
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,6 +108,7 @@ jobs:
           vibe --version
 
       - name: Storyboard doğrula ve sıfır harcamalı planla
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -156,6 +160,7 @@ jobs:
           echo "VIBE_ESTIMATED_COST=$ESTIMATED_COST" >> "$GITHUB_ENV"
 
       - name: Güvenli test özeti
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -170,4 +175,17 @@ jobs:
             echo "- Bu testte harici AI/video üretimi: yapılmadı"
             echo "- Bu testte AI/video API harcaması: \$0"
             echo "- Gerçek MP4 üretimi: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push için yerel-yalnız özet
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### VibeFrame adapter yerel testi başarılı (push)"
+            echo "- Kapsam: yalnızca py_compile + test_vibeframe_project_adapter.py"
+            echo "- Harici CLI/Issue erişimi: atlandı (yalnızca workflow_dispatch ile çalışır)"
+            echo "- Ağ çağrısı: 0"
+            echo "- AI/API/video harcaması: 0"
           } >> "$GITHUB_STEP_SUMMARY"
