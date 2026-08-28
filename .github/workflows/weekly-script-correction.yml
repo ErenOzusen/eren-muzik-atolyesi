@@ -466,6 +466,11 @@ jobs:
             --description "Nihai içerik işletme sahibi onayını bekliyor" \
             --force
 
+          gh label create "owner-approval-pending" \
+            --color "FBCA04" \
+            --description "Nihai içerik işletme sahibi onayını bekliyor" \
+            --force
+
           EXISTING_NUMBER=$(gh issue list \
             --state all \
             --search "\"$TITLE\" in:title sort:updated-desc" \
@@ -478,13 +483,15 @@ jobs:
             gh issue edit "$EXISTING_NUMBER" \
               --title "$TITLE" \
               --body-file /tmp/issue-body.md \
-              --add-label "eren-onayi-bekliyor"
+              --add-label "eren-onayi-bekliyor" \
+              --add-label "owner-approval-pending"
             ISSUE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
           else
             ISSUE_URL=$(gh issue create \
               --title "$TITLE" \
               --body-file /tmp/issue-body.md \
-              --label "eren-onayi-bekliyor")
+              --label "eren-onayi-bekliyor" \
+              --label "owner-approval-pending")
           fi
 
           {

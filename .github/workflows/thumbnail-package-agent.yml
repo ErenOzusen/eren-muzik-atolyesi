@@ -116,7 +116,7 @@ jobs:
           FINAL_URL=$(jq -r '.url' /tmp/final.json)
           jq -r '.body' /tmp/final.json > /tmp/final.md
 
-          if ! jq -e '.labels | any(.name == "eren-onayli")' \
+          if ! jq -e '.labels | any(.name == "eren-onayli" or .name == "owner-approved")' \
             /tmp/final.json > /dev/null; then
             echo "Kaynak Nihai Senaryo yetkili işletme sahibi tarafından onaylanmamış."
             exit 1
@@ -253,6 +253,10 @@ jobs:
               --color "FBCA04" \
               --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
               --force
+            gh label create "owner-approval-pending" \
+              --color "FBCA04" \
+              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
+              --force
             gh label create "thumbnail-paketi-hazir" \
               --color "0E8A16" \
               --description "Thumbnail hazırlık paketi tamamlandı" \
@@ -278,6 +282,7 @@ jobs:
           fi
 
           if [[ "$TEST_MODE" == "false" ]]; then
+            gh issue edit "$THUMBNAIL_NUMBER" --add-label "owner-approval-pending"
             gh issue edit "$SUBTITLE_NUMBER" --add-label "thumbnail-paketi-hazir"
             gh issue comment "$SUBTITLE_NUMBER" \
               --body "🖼️ Thumbnail hazırlık paketi oluşturuldu: $THUMBNAIL_URL"

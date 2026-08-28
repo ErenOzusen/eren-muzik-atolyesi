@@ -38,7 +38,7 @@ jobs:
           ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
 
           HAD_APPROVAL=false
-          for LABEL in eren-onayli cekime-hazir cekim-paketi-hazir; do
+          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir; do
             if grep -qx "$LABEL" /tmp/labels.txt; then
               HAD_APPROVAL=true
               gh issue edit "$ISSUE_NUMBER" --remove-label "$LABEL" > /dev/null
@@ -55,7 +55,14 @@ jobs:
             --description "Nihai içerik işletme sahibi onayını bekliyor" \
             --force
 
-          gh issue edit "$ISSUE_NUMBER" --add-label "eren-onayi-bekliyor" > /dev/null
+          gh label create "owner-approval-pending" \
+            --color "FBCA04" \
+            --description "Nihai içerik işletme sahibi onayını bekliyor" \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --add-label "eren-onayi-bekliyor" \
+            --add-label "owner-approval-pending" > /dev/null
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
           ## 🔄 Önceki Eren onayı geçersizleştirildi

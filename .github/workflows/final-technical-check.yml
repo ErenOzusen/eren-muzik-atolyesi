@@ -382,10 +382,12 @@ jobs:
             DECISION="✅ ONAYA HAZIR"
             REPORT_LABEL="son-kontrol-gecti"
             FINAL_LABEL="eren-onayi-bekliyor"
+            FINAL_LABEL_GENERIC="owner-approval-pending"
           else
             DECISION="⚠️ DÜZELTME GEREKİYOR"
             REPORT_LABEL="duzeltme-gerekiyor"
             FINAL_LABEL="duzeltme-gerekiyor"
+            FINAL_LABEL_GENERIC=""
           fi
 
           REPORT_HASH=$(sha256sum /tmp/final-check.md | awk '{print $1}')
@@ -401,6 +403,7 @@ jobs:
           gh label create "son-kontrol-gecti" --color "0E8A16" --description "Son teknik kontrolü geçti" --force
           gh label create "duzeltme-gerekiyor" --color "D93F0B" --description "İçerikte düzeltme gerekiyor" --force
           gh label create "eren-onayi-bekliyor" --color "FBCA04" --description "Nihai içerik işletme sahibi onayını bekliyor" --force
+          gh label create "owner-approval-pending" --color "FBCA04" --description "Nihai içerik işletme sahibi onayını bekliyor" --force
 
           REPORT_NUMBER=$(gh issue list \
             --state all \
@@ -419,9 +422,14 @@ jobs:
           fi
 
           gh issue edit "$FINAL_NUMBER" --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$FINAL_NUMBER" --remove-label "owner-approval-pending" > /dev/null 2>&1 || true
           gh issue edit "$FINAL_NUMBER" --remove-label "duzeltme-gerekiyor" > /dev/null 2>&1 || true
           gh issue edit "$FINAL_NUMBER" --remove-label "son-kontrol-gecti" > /dev/null 2>&1 || true
-          gh issue edit "$FINAL_NUMBER" --add-label "$FINAL_LABEL"
+          if [[ -n "$FINAL_LABEL_GENERIC" ]]; then
+            gh issue edit "$FINAL_NUMBER" --add-label "$FINAL_LABEL" --add-label "$FINAL_LABEL_GENERIC"
+          else
+            gh issue edit "$FINAL_NUMBER" --add-label "$FINAL_LABEL"
+          fi
 
           COMMENT_MARKER="<!-- FINAL_TECHNICAL_RESULT_V1 report=$REPORT_NUMBER report_sha=$REPORT_HASH -->"
           COMMENT_EXISTS=$(gh issue view "$FINAL_NUMBER" --json comments \

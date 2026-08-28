@@ -40,6 +40,10 @@ assert.deepEqual(dispatchTargets, [
 for (const contract of [
   "name: Çekim Paketi Ajanı — AI Router",
   "for REQUIRED in eren-onayli cekime-hazir uretime-secildi",
+  // Main owner approval label migration Faz 1 — read-both for eren-onayli inside the
+  // loop, without changing the loop header string above (kept for backward compat).
+  'if [[ "$REQUIRED" == "eren-onayli" ]]; then',
+  "grep -qxE 'eren-onayli|owner-approved' /tmp/final-labels.txt",
   "FILMING_HANDOFF_V1",
   "build_filming_package_prompt.mjs",
   ".github/config/business-profile.json",

@@ -55,6 +55,23 @@ for (const label of ["son-kontrol-gecti", "duzeltme-gerekiyor", "eren-onayi-bekl
   assert.ok(workflow.includes(`"${label}"`), label);
 }
 
+// Main owner approval label migration Faz 1 — dual-write of the pending label on the
+// "Nihai Senaryolar" issue when the decision is "ready", dual-remove of both pending
+// labels regardless of decision. The "duzeltme-gerekiyor" label itself is untouched.
+assert.ok(workflow.includes('"owner-approval-pending"'), "owner-approval-pending");
+assert.ok(
+  workflow.includes('FINAL_LABEL_GENERIC="owner-approval-pending"'),
+  "FINAL_LABEL_GENERIC dual-write ataması eksik",
+);
+assert.ok(
+  workflow.includes('--remove-label "owner-approval-pending"'),
+  "owner-approval-pending temizlenmiyor",
+);
+assert.ok(
+  workflow.includes('--add-label "$FINAL_LABEL" --add-label "$FINAL_LABEL_GENERIC"'),
+  "ready kararında dual-add eksik",
+);
+
 console.log(
   "final_technical_decision_portability_ok ai_calls=0 api_calls=0 issue_writes=0 video_calls=0",
 );

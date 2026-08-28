@@ -72,6 +72,10 @@ for (const contract of [
   'EXPECTED_OWNER=$(jq -r \'.business.github_owner\' "$PROFILE")',
   '[[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]',
   "for REQUIRED in eren-onayli cekime-hazir uretime-secildi",
+  // Main owner approval label migration Faz 1 — read-both for eren-onayli inside the
+  // loop, without changing the loop header string above (kept for backward compat).
+  'if [[ "$REQUIRED" == "eren-onayli" ]]; then',
+  "grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt",
   "FILMING_HANDOFF_V1",
   "VIDEO_ORCHESTRATOR_V1",
   "TEST HANDOFF ",

@@ -119,8 +119,19 @@ def main() -> None:
 
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "--profile .github/config/business-profile.json" in workflow
-    assert 'any(.name == "eren-onayli")' in workflow
-    assert '"eren-onayi-bekliyor"' in workflow
+
+    # Main owner approval label migration Faz 1 — read-both on the source scenario gate.
+    assert 'any(.name == "eren-onayli" or .name == "owner-approved")' in workflow
+
+    # This file's own eren-onayi-bekliyor is UI/status only (audit-confirmed no
+    # downstream reader) — dual-write it alongside the legacy label without creating
+    # any new functional gate.
+    assert '"eren-onayi-bekliyor"' in workflow, "legacy status label kayboldu"
+    assert '"owner-approval-pending"' in workflow, "generic status label eklenmedi"
+    assert (
+        'gh issue edit "$SUBTITLE_NUMBER" --add-label "owner-approval-pending"'
+        in workflow
+    ), "generic status label yeni/güncellenen Issue'ya eklenmiyor"
 
     print("subtitle_package_portability_ok ai_calls=0 api_calls=0 video_calls=0")
 

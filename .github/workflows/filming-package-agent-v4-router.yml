@@ -140,7 +140,12 @@ jobs:
               exit 1
             fi
             for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
-              if ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
+              if [[ "$REQUIRED" == "eren-onayli" ]]; then
+                if ! grep -qxE 'eren-onayli|owner-approved' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
+                  exit 1
+                fi
+              elif ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
                 echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
                 exit 1
               fi

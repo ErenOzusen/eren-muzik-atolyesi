@@ -135,7 +135,7 @@ jobs:
           FINAL_URL=$(jq -r '.url' /tmp/final.json)
           jq -r '.body' /tmp/final.json > /tmp/final.md
 
-          if ! jq -e '.labels | any(.name == "eren-onayli")' \
+          if ! jq -e '.labels | any(.name == "eren-onayli" or .name == "owner-approved")' \
             /tmp/final.json > /dev/null; then
             echo "Kaynak Nihai Senaryo yetkili işletme sahibi tarafından onaylanmamış."
             exit 1

@@ -180,7 +180,7 @@ jobs:
           gh issue view "$FINAL_NUMBER" \
             --json title,url,labels > /tmp/final.json
 
-          if ! jq -e '.labels | any(.name == "eren-onayli")' \
+          if ! jq -e '.labels | any(.name == "eren-onayli" or .name == "owner-approved")' \
             /tmp/final.json > /dev/null; then
             echo "Kaynak Nihai Senaryolar yetkili işletme sahibi tarafından onaylanmamış."
             exit 1

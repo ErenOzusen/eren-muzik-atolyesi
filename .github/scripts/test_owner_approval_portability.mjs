@@ -60,6 +60,25 @@ assert.ok(testBranch.includes("Issue\/etiket değişikliği: yapılmadı"));
 for (const contract of ["eren-onayli", "eren-onayi-bekliyor", "EREN_APPROVAL_V2", "cekime-hazir"]) {
   assert.ok(workflow.includes(contract), contract);
 }
+
+// Main owner approval label migration Faz 1 — dual-write + read-both. Legacy labels
+// are NOT removed from production in this package; only the generic twin is added.
+for (const contract of [
+  "owner-approved",
+  "owner-approval-pending",
+  "grep -qxE 'eren-onayi-bekliyor|owner-approval-pending' /tmp/approval-labels.txt",
+  "grep -qxE 'eren-onayli|owner-approved' /tmp/approval-labels.txt",
+  'gh label create "eren-onayli"',
+  'gh label create "owner-approved"',
+  '--add-label "eren-onayli"',
+  '--add-label "owner-approved"',
+  '--add-label "cekime-hazir"',
+  '--remove-label "eren-onayi-bekliyor"',
+  '--remove-label "owner-approval-pending"',
+]) {
+  assert.ok(workflow.includes(contract), contract);
+}
+
 for (const visibleHardCode of [
   "name: Eren Onay Kapısı",
   "Eren onayını",

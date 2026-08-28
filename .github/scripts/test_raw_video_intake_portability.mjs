@@ -70,7 +70,8 @@ for (const forbidden of [
 }
 
 for (const securityContract of [
-  'any(.name == "eren-onayli")',
+  // Main owner approval label migration Faz 1 — read-both, legacy label preserved.
+  'any(.name == "eren-onayli" or .name == "owner-approved")',
   'any(.name == "cekime-hazir")',
   '"ham-video-teslim"',
   '"kurgu-bekliyor"',

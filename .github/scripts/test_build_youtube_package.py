@@ -145,7 +145,8 @@ def main() -> None:
     assert "--profile .github/config/business-profile.json" in workflow
     assert "https://eren-muzik-atolyesi.vercel.app" not in workflow
     assert "--reservation-url" not in workflow
-    assert 'any(.name == "eren-onayli")' in workflow
+    # Main owner approval label migration Faz 1 — read-both on the source scenario gate.
+    assert 'any(.name == "eren-onayli" or .name == "owner-approved")' in workflow
 
     # Publication approval label migration Faz 1 — dual-write on the package agent side:
     # the legacy pending label must still be produced, and the generic pending label

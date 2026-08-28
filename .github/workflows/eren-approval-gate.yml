@@ -105,8 +105,8 @@ jobs:
 
           HAS_WAITING=false
           HAS_APPROVED=false
-          grep -qx 'eren-onayi-bekliyor' /tmp/approval-labels.txt && HAS_WAITING=true || true
-          grep -qx 'eren-onayli' /tmp/approval-labels.txt && HAS_APPROVED=true || true
+          grep -qxE 'eren-onayi-bekliyor|owner-approval-pending' /tmp/approval-labels.txt && HAS_WAITING=true || true
+          grep -qxE 'eren-onayli|owner-approved' /tmp/approval-labels.txt && HAS_APPROVED=true || true
 
           if [[ "$HAS_WAITING" == "true" && "$HAS_APPROVED" == "true" ]]; then
             echo "Tutarsız onay durumu: Issue hem onaylı hem onay bekliyor. Önce eski onay geçersizleştirilmeli."
@@ -146,16 +146,24 @@ jobs:
             --description "İçerik $OWNER_DISPLAY_NAME tarafından onaylandı" \
             --force
 
+          gh label create "owner-approved" \
+            --color "0E8A16" \
+            --description "İçerik $OWNER_DISPLAY_NAME tarafından onaylandı" \
+            --force
+
           gh label create "cekime-hazir" \
             --color "1D76DB" \
             --description "İçerik çekim aşamasına hazır" \
             --force
 
           gh issue edit "$ISSUE_NUMBER" \
-            --remove-label "eren-onayi-bekliyor"
+            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "owner-approval-pending" > /dev/null 2>&1 || true
 
           gh issue edit "$ISSUE_NUMBER" \
             --add-label "eren-onayli" \
+            --add-label "owner-approved" \
             --add-label "cekime-hazir"
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
