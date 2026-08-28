@@ -120,6 +120,9 @@ def main() -> None:
 
     workflow = WORKFLOW.read_text(encoding="utf-8")
     for contract in (
+        "AUTHORIZED_GITHUB_OWNER=$(jq -er '.business.github_owner",
+        '[[ "$RUN_ACTOR" != "$AUTHORIZED_GITHUB_OWNER" ]]',
+        "yalnızca işletme profilinde yetkilendirilen GitHub hesabı",
         '--profile .github/config/business-profile.json',
         '--repository "$GH_REPO"',
         "<!-- system-audit-version: $AUDIT_VERSION -->",
@@ -128,6 +131,13 @@ def main() -> None:
         '"sistem-testi"',
     ):
         assert contract in workflow, contract
+    for forbidden in (
+        "REPOSITORY_OWNER:",
+        '[[ "$RUN_ACTOR" != "$REPOSITORY_OWNER" ]]',
+        "yalnızca repo sahibi Eren",
+        "yalnızca repository sahibi",
+    ):
+        assert forbidden not in workflow, forbidden
 
     print("system_audit_portability_ok ai_calls=0 api_calls=0 issue_writes=0 video_calls=0")
 
