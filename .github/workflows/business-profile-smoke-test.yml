@@ -21,6 +21,7 @@ on:
       - ".github/scripts/build_youtube_package.py"
       - ".github/scripts/test_build_youtube_package.py"
       - ".github/scripts/test_youtube_publication_approval_portability.mjs"
+      - ".github/scripts/test_publication_approval_invalidation_phase1.mjs"
       - ".github/scripts/build_system_audit.py"
       - ".github/scripts/test_build_system_audit.py"
       - ".github/scripts/final_technical_decision_contract.mjs"
@@ -42,6 +43,7 @@ on:
       - ".github/workflows/thumbnail-package-agent.yml"
       - ".github/workflows/youtube-publication-package-agent.yml"
       - ".github/workflows/youtube-publication-approval-gate.yml"
+      - ".github/workflows/publication-approval-invalidation-gate.yml"
       - ".github/workflows/system-status-cost-agent.yml"
       - ".github/workflows/final-technical-check.yml"
       - ".github/workflows/raw-video-intake-gate.yml"
@@ -78,6 +80,7 @@ jobs:
           python3 .github/scripts/test_build_thumbnail_package.py
           python3 .github/scripts/test_build_youtube_package.py
           node .github/scripts/test_youtube_publication_approval_portability.mjs
+          node .github/scripts/test_publication_approval_invalidation_phase1.mjs
           python3 .github/scripts/test_build_system_audit.py
           node .github/scripts/test_final_technical_decision_portability.mjs
           node .github/scripts/test_raw_video_intake_portability.mjs
