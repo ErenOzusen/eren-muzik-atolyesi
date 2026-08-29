@@ -1,0 +1,141 @@
+name: Publication Approval Invalidation Gate
+
+on:
+  issues:
+    types:
+      - edited
+
+permissions:
+  issues: write
+
+concurrency:
+  group: publication-approval-invalidation-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  invalidate-stale-publication-approval:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'YouTube Yayın Paketi - Thumbnail Paketi #') &&
+      github.event.changes.body != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Değişen yayın paketinin önceki onayını fail-safe biçimde geçersizleştir
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ---- PHASE 1: VALIDATE EVERYTHING (yalnızca okuma; hiçbir mutasyon yok) ----
+
+          gh issue view "$ISSUE_NUMBER" --json labels,url > /tmp/publication-package.json
+          jq -r '.labels[].name' /tmp/publication-package.json > /tmp/publication-labels.txt
+          ISSUE_URL=$(jq -r '.url' /tmp/publication-package.json)
+
+          if grep -qx 'sistem-testi' /tmp/publication-labels.txt; then
+            echo "Sistem testi yayın paketinin üretim onay durumu değiştirilmedi."
+            exit 0
+          fi
+
+          if ! grep -qx 'youtube-yayin-paketi' /tmp/publication-labels.txt; then
+            echo "Issue bir YouTube yayın paketi değil; işlem yapılmadı."
+            exit 0
+          fi
+
+          HAD_PUBLICATION_APPROVAL=false
+          for LABEL in eren-yayin-onayli publication-approved yayina-hazir; do
+            if grep -qx "$LABEL" /tmp/publication-labels.txt; then
+              HAD_PUBLICATION_APPROVAL=true
+            fi
+          done
+
+          if [[ "$HAD_PUBLICATION_APPROVAL" != "true" ]]; then
+            echo "Bu pakette geçersizleştirilecek önceki yayın onayı yok."
+            exit 0
+          fi
+
+          # ---- PHASE 2: PREPARE PENDING LABELS (onaylı etiketlere dokunmadan önce) ----
+
+          ensure_label_exists() {
+            local NAME="$1" COLOR="$2" DESCRIPTION="$3"
+            if gh label list --limit 100 --json name \
+              | jq -e --arg name "$NAME" 'any(.[]; .name == $name)' > /dev/null; then
+              return 0
+            fi
+            gh label create "$NAME" --color "$COLOR" --description "$DESCRIPTION"
+          }
+
+          ensure_label_exists "eren-yayin-onayi-bekliyor" "FBCA04" \
+            "YouTube yükleme ve yayın için işletme sahibinin açık onayını bekliyor"
+          ensure_label_exists "publication-approval-pending" "FBCA04" \
+            "YouTube yükleme ve yayın için işletme sahibinin açık onayını bekliyor"
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --add-label "eren-yayin-onayi-bekliyor" \
+            --add-label "publication-approval-pending" > /dev/null
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/publication-labels-after-pending.txt
+
+          for PENDING_LABEL in eren-yayin-onayi-bekliyor publication-approval-pending; do
+            if ! grep -qx "$PENDING_LABEL" /tmp/publication-labels-after-pending.txt; then
+              echo "Pending durumu doğrulanamadı; onaylı etiketler kaldırılmadan durduruluyor: $PENDING_LABEL eksik."
+              exit 1
+            fi
+          done
+
+          # ---- PHASE 3: FAIL-SAFE STATE TRANSITION (pending doğrulandıktan sonra onaylıyı kaldır) ----
+
+          REMOVE_ARGS=()
+          for LABEL in eren-yayin-onayli publication-approved yayina-hazir; do
+            if grep -qx "$LABEL" /tmp/publication-labels.txt; then
+              REMOVE_ARGS+=(--remove-label "$LABEL")
+            fi
+          done
+          if [[ "${#REMOVE_ARGS[@]}" -gt 0 ]]; then
+            gh issue edit "$ISSUE_NUMBER" "${REMOVE_ARGS[@]}" > /dev/null
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/publication-labels-final.txt
+
+          for REQUIRED_PRESENT in youtube-yayin-paketi eren-yayin-onayi-bekliyor publication-approval-pending; do
+            if ! grep -qx "$REQUIRED_PRESENT" /tmp/publication-labels-final.txt; then
+              echo "Beklenen nihai durum sağlanamadı; gerekli etiket eksik: $REQUIRED_PRESENT"
+              exit 1
+            fi
+          done
+          for REQUIRED_ABSENT in eren-yayin-onayli publication-approved yayina-hazir; do
+            if grep -qx "$REQUIRED_ABSENT" /tmp/publication-labels-final.txt; then
+              echo "Beklenen nihai durum sağlanamadı; kaldırılması gereken etiket hâlâ mevcut: $REQUIRED_ABSENT"
+              exit 1
+            fi
+          done
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
+          ## 🔄 Önceki yayın onayı geçersizleştirildi
+
+          YouTube yayın paketinin içeriği değiştirildiği için önceki yayın onayı artık geçerli değildir.
+
+          **Durum:** Yayın onayı yeniden bekleniyor.
+          **Gerekli işlem:** Güncellenen paket için işletme sahibinin yeni yayın onayı gereklidir.
+          **Güvenlik:** Video yüklenmedi, yayın yapılmadı ve başka bir üretim ajanı başlatılmadı.
+          MESSAGE
+          )"
+
+          {
+            echo "### Önceki yayın onayı geçersizleştirildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Neden: YouTube yayın paketi içeriği değiştirildi"
+            echo "- Yeni durum: publication approval pending"
+            echo "- Video yükleme: yapılmadı"
+            echo "- Yayın: yapılmadı"
+            echo "- Sonraki ajan: otomatik başlatılmadı"
+            echo "- AI/video kullanımı: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
