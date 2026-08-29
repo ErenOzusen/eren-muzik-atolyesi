@@ -75,7 +75,7 @@ jobs:
             exit 1
           fi
 
-          if ! grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt || ! grep -qx 'cekime-hazir' /tmp/labels.txt; then
+          if ! grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt || { ! grep -qx 'cekime-hazir' /tmp/labels.txt && ! grep -qx 'production-ready' /tmp/labels.txt; }; then
             if [[ "$TEST_MODE" != "true" ]] || ! grep -qx 'sistem-testi' /tmp/labels.txt; then
               echo "Senaryo seçimi için önce Eren onayı ve cekime-hazir durumu gerekli."
               exit 1

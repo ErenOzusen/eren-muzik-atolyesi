@@ -145,6 +145,11 @@ jobs:
                   echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
                   exit 1
                 fi
+              elif [[ "$REQUIRED" == "cekime-hazir" ]]; then
+                if ! grep -qxE 'cekime-hazir|production-ready' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için üretime hazır durumu eksik: cekime-hazir/production-ready"
+                  exit 1
+                fi
               elif [[ "$REQUIRED" == "uretime-secildi" ]]; then
                 if ! grep -qxE 'uretime-secildi|production-selected' /tmp/final-labels.txt; then
                   echo "Gerçek üretim için üretim seçimi etiketi eksik: uretime-secildi/production-selected"

@@ -156,6 +156,11 @@ jobs:
             --description "İçerik çekim aşamasına hazır" \
             --force
 
+          gh label create "production-ready" \
+            --color "1D76DB" \
+            --description "Content is approved and ready to proceed through the production pipeline" \
+            --force
+
           gh issue edit "$ISSUE_NUMBER" \
             --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
           gh issue edit "$ISSUE_NUMBER" \
@@ -164,7 +169,18 @@ jobs:
           gh issue edit "$ISSUE_NUMBER" \
             --add-label "eren-onayli" \
             --add-label "owner-approved" \
-            --add-label "cekime-hazir"
+            --add-label "cekime-hazir" \
+            --add-label "production-ready"
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/approval-labels-after.txt
+
+          for REQUIRED_PRESENT in eren-onayli owner-approved cekime-hazir production-ready; do
+            if ! grep -qx "$REQUIRED_PRESENT" /tmp/approval-labels-after.txt; then
+              echo "Onay son durumu doğrulanamadı; zorunlu etiket eksik: $REQUIRED_PRESENT"
+              exit 1
+            fi
+          done
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
           <!-- EREN_APPROVAL_V2 body_sha256=$BODY_SHA profile_sha=$PROFILE_FILE_SHA -->
