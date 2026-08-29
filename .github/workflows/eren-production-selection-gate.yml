@@ -112,13 +112,26 @@ jobs:
           fi
 
           for N in 1 2 3; do
-            LABEL="uretim-senaryo-$N"
-            gh label create "$LABEL" \
+            LEGACY_LABEL="uretim-senaryo-$N"
+            GENERIC_LABEL="production-scenario-$N"
+            gh label create "$LEGACY_LABEL" \
               --color "C5DEF5" \
               --description "Üretime seçilen nihai senaryo $N" \
               --force
-            if grep -qx "$LABEL" /tmp/labels.txt; then
-              gh issue edit "$ISSUE_NUMBER" --remove-label "$LABEL" > /dev/null
+            gh label create "$GENERIC_LABEL" \
+              --color "C5DEF5" \
+              --description "Selected production scenario $N" \
+              --force
+
+            REMOVE_ARGS=()
+            if grep -qx "$LEGACY_LABEL" /tmp/labels.txt; then
+              REMOVE_ARGS+=(--remove-label "$LEGACY_LABEL")
+            fi
+            if grep -qx "$GENERIC_LABEL" /tmp/labels.txt; then
+              REMOVE_ARGS+=(--remove-label "$GENERIC_LABEL")
+            fi
+            if [[ "${#REMOVE_ARGS[@]}" -gt 0 ]]; then
+              gh issue edit "$ISSUE_NUMBER" "${REMOVE_ARGS[@]}" > /dev/null
             fi
           done
 
@@ -127,9 +140,41 @@ jobs:
             --description "Çekim için bir nihai senaryo açıkça seçildi" \
             --force
 
+          gh label create "production-selected" \
+            --color "0052CC" \
+            --description "A final scenario has been selected for production" \
+            --force
+
           gh issue edit "$ISSUE_NUMBER" \
             --add-label "uretime-secildi" \
-            --add-label "uretim-senaryo-$SELECTED" > /dev/null
+            --add-label "production-selected" \
+            --add-label "uretim-senaryo-$SELECTED" \
+            --add-label "production-scenario-$SELECTED" > /dev/null
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/labels-after-selection.txt
+
+          for REQUIRED_PRESENT in \
+            uretime-secildi \
+            production-selected \
+            "uretim-senaryo-$SELECTED" \
+            "production-scenario-$SELECTED"; do
+            if ! grep -qx "$REQUIRED_PRESENT" /tmp/labels-after-selection.txt; then
+              echo "Üretim seçimi son durumu doğrulanamadı; zorunlu etiket eksik: $REQUIRED_PRESENT"
+              exit 1
+            fi
+          done
+
+          for N in 1 2 3; do
+            if [[ "$N" != "$SELECTED" ]]; then
+              for REQUIRED_ABSENT in "uretim-senaryo-$N" "production-scenario-$N"; do
+                if grep -qx "$REQUIRED_ABSENT" /tmp/labels-after-selection.txt; then
+                  echo "Üretim seçimi belirsiz kaldı; eski senaryo etiketi mevcut: $REQUIRED_ABSENT"
+                  exit 1
+                fi
+              done
+            fi
+          done
 
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
           <!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$SELECTED -->
