@@ -186,8 +186,8 @@ jobs:
             exit 1
           fi
 
-          if ! jq -e '.labels | any(.name == "cekime-hazir")' \
-            /tmp/final.json > /dev/null; then
+          if ! jq -e '.labels | any(.name == "cekime-hazir")' /tmp/final.json > /dev/null \
+            && ! jq -e '.labels | any(.name == "production-ready")' /tmp/final.json > /dev/null; then
             echo "Kaynak Nihai Senaryolar çekime hazır değil."
             exit 1
           fi

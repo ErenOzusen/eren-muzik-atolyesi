@@ -38,10 +38,9 @@ jobs:
           ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
 
           HAD_APPROVAL=false
-          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir; do
+          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do
             if grep -qx "$LABEL" /tmp/labels.txt; then
               HAD_APPROVAL=true
-              gh issue edit "$ISSUE_NUMBER" --remove-label "$LABEL" > /dev/null
             fi
           done
 
@@ -49,6 +48,8 @@ jobs:
             echo "Bu içerikte geçersizleştirilecek eski onay yok."
             exit 0
           fi
+
+          # ---- PENDING FIRST: onaylı/hazır durum kaldırılmadan önce bekliyor durumu kurulur ve doğrulanır ----
 
           gh label create "eren-onayi-bekliyor" \
             --color "FBCA04" \
@@ -64,6 +65,45 @@ jobs:
             --add-label "eren-onayi-bekliyor" \
             --add-label "owner-approval-pending" > /dev/null
 
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/labels-after-pending.txt
+
+          for PENDING_LABEL in eren-onayi-bekliyor owner-approval-pending; do
+            if ! grep -qx "$PENDING_LABEL" /tmp/labels-after-pending.txt; then
+              echo "Pending durumu doğrulanamadı; onaylı etiketler kaldırılmadan durduruluyor: $PENDING_LABEL eksik."
+              exit 1
+            fi
+          done
+
+          # ---- Pending doğrulandıktan sonra eski onaylı/hazır durum tek toplu mutasyonla kaldırılır ----
+
+          REMOVE_ARGS=()
+          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do
+            if grep -qx "$LABEL" /tmp/labels.txt; then
+              REMOVE_ARGS+=(--remove-label "$LABEL")
+            fi
+          done
+          if [[ "${#REMOVE_ARGS[@]}" -gt 0 ]]; then
+            gh issue edit "$ISSUE_NUMBER" "${REMOVE_ARGS[@]}" > /dev/null
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/labels-final.txt
+
+          for REQUIRED_PRESENT in eren-onayi-bekliyor owner-approval-pending; do
+            if ! grep -qx "$REQUIRED_PRESENT" /tmp/labels-final.txt; then
+              echo "Beklenen nihai durum sağlanamadı; gerekli etiket eksik: $REQUIRED_PRESENT"
+              exit 1
+            fi
+          done
+
+          for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do
+            if grep -qx "$REQUIRED_ABSENT" /tmp/labels-final.txt; then
+              echo "Beklenen nihai durum sağlanamadı; kaldırılması gereken etiket hâlâ mevcut: $REQUIRED_ABSENT"
+              exit 1
+            fi
+          done
+
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
           ## 🔄 Önceki Eren onayı geçersizleştirildi
 
@@ -77,8 +117,8 @@ jobs:
           {
             echo "### Eski onay geçersizleştirildi"
             echo "- Issue: $ISSUE_URL"
-            echo "- Kaldırılan durumlar: mevcut olan eren-onayli / cekime-hazir / cekim-paketi-hazir"
-            echo "- Yeni durum: eren-onayi-bekliyor"
+            echo "- Kaldırılan durumlar: mevcut olan eren-onayli / owner-approved / cekime-hazir / cekim-paketi-hazir / production-ready"
+            echo "- Yeni durum: eren-onayi-bekliyor / owner-approval-pending"
             echo "- Sonraki ajan: otomatik başlatılmadı"
             echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
           } >> "$GITHUB_STEP_SUMMARY"
