@@ -121,7 +121,7 @@ assert.ok(!verifyLoopBlock.includes("|| true"), "verification loop must not supp
 // remove or add a label before pending is established.
 const detectionLoopIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
   "read-only detection loop declaration",
 );
 const detectionLoopEndIdx = mustFind(invalidation, "done", "detection loop end", detectionLoopIdx);
@@ -188,7 +188,7 @@ const removeArgsInitIdx = mustFind(
 );
 const removalLoopDeclIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
   "removal-args loop declaration",
   removeArgsInitIdx,
 );
@@ -231,7 +231,7 @@ mustInclude(invalidation.slice(finalPresentIdx, finalPresentEndIdx), "exit 1", "
 
 const finalAbsentIdx = mustFind(
   invalidation,
-  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready; do",
+  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
   "final approved/readiness-absent verification",
   finalPresentEndIdx,
 );

@@ -182,8 +182,8 @@ jobs:
             exit 1
           fi
 
-          if ! jq -e '.labels | any(.name == "cekim-paketi")' \
-            /tmp/package.json > /dev/null; then
+          if ! jq -e '.labels | any(.name == "cekim-paketi")' /tmp/package.json > /dev/null \
+            && ! jq -e '.labels | any(.name == "filming-package")' /tmp/package.json > /dev/null; then
             echo "Çekim paketinde cekim-paketi etiketi bulunamadı."
             exit 1
           fi
