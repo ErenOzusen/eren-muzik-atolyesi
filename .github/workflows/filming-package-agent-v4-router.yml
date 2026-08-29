@@ -145,6 +145,11 @@ jobs:
                   echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
                   exit 1
                 fi
+              elif [[ "$REQUIRED" == "uretime-secildi" ]]; then
+                if ! grep -qxE 'uretime-secildi|production-selected' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için üretim seçimi etiketi eksik: uretime-secildi/production-selected"
+                  exit 1
+                fi
               elif ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
                 echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
                 exit 1
@@ -155,12 +160,31 @@ jobs:
               exit 1
             fi
 
-            mapfile -t SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/final-labels.txt || true)
-            if [[ "${#SELECTION_LABELS[@]}" -ne 1 ]]; then
-              echo "Tam olarak bir üretim senaryosu etiketi gerekli; bulunan: ${#SELECTION_LABELS[@]}"
+            mapfile -t LEGACY_SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/final-labels.txt || true)
+            mapfile -t GENERIC_SELECTION_LABELS < <(grep -E '^production-scenario-[123]$' /tmp/final-labels.txt || true)
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -gt 1 || "${#GENERIC_SELECTION_LABELS[@]}" -gt 1 ]]; then
+              echo "Birden fazla üretim senaryosu etiketi bulundu: legacy=${#LEGACY_SELECTION_LABELS[@]} generic=${#GENERIC_SELECTION_LABELS[@]}"
               exit 1
             fi
-            SELECTED_SCENARIO="${SELECTION_LABELS[0]##*-}"
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -eq 0 && "${#GENERIC_SELECTION_LABELS[@]}" -eq 0 ]]; then
+              echo "Üretim senaryosu etiketi bulunamadı."
+              exit 1
+            fi
+
+            LEGACY_SCENARIO=""
+            GENERIC_SCENARIO=""
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -eq 1 ]]; then
+              LEGACY_SCENARIO="${LEGACY_SELECTION_LABELS[0]##*-}"
+            fi
+            if [[ "${#GENERIC_SELECTION_LABELS[@]}" -eq 1 ]]; then
+              GENERIC_SCENARIO="${GENERIC_SELECTION_LABELS[0]##*-}"
+            fi
+            if [[ -n "$LEGACY_SCENARIO" && -n "$GENERIC_SCENARIO" && "$LEGACY_SCENARIO" != "$GENERIC_SCENARIO" ]]; then
+              echo "Legacy/generic üretim senaryosu etiketleri uyuşmuyor: legacy=$LEGACY_SCENARIO generic=$GENERIC_SCENARIO"
+              exit 1
+            fi
+
+            SELECTED_SCENARIO="${LEGACY_SCENARIO:-$GENERIC_SCENARIO}"
             if [[ "$SELECTED_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
               echo "Handoff uyuşmazlığı: input=$EXPECTED_SCENARIO etiket=$SELECTED_SCENARIO"
               exit 1
