@@ -36,6 +36,7 @@ on:
       - ".github/scripts/test_owner_label_migration_phase1.mjs"
       - ".github/scripts/test_production_selection_label_migration_phase1.mjs"
       - ".github/scripts/test_production_readiness_label_migration_phase1.mjs"
+      - ".github/scripts/test_filming_package_label_migration_phase1.mjs"
       - ".github/scripts/test_quality_control_portability.mjs"
       - ".github/scripts/test_script_correction_portability.mjs"
       - ".github/scripts/fixtures/**"
@@ -94,6 +95,7 @@ jobs:
           node .github/scripts/test_owner_label_migration_phase1.mjs
           node .github/scripts/test_production_selection_label_migration_phase1.mjs
           node .github/scripts/test_production_readiness_label_migration_phase1.mjs
+          node .github/scripts/test_filming_package_label_migration_phase1.mjs
           node .github/scripts/test_quality_control_portability.mjs
           node .github/scripts/test_script_correction_portability.mjs
 

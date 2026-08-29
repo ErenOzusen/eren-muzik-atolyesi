@@ -389,14 +389,17 @@ jobs:
           gh label create "cekim-paketi" --color "5319E7" --description "Çekim planı ve kontrol listesi" --force
           gh label create "cekim-paketi-hazir" --color "0E8A16" --description "Onaylı senaryo için çekim paketi hazır" --force
 
+          gh label create "filming-package" --color "5319E7" --description "This Issue is a filming package for a selected production scenario" --force
+          gh label create "filming-package-ready" --color "0E8A16" --description "A filming package is ready for the selected production scenario" --force
+
           if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --add-label "cekim-paketi"
+            gh issue edit "$EXISTING_NUMBER" --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --add-label "cekim-paketi" --add-label "filming-package"
             PACKAGE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
           else
-            PACKAGE_URL=$(gh issue create --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --label "cekim-paketi")
+            PACKAGE_URL=$(gh issue create --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --label "cekim-paketi" --label "filming-package")
           fi
 
-          gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir"
+          gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir" --add-label "filming-package-ready"
           gh issue comment "$FINAL_NUMBER" --body "🎥 Çekim paketi hazırlandı: $PACKAGE_URL"
 
           {
