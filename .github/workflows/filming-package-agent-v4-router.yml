@@ -29,6 +29,11 @@ name: Çekim Paketi Ajanı — AI Router
         description: "Gerçek üretimde Handoff Kapısından gelen kesin senaryo numarası"
         required: false
         type: string
+      live_label_validation:
+        description: "Yalnız test_mode=true ile: AI/provider çağrısı yapmadan gerçek etiket kalıcılık uygulamasını açık bir sistem-testi fixture'ı üzerinde doğrula"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -61,6 +66,7 @@ jobs:
       TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
       SOURCE_ISSUE_NUMBER: ${{ inputs.source_issue_number || '' }}
       SOURCE_SCENARIO: ${{ inputs.source_scenario || '' }}
+      LIVE_LABEL_VALIDATION: ${{ inputs.live_label_validation || 'false' }}
 
     steps:
       - name: Kaynak kodu al
@@ -78,21 +84,33 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [[ "$TEST_MODE" != "true" && "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+            echo "live_label_validation yalnızca test_mode=true ile birlikte kullanılabilir."
+            exit 1
+          fi
+
           EXPECTED_SCENARIO=""
           if [[ "$TEST_MODE" == "true" ]]; then
             FINAL_NUMBER="$TEST_ISSUE_NUMBER"
-            if [[ -z "$FINAL_NUMBER" ]]; then
-              FINAL_NUMBER=$(gh issue list \
-                --state all \
-                --label "sistem-testi" \
-                --search '"Nihai Senaryolar" in:title sort:updated-desc' \
-                --limit 20 \
-                --json number,title,updatedAt \
-                --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))] | sort_by(.updatedAt) | reverse | .[0].number // empty')
-            fi
-            if [[ -z "$FINAL_NUMBER" ]]; then
-              echo "Test için sistem-testi etiketli Nihai Senaryolar Issue'su bulunamadı."
-              exit 1
+            if [[ "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                echo "Canlı etiket doğrulaması yalnızca açıkça belirtilen bir test_issue_number ile çalışabilir; otomatik arama yapılmaz."
+                exit 1
+              fi
+            else
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                FINAL_NUMBER=$(gh issue list \
+                  --state all \
+                  --label "sistem-testi" \
+                  --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+                  --limit 20 \
+                  --json number,title,updatedAt \
+                  --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))] | sort_by(.updatedAt) | reverse | .[0].number // empty')
+              fi
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                echo "Test için sistem-testi etiketli Nihai Senaryolar Issue'su bulunamadı."
+                exit 1
+              fi
             fi
             SELECTED_SCENARIO="$TEST_SCENARIO"
             if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
@@ -129,6 +147,16 @@ jobs:
             if ! grep -qx 'sistem-testi' /tmp/final-labels.txt; then
               echo "Test modu yalnız sistem-testi etiketli Issue üzerinde çalışabilir."
               exit 1
+            fi
+            if [[ "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+              if [[ "$FINAL_STATE" != "OPEN" ]]; then
+                echo "Canlı etiket doğrulaması yalnız açık bir Issue üzerinde çalışabilir: state=$FINAL_STATE"
+                exit 1
+              fi
+              if ! grep -Fq '<!-- LIVE_FILMING_PACKAGE_LABEL_VALIDATION_FIXTURE v1 -->' /tmp/final-scripts.md; then
+                echo "Canlı etiket doğrulaması yalnız açık doğrulama işaretini taşıyan bir fixture üzerinde çalışabilir."
+                exit 1
+              fi
             fi
           else
             if [[ "$FINAL_STATE" != "OPEN" ]]; then
@@ -242,7 +270,7 @@ jobs:
 
           EXISTING_NUMBER=""
           SKIP_PACKAGE=false
-          if [[ "$TEST_MODE" != "true" ]]; then
+          if [[ "$TEST_MODE" != "true" || "$LIVE_LABEL_VALIDATION" == "true" ]]; then
             EXISTING_NUMBER=$(gh issue list --state all --search "\"$PACKAGE_TITLE\" in:title" --limit 20 --json number,title \
               --jq ".[] | select(.title == \"$PACKAGE_TITLE\") | .number" | head -n 1)
             if [[ -n "$EXISTING_NUMBER" ]]; then
@@ -268,7 +296,7 @@ jobs:
             echo "SELECTED_CHARS=$SELECTED_CHARS"
           } >> "$GITHUB_ENV"
 
-          if [[ "$TEST_MODE" == "true" ]]; then
+          if [[ "$TEST_MODE" == "true" && "$LIVE_LABEL_VALIDATION" != "true" ]]; then
             {
               echo "### Router'lı Çekim Paketi handoff testi başarılı"
               echo "- Kaynak test Issue: $FINAL_URL"
@@ -363,7 +391,7 @@ jobs:
             echo "- kalite_sözleşmesi: geçti"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Çekim paketini Issue olarak kaydet
+      - name: Gerçek çekim paketi içeriğini hazırla
         if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
         shell: bash
         run: |
@@ -386,20 +414,40 @@ jobs:
             cat /tmp/filming-package.md
           } > /tmp/package-body.md
 
-          gh label create "cekim-paketi" --color "5319E7" --description "Çekim planı ve kontrol listesi" --force
-          gh label create "cekim-paketi-hazir" --color "0E8A16" --description "Onaylı senaryo için çekim paketi hazır" --force
+      - name: Canlı doğrulama için deterministik paket içeriği oluştur
+        if: env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
-          gh label create "filming-package" --color "5319E7" --description "This Issue is a filming package for a selected production scenario" --force
-          gh label create "filming-package-ready" --color "0E8A16" --description "A filming package is ready for the selected production scenario" --force
+          {
+            echo "<!-- source-body-sha256: $SOURCE_SHA -->"
+            echo "<!-- package-version: $PACKAGE_VERSION -->"
+            echo "<!-- LIVE_FILMING_PACKAGE_LABEL_VALIDATION_PACKAGE_V1 scenario=$SELECTED_SCENARIO -->"
+            echo "## 🧪 LIVE VALIDATION FIXTURE"
+            echo
+            echo "**NOT REAL CONTENT — NO AI — NO VIDEO — NO PUBLICATION**"
+            echo
+            echo "Bu Issue, paylaşılan çekim paketi etiket kalıcılık uygulamasını AI/provider"
+            echo "çağrısı yapılmadan doğrulamak için oluşturulmuştur."
+            echo
+            echo "**Kaynak fixture:** $FINAL_URL"
+            echo "**Seçilen senaryo:** $SELECTED_SCENARIO — $SELECTED_TITLE"
+          } > /tmp/package-body.md
 
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --add-label "cekim-paketi" --add-label "filming-package"
-            PACKAGE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-          else
-            PACKAGE_URL=$(gh issue create --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --label "cekim-paketi" --label "filming-package")
-          fi
+      - name: Çekim paketi etiketlerini kalıcı hale getir
+        if: (env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true') || env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        env:
+          PACKAGE_BODY_FILE: /tmp/package-body.md
+        run: bash .github/scripts/persist_filming_package_labels.sh
 
-          gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir" --add-label "filming-package-ready"
+      - name: Gerçek üretim onayı yorumunu ve özetini yaz
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
           gh issue comment "$FINAL_NUMBER" --body "🎥 Çekim paketi hazırlandı: $PACKAGE_URL"
 
           {
@@ -408,6 +456,24 @@ jobs:
             echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
             echo "- Provider: $FILMING_PROVIDER / $FILMING_MODEL"
             echo "- Paket: $PACKAGE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Canlı doğrulama yorumunu ve özetini yaz
+        if: env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue comment "$FINAL_NUMBER" --body "🧪 Canlı etiket doğrulama testi başarılı: $PACKAGE_URL"
+
+          {
+            echo "### Canlı çekim paketi etiket doğrulaması başarılı"
+            echo "- Kaynak fixture: #$FINAL_NUMBER"
+            echo "- Paket Issue: $PACKAGE_URL"
+            echo "- AI kullanımı: 0 token"
+            echo "- Video/YouTube/provider çağrısı: yapılmadı"
+            echo "- Doğrulanan kimlik etiketleri: cekim-paketi, filming-package"
+            echo "- Doğrulanan hazır durumu etiketleri: cekim-paketi-hazir, filming-package-ready"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Güncel paket zaten varsa özeti yaz

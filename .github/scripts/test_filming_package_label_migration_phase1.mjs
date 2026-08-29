@@ -20,6 +20,7 @@ const writer = stripComments(read(".github/workflows/filming-package-agent-v4-ro
 const invalidation = stripComments(read(".github/workflows/approval-invalidation-gate.yml"));
 const rawVideoIntake = stripComments(read(".github/workflows/raw-video-intake-gate.yml"));
 const editing = stripComments(read(".github/workflows/editing-package-agent.yml"));
+const persistScript = stripComments(read(".github/scripts/persist_filming_package_labels.sh"));
 
 const mustInclude = (text, needle, message = needle) => {
   assert.ok(text.includes(needle), `missing contract: ${message}`);
@@ -34,62 +35,99 @@ const mustFind = (text, needle, message = needle, fromIndex = 0) => {
 const countOccurrences = (text, needle) => text.split(needle).length - 1;
 
 // ===========================================================================
-// A. WRITER — filming-package-agent-v4-router.yml
+// A. WRITER — filming-package-agent-v4-router.yml + the shared persistence
+// script it delegates to.
+//
+// The actual GitHub label/Issue persistence was extracted into
+// .github/scripts/persist_filming_package_labels.sh, shared identically by
+// the real production path and the controlled live_label_validation path.
+// This section proves (1) the shared script correctly owns the dual-write,
+// and (2) the workflow itself contains NO duplicate inline implementation —
+// it only ever invokes the shared script, exactly once.
 // ===========================================================================
 
-// Generic labels are created exactly once each; legacy label creation remains
-// exactly once each (dual-write, no legacy removal).
-for (const [label, expectedCount] of [
-  ['gh label create "filming-package"', 1],
-  ['gh label create "filming-package-ready"', 1],
-  ['gh label create "cekim-paketi"', 1],
-  ['gh label create "cekim-paketi-hazir"', 1],
-]) {
-  assert.equal(countOccurrences(writer, label), expectedCount, `${label} must be created exactly ${expectedCount} time(s)`);
+// Generic labels are created exactly once each in the SHARED SCRIPT; legacy
+// label creation remains exactly once each there too (dual-write, no legacy
+// removal). The workflow file itself must create none of these directly.
+for (const label of ["cekim-paketi", "cekim-paketi-hazir", "filming-package", "filming-package-ready"]) {
+  assert.equal(
+    countOccurrences(persistScript, `gh label create "${label}"`),
+    1,
+    `shared script must create ${label} exactly once`,
+  );
+  assert.ok(
+    !writer.includes(`gh label create "${label}"`),
+    `workflow must not duplicate label creation for ${label} — it must live only in the shared script`,
+  );
 }
-mustInclude(writer, "This Issue is a filming package for a selected production scenario");
-mustInclude(writer, "A filming package is ready for the selected production scenario");
+mustInclude(persistScript, "This Issue is a filming package for a selected production scenario");
+mustInclude(persistScript, "A filming package is ready for the selected production scenario");
 
-// Legacy labels are never removed anywhere in the writer.
-assert.ok(!writer.includes('--remove-label "cekim-paketi"'), "writer must never remove the legacy cekim-paketi label");
-assert.ok(!writer.includes('--remove-label "cekim-paketi-hazir"'), "writer must never remove the legacy cekim-paketi-hazir label");
+// Legacy labels are never removed anywhere in the shared script.
+assert.ok(!persistScript.includes('--remove-label "cekim-paketi"'), "shared script must never remove the legacy cekim-paketi label");
+assert.ok(!persistScript.includes('--remove-label "cekim-paketi-hazir"'), "shared script must never remove the legacy cekim-paketi-hazir label");
 
 // Identity write, existing-issue branch: cekim-paketi and filming-package must
-// be added together, in the same gh issue edit call.
+// be added together, in the same gh issue edit call, inside the shared script.
 const existingBranchIdx = mustFind(
-  writer,
-  'gh issue edit "$EXISTING_NUMBER" --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --add-label "cekim-paketi" --add-label "filming-package"',
+  persistScript,
+  'gh issue edit "$EXISTING_NUMBER" \\',
   "existing-issue identity dual-write (same mutation)",
 );
+const existingBranchEnd = mustFind(persistScript, "PACKAGE_URL=", "existing-issue branch end", existingBranchIdx);
+mustInclude(persistScript.slice(existingBranchIdx, existingBranchEnd), '--add-label "cekim-paketi"');
+mustInclude(persistScript.slice(existingBranchIdx, existingBranchEnd), '--add-label "filming-package"');
 
 // Identity write, new-issue branch: cekim-paketi and filming-package must be
 // added together via the same gh issue create call's --label flags.
 const newIssueBranchIdx = mustFind(
-  writer,
-  'gh issue create --title "$PACKAGE_TITLE" --body-file /tmp/package-body.md --label "cekim-paketi" --label "filming-package"',
+  persistScript,
+  'gh issue create \\',
   "new-issue identity dual-write (same mutation)",
+  existingBranchEnd,
 );
+const newIssueBranchEnd = persistScript.indexOf("\n\n", newIssueBranchIdx);
+mustInclude(persistScript.slice(newIssueBranchIdx, newIssueBranchEnd), '--label "cekim-paketi"');
+mustInclude(persistScript.slice(newIssueBranchIdx, newIssueBranchEnd), '--label "filming-package"');
 
 // Ready-signal write onto the root issue: cekim-paketi-hazir and
 // filming-package-ready must be added together, in the same mutation.
 const readySignalIdx = mustFind(
-  writer,
-  'gh issue edit "$FINAL_NUMBER" --add-label "cekim-paketi-hazir" --add-label "filming-package-ready"',
+  persistScript,
+  'gh issue edit "$FINAL_NUMBER" \\',
   "root-issue ready-signal dual-write (same mutation)",
-  Math.max(existingBranchIdx, newIssueBranchIdx),
+  newIssueBranchEnd,
 );
+const readySignalEnd = persistScript.indexOf("\n\n", readySignalIdx);
+mustInclude(persistScript.slice(readySignalIdx, readySignalEnd), '--add-label "cekim-paketi-hazir"');
+mustInclude(persistScript.slice(readySignalIdx, readySignalEnd), '--add-label "filming-package-ready"');
 assert.ok(
-  existingBranchIdx < readySignalIdx || newIssueBranchIdx < readySignalIdx,
+  existingBranchIdx < readySignalIdx,
   "identity must be written before the ready-signal is written back to the root issue",
 );
 
 // No extra API call was introduced for the ready-signal write: exactly one
-// gh issue edit targeting $FINAL_NUMBER's --add-label exists.
+// gh issue edit targeting $FINAL_NUMBER's --add-label exists in the shared script.
 assert.equal(
-  countOccurrences(writer, 'gh issue edit "$FINAL_NUMBER" --add-label'),
+  countOccurrences(persistScript, 'gh issue edit "$FINAL_NUMBER"'),
   1,
   "ready-signal must be written in exactly one gh issue edit call, not split into extra API calls",
 );
+
+// The workflow must invoke the shared script exactly once — no duplicated
+// test-only or production-only persistence implementation anywhere.
+assert.equal(
+  countOccurrences(writer, "bash .github/scripts/persist_filming_package_labels.sh"),
+  1,
+  "the workflow must call the shared persistence script from exactly one call site",
+);
+for (const rawVerb of [
+  '--add-label "cekim-paketi"',
+  '--label "cekim-paketi"',
+  '--add-label "cekim-paketi-hazir"',
+]) {
+  assert.ok(!writer.includes(rawVerb), `workflow must not duplicate the shared script's mutation verb: ${rawVerb}`);
+}
 
 // ===========================================================================
 // B. INVALIDATION — approval-invalidation-gate.yml
@@ -294,14 +332,13 @@ for (const untouched of [publicationGate, publicationInvalidation]) {
 // E. SIDE-EFFECT SAFETY
 // ===========================================================================
 
-// The writer and invalidation gate must never gain any dispatch/provider
-// capability. filming-package-agent-v4-router.yml legitimately already
-// contains AI-router/provider logic deep in earlier, untouched steps — so
-// scope this check to the exact label-mutation region this diff touched,
-// not the whole file.
-const writerLabelRegionStart = mustFind(writer, 'gh label create "cekim-paketi"', "writer label-mutation region start");
-const writerLabelRegionEnd = mustFind(writer, 'gh issue comment "$FINAL_NUMBER"', "writer label-mutation region end", writerLabelRegionStart);
-const writerLabelRegion = writer.slice(writerLabelRegionStart, writerLabelRegionEnd);
+// The shared persistence script has no legitimate reason to ever contain any
+// of these — unlike the parent workflow, it is a small, single-purpose file,
+// so it can be checked in full rather than needing a fragile substring-region
+// scope. filming-package-agent-v4-router.yml itself still legitimately
+// contains AI-router/provider logic elsewhere (untouched by this migration),
+// so the workflow-level check below is intentionally scoped to what this
+// diff actually introduced.
 for (const forbidden of [
   "workflow_dispatch",
   "repository_dispatch",
@@ -313,7 +350,7 @@ for (const forbidden of [
   "youtube.googleapis.com",
   "video_orchestrator.py",
 ]) {
-  assert.ok(!writerLabelRegion.includes(forbidden), `writer's label-mutation region gained forbidden capability: ${forbidden}`);
+  assert.ok(!persistScript.includes(forbidden), `shared persistence script gained forbidden capability: ${forbidden}`);
 }
 
 // The invalidation gate has no legitimate reason to ever contain any of these.
