@@ -1,0 +1,38 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, independent of any push — catches newly-disclosed query
+    # patterns against unchanged code too.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: CodeQL başlat
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: CodeQL analiz et
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

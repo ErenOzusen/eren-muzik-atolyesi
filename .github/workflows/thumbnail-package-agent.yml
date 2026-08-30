@@ -76,7 +76,7 @@ jobs:
           SUBTITLE_URL=$(jq -r '.url' /tmp/subtitle.json)
           jq -r '.body' /tmp/subtitle.json > /tmp/subtitle.md
 
-          if ! jq -e '.labels | any(.name == "altyazi-paketi")' \
+          if ! jq -e '.labels | any(.name == "altyazi-paketi" or .name == "subtitle-package")' \
             /tmp/subtitle.json > /dev/null; then
             echo "Kaynak Issue bir Altyazı Paketi değil."
             exit 1
@@ -237,53 +237,22 @@ jobs:
             cat /tmp/thumbnail-package.md
           } > /tmp/thumbnail-issue-body.md
 
-          gh label create "thumbnail-paketi" \
-            --color "D876E3" \
-            --description "Kapak görseli seçenekleri ve tasarım kontrol paketi" \
-            --force
+          echo "OWNER_DISPLAY_NAME=$OWNER_DISPLAY_NAME" >> "$GITHUB_ENV"
 
-          if [[ "$TEST_MODE" == "true" ]]; then
-            gh label create "sistem-testi" \
-              --color "BFD4F2" \
-              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
-              --force
-            ISSUE_LABELS=("thumbnail-paketi" "sistem-testi")
-          else
-            gh label create "eren-onayi-bekliyor" \
-              --color "FBCA04" \
-              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
-              --force
-            gh label create "owner-approval-pending" \
-              --color "FBCA04" \
-              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
-              --force
-            gh label create "thumbnail-paketi-hazir" \
-              --color "0E8A16" \
-              --description "Thumbnail hazırlık paketi tamamlandı" \
-              --force
-            ISSUE_LABELS=("thumbnail-paketi" "eren-onayi-bekliyor")
-          fi
+      - name: Thumbnail paketi etiketlerini kalıcı hale getir
+        if: env.SKIP_THUMBNAIL != 'true'
+        shell: bash
+        env:
+          THUMBNAIL_BODY_FILE: /tmp/thumbnail-issue-body.md
+        run: bash .github/scripts/persist_thumbnail_package_labels.sh
 
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" \
-              --title "$THUMBNAIL_TITLE" \
-              --body-file /tmp/thumbnail-issue-body.md \
-              --add-label "${ISSUE_LABELS[0]}" \
-              --add-label "${ISSUE_LABELS[1]}"
-            THUMBNAIL_NUMBER="$EXISTING_NUMBER"
-            THUMBNAIL_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-          else
-            THUMBNAIL_URL=$(gh issue create \
-              --title "$THUMBNAIL_TITLE" \
-              --body-file /tmp/thumbnail-issue-body.md \
-              --label "${ISSUE_LABELS[0]}" \
-              --label "${ISSUE_LABELS[1]}")
-            THUMBNAIL_NUMBER=$(grep -oE '[0-9]+$' <<< "$THUMBNAIL_URL")
-          fi
+      - name: Thumbnail hazırlık paketi yorumunu ve özetini yaz
+        if: env.SKIP_THUMBNAIL != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
           if [[ "$TEST_MODE" == "false" ]]; then
-            gh issue edit "$THUMBNAIL_NUMBER" --add-label "owner-approval-pending"
-            gh issue edit "$SUBTITLE_NUMBER" --add-label "thumbnail-paketi-hazir"
             gh issue comment "$SUBTITLE_NUMBER" \
               --body "🖼️ Thumbnail hazırlık paketi oluşturuldu: $THUMBNAIL_URL"
           fi

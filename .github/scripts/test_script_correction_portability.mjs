@@ -99,14 +99,17 @@ for (const profile of [currentProfile, secondProfile]) {
   assert.equal(correction.max_total_input_chars, 48000);
   assert.equal(correction.max_model_output, 4500);
 }
-assert.ok(workflow.includes("max_tokens: $max_tokens"));
+// Correction now calls the shared AI Router instead of building a raw
+// Anthropic request.json inline — max_model_output still flows through,
+// just as a --max-tokens CLI flag to ai_router.py instead of a JSON field.
+assert.ok(workflow.includes('--max-tokens "$CORRECTION_MAX_MODEL_OUTPUT"'));
 
 // TEST_MODE continues to gate every production read, AI, and Issue-write step.
 for (const stepName of [
   "Kaynak senaryoları ve kalite raporunu bul",
   "Kaynakları deterministik olarak küçült ve doğrula",
   "Düzeltme isteğini hazırla",
-  "Anthropic API ile senaryoları tek çağrıda düzelt",
+  "AI Router ile senaryoları tek çağrıda düzelt",
   "Nihai senaryoları Issue olarak yayınla",
 ])
   assert.ok(productionStep(stepName).includes("if: ${{ env.TEST_MODE != 'true' }}"), stepName);

@@ -148,15 +148,31 @@ def main() -> None:
     # Main owner approval label migration Faz 1 — read-both on the source scenario gate.
     assert 'any(.name == "eren-onayli" or .name == "owner-approved")' in workflow
 
+    # This file's own identity/pending label mutation now goes through a
+    # shared, single-call-site persistence script (MUTATE -> REFETCH ->
+    # VERIFY -> SUCCESS) instead of inline gh label create/edit calls — see
+    # persist_youtube_publication_package_labels.sh.
+    persist_script = (
+        ROOT / ".github/scripts/persist_youtube_publication_package_labels.sh"
+    ).read_text(encoding="utf-8")
+    workflow_and_persistence = workflow + "\n" + persist_script
+
     # Publication approval label migration Faz 1 — dual-write on the package agent side:
     # the legacy pending label must still be produced, and the generic pending label
     # must now be produced alongside it (neither replaces the other in this package).
-    assert '"eren-yayin-onayi-bekliyor"' in workflow, "legacy pending label kayboldu"
-    assert '"publication-approval-pending"' in workflow, "generic pending label eklenmedi"
+    assert '"eren-yayin-onayi-bekliyor"' in workflow_and_persistence, "legacy pending label kayboldu"
+    assert '"publication-approval-pending"' in workflow_and_persistence, "generic pending label eklenmedi"
+    # Both pending labels are added together, in the SAME create/edit call
+    # that determines YOUTUBE_NUMBER — a stronger guarantee than the old
+    # design (a separate follow-up call was a torn-state risk, now removed).
+    assert (
+        'ISSUE_LABELS=("youtube-yayin-paketi" "youtube-publication-package" "eren-yayin-onayi-bekliyor" "publication-approval-pending")'
+        in persist_script
+    ), "generic pending label yeni/güncellenen Issue'ya eklenmiyor"
     assert (
         'gh issue edit "$YOUTUBE_NUMBER" --add-label "publication-approval-pending"'
-        in workflow
-    ), "generic pending label yeni/güncellenen Issue'ya eklenmiyor"
+        not in workflow_and_persistence
+    ), "eski torn-state follow-up call geri gelmiş"
 
     print("youtube_package_portability_ok ai_calls=0 api_calls=0 youtube_calls=0 video_calls=0")
 

@@ -26,11 +26,26 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v7
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
 
       - name: Merkezi işletme profilini doğrula ve yükle
         shell: bash
@@ -349,71 +364,83 @@ jobs:
           PROMPT
 
           jq -n \
-            --rawfile system /tmp/system-prompt.txt \
             --rawfile base /tmp/base-scripts.md \
             --rawfile qc /tmp/qc-report.md \
             --rawfile final_check /tmp/final-technical-report.md \
-            --arg model "$DEFAULT_MODEL" \
-            --argjson max_tokens "$CORRECTION_MAX_MODEL_OUTPUT" \
             --arg base_url "$BASE_URL" \
             --arg qc_url "$QC_URL" \
             --arg final_check_url "$FINAL_CHECK_URL" \
-            '{
-              model: $model,
-              max_tokens: $max_tokens,
-              temperature: 0,
-              system: $system,
-              messages: [
-                {
-                  role: "user",
-                  content: (
-                    "TEMEL SENARYO METNİ — " + $base_url + "\n\n" + $base +
-                    "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc +
-                    (if ($final_check | length) > 0 then
-                      "\n\nSON TEKNİK KONTROL RAPORU — " + $final_check_url + "\n\n" + $final_check
-                    else "" end)
-                  )
-                }
-              ]
-            }' > /tmp/request.json
+            -r \
+            '(
+              "TEMEL SENARYO METNİ — " + $base_url + "\n\n" + $base +
+              "\n\nKALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc +
+              (if ($final_check | length) > 0 then
+                "\n\nSON TEKNİK KONTROL RAPORU — " + $final_check_url + "\n\n" + $final_check
+              else "" end)
+            )' > /tmp/weekly-script-correction-prompt.txt
 
-      - name: Anthropic API ile senaryoları tek çağrıda düzelt
+      - name: Cost guard ön kontrolü (preflight)
         if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-            echo "ANTHROPIC_API_KEY secret'ı bulunamadı."
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
+      - name: AI Router ile senaryoları tek çağrıda düzelt
+        if: ${{ env.TEST_MODE != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Router, provider'lardan hiçbiri kullanılamıyorsa (eksik anahtar
+          # dahil) diğerini otomatik dener — bu yüzden yalnız
+          # ANTHROPIC_API_KEY'in varlığını arayan eski sabit ön kontrol
+          # kaldırıldı; asıl fail-closed garanti aşağıdaki
+          # provider/model/çıktı kontrolüdür.
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --system-file /tmp/system-prompt.txt \
+            --prompt-file /tmp/weekly-script-correction-prompt.txt \
+            --output-file /tmp/final-scripts.md \
+            --meta-file /tmp/weekly-script-correction-meta.json \
+            --max-tokens "$CORRECTION_MAX_MODEL_OUTPUT" \
+            --primary-model "$DEFAULT_MODEL"
+
+          CORRECTION_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/weekly-script-correction-meta.json)
+          CORRECTION_AI_MODEL=$(jq -r '.model // ""' /tmp/weekly-script-correction-meta.json)
+          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/weekly-script-correction-meta.json)
+
+          if [[ -z "$CORRECTION_AI_PROVIDER" || -z "$CORRECTION_AI_MODEL" || ! -s /tmp/final-scripts.md ]]; then
+            echo "Router geçerli provider/model/senaryo üretmedi."
             exit 1
           fi
 
-          curl --fail-with-body --silent --show-error \
-            https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "content-type: application/json" \
-            --data-binary @/tmp/request.json \
-            > /tmp/response.json
-
-          if jq -e '.error != null' /tmp/response.json > /dev/null; then
-            jq -r '.error.message // "Anthropic API hatası"' /tmp/response.json
-            exit 1
-          fi
-
-          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/response.json)
+          # ai_router.py'nin usable() kabul kriteri bu iş akışının kendi
+          # sıkı end_turn kontrolünden daha gevşektir; migration'ın
+          # davranışı sessizce gevşetmemesi için aynı sıkı kontrol burada
+          # seçilen sağlayıcının gerçek stop_reason'ı üzerinde korunur.
           if [[ "$STOP_REASON" != "end_turn" ]]; then
-            echo "Model çıktısı güvenli biçimde tamamlanmadı: stop_reason=$STOP_REASON"
+            echo "Model çıktısı güvenli biçimde tamamlanmadı: provider=$CORRECTION_AI_PROVIDER stop_reason=$STOP_REASON"
             exit 1
           fi
 
-          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
-            /tmp/response.json > /tmp/final-scripts.md
-
-          if [[ ! -s /tmp/final-scripts.md ]]; then
-            echo "Düzeltilmiş senaryo çıktısı boş geldi."
-            exit 1
-          fi
+          # Cost guard kullanım doğrulaması (postflight) — bu run'ın gerçek
+          # kullanımı yapılandırılmış sınırı aştıysa aşağıdaki hiçbir ileri
+          # adım çalışmadan işi kapalı (fail-closed) durdurur.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/weekly-script-correction-meta.json \
+            --config .github/config/cost-guard.json
 
           EXPECTED_HEADING="# 🎬 $BRAND_NAME — NİHAİ SENARYOLAR"
           if [[ "$(head -n 1 /tmp/final-scripts.md)" != "$EXPECTED_HEADING" ]]; then
@@ -428,9 +455,11 @@ jobs:
             exit 1
           fi
 
-          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
-          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/weekly-script-correction-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/weekly-script-correction-meta.json)
           {
+            echo "CORRECTION_AI_PROVIDER=$CORRECTION_AI_PROVIDER"
+            echo "CORRECTION_AI_MODEL=$CORRECTION_AI_MODEL"
             echo "CORRECTION_INPUT_TOKENS=$INPUT_TOKENS"
             echo "CORRECTION_OUTPUT_TOKENS=$OUTPUT_TOKENS"
           } >> "$GITHUB_ENV"
@@ -445,7 +474,7 @@ jobs:
           TITLE="Nihai Senaryolar - $RUN_DATE"
 
           {
-            echo "<!-- CORRECTION_AI_USAGE_V1 source_chars=$CORRECTION_SOURCE_CHARS input=$CORRECTION_INPUT_TOKENS output=$CORRECTION_OUTPUT_TOKENS web_search=0 model=$DEFAULT_MODEL source_mode=$SOURCE_MODE profile_sha=$PROFILE_FILE_SHA -->"
+            echo "<!-- CORRECTION_AI_USAGE_V1 source_chars=$CORRECTION_SOURCE_CHARS input=$CORRECTION_INPUT_TOKENS output=$CORRECTION_OUTPUT_TOKENS web_search=0 provider=$CORRECTION_AI_PROVIDER model=$CORRECTION_AI_MODEL source_mode=$SOURCE_MODE profile_sha=$PROFILE_FILE_SHA -->"
             echo "> **Durum:** ⏳ $OWNER_NAME onayı bekleniyor"
             echo
             echo "**Temel alınan metin:** $BASE_URL"

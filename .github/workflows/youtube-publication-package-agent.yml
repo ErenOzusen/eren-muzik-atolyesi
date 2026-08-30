@@ -91,7 +91,7 @@ jobs:
           THUMBNAIL_URL=$(jq -r '.url' /tmp/thumbnail.json)
           jq -r '.body' /tmp/thumbnail.json > /tmp/thumbnail.md
 
-          if ! jq -e '.labels | any(.name == "thumbnail-paketi")' \
+          if ! jq -e '.labels | any(.name == "thumbnail-paketi" or .name == "thumbnail-package")' \
             /tmp/thumbnail.json > /dev/null; then
             echo "Kaynak Issue bir Thumbnail Paketi değil."
             exit 1
@@ -269,53 +269,22 @@ jobs:
             cat /tmp/youtube-package.md
           } > /tmp/youtube-issue-body.md
 
-          gh label create "youtube-yayin-paketi" \
-            --color "D93F0B" \
-            --description "YouTube metadata ve yayın öncesi kontrol paketi" \
-            --force
+          echo "OWNER_DISPLAY_NAME=$OWNER_DISPLAY_NAME" >> "$GITHUB_ENV"
 
-          if [[ "$TEST_MODE" == "true" ]]; then
-            gh label create "sistem-testi" \
-              --color "BFD4F2" \
-              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
-              --force
-            ISSUE_LABELS=("youtube-yayin-paketi" "sistem-testi")
-          else
-            gh label create "eren-yayin-onayi-bekliyor" \
-              --color "FBCA04" \
-              --description "YouTube yükleme ve yayın için $OWNER_DISPLAY_NAME tarafından verilecek açık onayı bekliyor" \
-              --force
-            gh label create "publication-approval-pending" \
-              --color "FBCA04" \
-              --description "YouTube yükleme ve yayın için $OWNER_DISPLAY_NAME tarafından verilecek açık onayı bekliyor" \
-              --force
-            gh label create "youtube-yayin-paketi-hazir" \
-              --color "0E8A16" \
-              --description "YouTube yayın hazırlık paketi tamamlandı" \
-              --force
-            ISSUE_LABELS=("youtube-yayin-paketi" "eren-yayin-onayi-bekliyor")
-          fi
+      - name: YouTube yayın paketi etiketlerini kalıcı hale getir
+        if: env.SKIP_YOUTUBE != 'true'
+        shell: bash
+        env:
+          YOUTUBE_BODY_FILE: /tmp/youtube-issue-body.md
+        run: bash .github/scripts/persist_youtube_publication_package_labels.sh
 
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" \
-              --title "$YOUTUBE_TITLE" \
-              --body-file /tmp/youtube-issue-body.md \
-              --add-label "${ISSUE_LABELS[0]}" \
-              --add-label "${ISSUE_LABELS[1]}"
-            YOUTUBE_NUMBER="$EXISTING_NUMBER"
-            YOUTUBE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-          else
-            YOUTUBE_URL=$(gh issue create \
-              --title "$YOUTUBE_TITLE" \
-              --body-file /tmp/youtube-issue-body.md \
-              --label "${ISSUE_LABELS[0]}" \
-              --label "${ISSUE_LABELS[1]}")
-            YOUTUBE_NUMBER=$(grep -oE '[0-9]+$' <<< "$YOUTUBE_URL")
-          fi
+      - name: YouTube yayın paketi yorumunu ve özetini yaz
+        if: env.SKIP_YOUTUBE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
           if [[ "$TEST_MODE" == "false" ]]; then
-            gh issue edit "$YOUTUBE_NUMBER" --add-label "publication-approval-pending"
-            gh issue edit "$THUMBNAIL_NUMBER" --add-label "youtube-yayin-paketi-hazir"
             gh issue comment "$THUMBNAIL_NUMBER" \
               --body "▶️ YouTube yayın hazırlık paketi oluşturuldu: $YOUTUBE_URL"
           fi

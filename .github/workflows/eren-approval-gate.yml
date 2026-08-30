@@ -161,9 +161,14 @@ jobs:
             --description "Content is approved and ready to proceed through the production pipeline" \
             --force
 
+          # Best-effort: removing a label that is already absent is not a
+          # real failure worth aborting on, and different gh CLI versions
+          # behave inconsistently for that specific case — so this step's
+          # own exit code is not trusted either way. The exact final state
+          # (pending labels genuinely gone) is independently verified below,
+          # against a REFETCH of the issue, not against this call's outcome.
           gh issue edit "$ISSUE_NUMBER" \
-            --remove-label "eren-onayi-bekliyor" > /dev/null 2>&1 || true
-          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "eren-onayi-bekliyor" \
             --remove-label "owner-approval-pending" > /dev/null 2>&1 || true
 
           gh issue edit "$ISSUE_NUMBER" \
@@ -178,6 +183,19 @@ jobs:
           for REQUIRED_PRESENT in eren-onayli owner-approved cekime-hazir production-ready; do
             if ! grep -qx "$REQUIRED_PRESENT" /tmp/approval-labels-after.txt; then
               echo "Onay son durumu doğrulanamadı; zorunlu etiket eksik: $REQUIRED_PRESENT"
+              exit 1
+            fi
+          done
+
+          # Fail-closed if the pending-approval labels (or any incompatible
+          # blocking label) are still present after the mutation — an Issue
+          # must never end up approved AND pending at the same time. This is
+          # what actually closes the gap the earlier `|| true` calls left
+          # open: their own success/failure was never trustworthy proof that
+          # the pending labels were really gone.
+          for REQUIRED_ABSENT in eren-onayi-bekliyor owner-approval-pending duzeltme-gerekiyor; do
+            if grep -qx "$REQUIRED_ABSENT" /tmp/approval-labels-after.txt; then
+              echo "Onay son durumu doğrulanamadı; tutarsız/bloklayıcı etiket hâlâ mevcut: $REQUIRED_ABSENT"
               exit 1
             fi
           done

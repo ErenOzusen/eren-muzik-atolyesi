@@ -26,11 +26,26 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v7
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
 
       - name: Merkezi işletme profilini doğrula ve yükle
         shell: bash
@@ -292,66 +307,78 @@ jobs:
           PROMPT
 
           jq -n \
-            --rawfile system /tmp/system-prompt.txt \
             --rawfile final_scripts /tmp/final-scripts.md \
             --rawfile qc /tmp/qc-report.md \
-            --arg model "$DEFAULT_MODEL" \
-            --argjson max_tokens "$FTC_MAX_MODEL_OUTPUT" \
             --arg final_url "$FINAL_URL" \
             --arg qc_url "$QC_URL" \
-            '{
-              model: $model,
-              max_tokens: $max_tokens,
-              temperature: 0,
-              system: $system,
-              messages: [
-                {
-                  role: "user",
-                  content: (
-                    "NİHAİ SENARYOLAR — " + $final_url + "\n\n" + $final_scripts +
-                    "\n\nBAĞLI KALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc
-                  )
-                }
-              ]
-            }' > /tmp/request.json
+            -r \
+            '(
+              "NİHAİ SENARYOLAR — " + $final_url + "\n\n" + $final_scripts +
+              "\n\nBAĞLI KALİTE KONTROL RAPORU — " + $qc_url + "\n\n" + $qc
+            )' > /tmp/final-technical-check-prompt.txt
 
-      - name: Anthropic API ile tek çağrıda son teknik kontrol yap
+      - name: Cost guard ön kontrolü (preflight)
         if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-            echo "ANTHROPIC_API_KEY secret'ı bulunamadı."
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
+      - name: AI Router ile tek çağrıda son teknik kontrol yap
+        if: ${{ env.TEST_MODE != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Router, provider'lardan hiçbiri kullanılamıyorsa (eksik anahtar
+          # dahil) diğerini otomatik dener — bu yüzden yalnız
+          # ANTHROPIC_API_KEY'in varlığını arayan eski sabit ön kontrol
+          # kaldırıldı; asıl fail-closed garanti aşağıdaki
+          # provider/model/çıktı kontrolüdür.
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --system-file /tmp/system-prompt.txt \
+            --prompt-file /tmp/final-technical-check-prompt.txt \
+            --output-file /tmp/final-check.md \
+            --meta-file /tmp/final-technical-check-meta.json \
+            --max-tokens "$FTC_MAX_MODEL_OUTPUT" \
+            --primary-model "$DEFAULT_MODEL"
+
+          FTC_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/final-technical-check-meta.json)
+          FTC_AI_MODEL=$(jq -r '.model // ""' /tmp/final-technical-check-meta.json)
+          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/final-technical-check-meta.json)
+
+          if [[ -z "$FTC_AI_PROVIDER" || -z "$FTC_AI_MODEL" || ! -s /tmp/final-check.md ]]; then
+            echo "Router geçerli provider/model/rapor üretmedi."
             exit 1
           fi
 
-          curl --fail-with-body --silent --show-error \
-            https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "content-type: application/json" \
-            --data-binary @/tmp/request.json \
-            > /tmp/response.json
-
-          if jq -e '.error != null' /tmp/response.json > /dev/null; then
-            jq -r '.error.message // "Anthropic API hatası"' /tmp/response.json
-            exit 1
-          fi
-
-          STOP_REASON=$(jq -r '.stop_reason // ""' /tmp/response.json)
+          # ai_router.py'nin usable() kabul kriteri bu iş akışının kendi
+          # sıkı end_turn kontrolünden daha gevşektir; migration'ın
+          # davranışı sessizce gevşetmemesi için aynı sıkı kontrol burada
+          # seçilen sağlayıcının gerçek stop_reason'ı üzerinde korunur.
           if [[ "$STOP_REASON" != "end_turn" ]]; then
-            echo "Model çıktısı güvenli biçimde tamamlanmadı: stop_reason=$STOP_REASON"
+            echo "Model çıktısı güvenli biçimde tamamlanmadı: provider=$FTC_AI_PROVIDER stop_reason=$STOP_REASON"
             exit 1
           fi
 
-          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
-            /tmp/response.json > /tmp/final-check.md
-
-          if [[ ! -s /tmp/final-check.md ]]; then
-            echo "Son teknik kontrol çıktısı boş geldi."
-            exit 1
-          fi
+          # Cost guard kullanım doğrulaması (postflight) — bu run'ın gerçek
+          # kullanımı yapılandırılmış sınırı aştıysa aşağıdaki hiçbir ileri
+          # adım çalışmadan işi kapalı (fail-closed) durdurur.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/final-technical-check-meta.json \
+            --config .github/config/cost-guard.json
 
           EXPECTED_HEADING="# 🔍 $BRAND_NAME — SON TEKNİK KONTROL"
           if [[ "$(head -n 1 /tmp/final-check.md)" != "$EXPECTED_HEADING" ]]; then
@@ -361,9 +388,11 @@ jobs:
 
           FTC_DECISION=$(node .github/scripts/final_technical_decision_contract.mjs /tmp/final-check.md)
 
-          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
-          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/final-technical-check-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/final-technical-check-meta.json)
           {
+            echo "FTC_AI_PROVIDER=$FTC_AI_PROVIDER"
+            echo "FTC_AI_MODEL=$FTC_AI_MODEL"
             echo "FTC_INPUT_TOKENS=$INPUT_TOKENS"
             echo "FTC_OUTPUT_TOKENS=$OUTPUT_TOKENS"
             echo "FTC_DECISION=$FTC_DECISION"
@@ -392,7 +421,7 @@ jobs:
 
           REPORT_HASH=$(sha256sum /tmp/final-check.md | awk '{print $1}')
           {
-            echo "<!-- FINAL_TECHNICAL_AI_USAGE_V1 source_chars=$FTC_SOURCE_CHARS input=$FTC_INPUT_TOKENS output=$FTC_OUTPUT_TOKENS web_search=0 model=$DEFAULT_MODEL scenarios=$FTC_SCENARIO_COUNT profile_sha=$PROFILE_FILE_SHA report_sha=$REPORT_HASH -->"
+            echo "<!-- FINAL_TECHNICAL_AI_USAGE_V1 source_chars=$FTC_SOURCE_CHARS input=$FTC_INPUT_TOKENS output=$FTC_OUTPUT_TOKENS web_search=0 provider=$FTC_AI_PROVIDER model=$FTC_AI_MODEL scenarios=$FTC_SCENARIO_COUNT profile_sha=$PROFILE_FILE_SHA report_sha=$REPORT_HASH -->"
             echo "**Kaynak nihai senaryolar:** $FINAL_URL"
             echo "**Önceki kalite kontrol raporu:** $QC_URL"
             echo "**Otomatik karar:** $DECISION"

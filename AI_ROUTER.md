@@ -75,13 +75,24 @@ python3 .github/scripts/ai_router.py \
 
 `/tmp/meta.json` hangi provider/modelin kullanıldığını ve token kullanımını gösterir.
 
-## Geçiş planı
+## Geçiş durumu
 
-1. Router smoke testini 0 token ile doğrula.
-2. Mevcut Anthropic secret'ı ile küçük canlı test yap.
-3. İkinci provider secret'ını ekleyip fallback test et.
-4. Haftalık Senaryo Ajanını router'a geçir.
-5. QC ve Son Teknik Kontrol ajanlarını sırayla geçir.
-6. Kalite puanına göre ucuz model → güçlü model yükseltmesini ekle.
+Router'a taşınmış workflow'lar (hepsi kendi 0-token
+`test_*_router_migration.mjs` testiyle doğrulandı):
 
-Mevcut üretim workflow'ları smoke test tamamlanana kadar değiştirilmez.
+- `filming-package-agent-v4-router.yml`
+- `weekly-content-research.yml`
+- `weekly-script-agent.yml`
+- `weekly-script-correction.yml`
+- `final-technical-check.yml`
+- `editing-package-agent.yml`
+
+**Router'a henüz taşınmadı (kasıtlı):** `weekly-quality-control.yml` —
+Anthropic'in native `web_search` aracını kullanıyor, router bu aracı henüz
+desteklemiyor; router web-search desteği kazanmadan taşınırsa web araması
+sessizce kaybolur. Ayrıntı için `AI_ROUTER_MIGRATION_PLAN.md`.
+
+Cost Guard (`.github/scripts/cost_guard.py`) yukarıdaki 6 router'lı yolun
+hepsine takıldı: her birinde AI çağrısından önce config doğrulaması
+(preflight) ve çağrıdan sonra gerçek token/deneme sayısı doğrulaması
+(postflight) çalışır, sınır aşımında iş kapalı (fail-closed) durur.

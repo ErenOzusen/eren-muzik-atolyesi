@@ -329,6 +329,25 @@ jobs:
             cat /tmp/selected-script.md
           } > /tmp/user-prompt.txt
 
+      - name: Cost guard ön kontrolü (preflight)
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable — a config problem must never
+          # be discovered only after a paid AI call already happened.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
       - name: AI Router ile çekim paketini oluştur
         if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
         shell: bash
@@ -362,6 +381,23 @@ jobs:
             echo "FILMING_OUTPUT_TOKENS=$OUTPUT_TOKENS"
             echo "FILMING_AI_ATTEMPTS=$ATTEMPTS"
           } >> "$GITHUB_ENV"
+
+      - name: Cost guard kullanım doğrulaması (postflight)
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Runs AFTER the AI call — this cannot undo money already spent on
+          # this one call, but it fails the workflow closed before any
+          # further side effect (package Issue creation, label writes)
+          # happens if this run's actual usage exceeded the configured
+          # token/attempt limits. Monetary enforcement stays disabled unless
+          # explicitly configured with a real price registry (see
+          # cost-guard.json / cost_guard.py) — never a guessed price.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/filming-router-meta.json \
+            --config .github/config/cost-guard.json
 
       - name: Çekim paketi kalite sözleşmesini doğrula
         if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'

@@ -210,6 +210,20 @@ def usage_totals(attempts: list[dict[str, Any]]) -> tuple[int, int]:
     return input_tokens, output_tokens
 
 
+def resolve_retry_statuses(routing: dict[str, Any]) -> set[int]:
+    """Which HTTP statuses config considers transient/retryable.
+
+    Used only to label each failed attempt (attempt["retryable"]) for
+    observability/cost-guard purposes — it intentionally never stops the
+    provider fallback chain, retryable status or not. A single provider's
+    non-retryable failure (e.g. 401 invalid/expired key, 400 bad request)
+    must not prevent trying the next configured, healthy provider; that
+    per-provider fallback resilience is this router's whole purpose.
+    """
+    configured = routing.get("retry_http_statuses")
+    return set(configured or [408, 429, 500, 502, 503, 504])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
@@ -233,7 +247,7 @@ def main() -> None:
     configured_order = routing.get("default_order") if isinstance(routing.get("default_order"), list) else []
     order = [item.strip() for item in args.provider_order.split(",") if item.strip()] or configured_order
     timeout = int(routing.get("timeout_seconds") or 120)
-    retry_statuses = set(routing.get("retry_http_statuses") or [408, 429, 500, 502, 503, 504])
+    retry_statuses = resolve_retry_statuses(routing)
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
     system_prompt = Path(args.system_file).read_text(encoding="utf-8") if args.system_file else ""
     contract_path = resolve_quality_contract(args.quality_contract, args.output_file, routing)
@@ -331,10 +345,18 @@ def main() -> None:
 
         attempt["status"] = "failed"
         attempt["reason"] = error_message(result)
-        attempts.append(attempt)
         status = int(result.get("http_status") or 0)
-        if status not in retry_statuses and status not in {200, 599}:
-            pass
+        # retry_http_statuses (config: routing.retry_http_statuses) marks
+        # which HTTP statuses are considered transient/retryable (default:
+        # 408/429/500/502/503/504) purely for observability in the attempts
+        # log. It deliberately does NOT stop the provider fallback chain for
+        # a non-retryable status (e.g. 401 invalid/expired key, 400 bad
+        # request): a config problem or auth failure on one provider must
+        # not prevent trying the next configured, healthy provider — that
+        # per-provider fallback resilience is the entire point of this
+        # router and always continues below, retryable or not.
+        attempt["retryable"] = status in retry_statuses
+        attempts.append(attempt)
 
     total_input_tokens, total_output_tokens = usage_totals(attempts)
     Path(args.meta_file).write_text(

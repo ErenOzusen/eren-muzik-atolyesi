@@ -76,7 +76,7 @@ jobs:
           EDITING_URL=$(jq -r '.url' /tmp/editing.json)
           jq -r '.body' /tmp/editing.json > /tmp/editing.md
 
-          if ! jq -e '.labels | any(.name == "kurgu-paketi")' \
+          if ! jq -e '.labels | any(.name == "kurgu-paketi" or .name == "editing-package")' \
             /tmp/editing.json > /dev/null; then
             echo "Kaynak Issue bir Kurgu Paketi değil."
             exit 1
@@ -98,7 +98,7 @@ jobs:
               echo "Gerçek mod sistem testi paketiyle çalışamaz."
               exit 1
             fi
-            if ! jq -e '.labels | any(.name == "kurgu-plani-hazir")' \
+            if ! jq -e '.labels | any(.name == "kurgu-plani-hazir" or .name == "editing-package-ready")' \
               /tmp/editing.json > /dev/null; then
               echo "Gerçek kurgu paketinde kurgu-plani-hazir etiketi eksik."
               exit 1
@@ -240,53 +240,22 @@ jobs:
             cat /tmp/subtitle-package.md
           } > /tmp/subtitle-issue-body.md
 
-          gh label create "altyazi-paketi" \
-            --color "1D76DB" \
-            --description "Zamanlama ve yayın onayı bekleyen altyazı hazırlık paketi" \
-            --force
+          echo "OWNER_DISPLAY_NAME=$OWNER_DISPLAY_NAME" >> "$GITHUB_ENV"
 
-          if [[ "$TEST_MODE" == "true" ]]; then
-            gh label create "sistem-testi" \
-              --color "BFD4F2" \
-              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
-              --force
-            ISSUE_LABELS=("altyazi-paketi" "sistem-testi")
-          else
-            gh label create "eren-onayi-bekliyor" \
-              --color "FBCA04" \
-              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
-              --force
-            gh label create "owner-approval-pending" \
-              --color "FBCA04" \
-              --description "Yayın öncesi $OWNER_DISPLAY_NAME onayını bekliyor" \
-              --force
-            gh label create "altyazi-paketi-hazir" \
-              --color "0E8A16" \
-              --description "Altyazı hazırlık paketi tamamlandı" \
-              --force
-            ISSUE_LABELS=("altyazi-paketi" "eren-onayi-bekliyor")
-          fi
+      - name: Altyazı paketi etiketlerini kalıcı hale getir
+        if: env.SKIP_SUBTITLE != 'true'
+        shell: bash
+        env:
+          SUBTITLE_BODY_FILE: /tmp/subtitle-issue-body.md
+        run: bash .github/scripts/persist_subtitle_package_labels.sh
 
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" \
-              --title "$SUBTITLE_TITLE" \
-              --body-file /tmp/subtitle-issue-body.md \
-              --add-label "${ISSUE_LABELS[0]}" \
-              --add-label "${ISSUE_LABELS[1]}"
-            SUBTITLE_NUMBER="$EXISTING_NUMBER"
-            SUBTITLE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-          else
-            SUBTITLE_URL=$(gh issue create \
-              --title "$SUBTITLE_TITLE" \
-              --body-file /tmp/subtitle-issue-body.md \
-              --label "${ISSUE_LABELS[0]}" \
-              --label "${ISSUE_LABELS[1]}")
-            SUBTITLE_NUMBER=$(grep -oE '[0-9]+$' <<< "$SUBTITLE_URL")
-          fi
+      - name: Altyazı hazırlık paketi yorumunu ve özetini yaz
+        if: env.SKIP_SUBTITLE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
           if [[ "$TEST_MODE" == "false" ]]; then
-            gh issue edit "$SUBTITLE_NUMBER" --add-label "owner-approval-pending"
-            gh issue edit "$EDITING_NUMBER" --add-label "altyazi-paketi-hazir"
             gh issue comment "$EDITING_NUMBER" \
               --body "💬 Altyazı hazırlık paketi oluşturuldu: $SUBTITLE_URL"
           fi

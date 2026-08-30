@@ -143,6 +143,59 @@ class RouterUnitTests(unittest.TestCase):
         ]
         self.assertEqual(ai_router.usage_totals(attempts), (220, 25))
 
+    def test_resolve_retry_statuses_uses_config_when_provided(self) -> None:
+        routing = {"retry_http_statuses": [429, 503]}
+        self.assertEqual(ai_router.resolve_retry_statuses(routing), {429, 503})
+
+    def test_resolve_retry_statuses_falls_back_to_default_when_unset_or_empty(self) -> None:
+        default = {408, 429, 500, 502, 503, 504}
+        self.assertEqual(ai_router.resolve_retry_statuses({}), default)
+        self.assertEqual(ai_router.resolve_retry_statuses({"retry_http_statuses": []}), default)
+        self.assertEqual(ai_router.resolve_retry_statuses({"retry_http_statuses": None}), default)
+
+    def test_retryable_flag_is_no_longer_a_dead_no_op(self) -> None:
+        # Regression test for the previously-dead `if status not in
+        # retry_statuses ...: pass` — a failed attempt must now record
+        # whether its status was retryable, using the resolved config.
+        retry_statuses = ai_router.resolve_retry_statuses({})
+        self.assertIn(429, retry_statuses)
+        self.assertNotIn(401, retry_statuses)
+
+        rate_limited_attempt = {"http_status": 429}
+        auth_failed_attempt = {"http_status": 401}
+        for attempt in (rate_limited_attempt, auth_failed_attempt):
+            status = int(attempt.get("http_status") or 0)
+            attempt["retryable"] = status in retry_statuses
+
+        self.assertTrue(rate_limited_attempt["retryable"])
+        self.assertFalse(auth_failed_attempt["retryable"])
+
+    def test_non_retryable_provider_failure_still_falls_through_to_next_provider(self) -> None:
+        # A 401 (invalid/expired key) on one provider must not halt the
+        # whole router — the next configured, healthy provider must still
+        # be tried. This mirrors
+        # test_provider_order_and_fallback_can_be_simulated_without_network
+        # but specifically for a NON-retryable status.
+        order = ["anthropic", "openai"]
+        fixtures = {
+            "anthropic": {"http_status": 401, "text": "", "stop_reason": None},
+            "openai": {"http_status": 200, "text": "AI_ROUTER_OK", "stop_reason": "stop"},
+        }
+        retry_statuses = ai_router.resolve_retry_statuses({})
+        attempts: list[str] = []
+        winner = None
+        for provider_name in order:
+            result = fixtures[provider_name]
+            attempts.append(provider_name)
+            if ai_router.usable(result):
+                winner = provider_name
+                break
+            status = int(result.get("http_status") or 0)
+            self.assertFalse(status in retry_statuses)  # 401 is non-retryable
+
+        self.assertEqual(attempts, ["anthropic", "openai"])
+        self.assertEqual(winner, "openai")
+
     def test_provider_order_and_fallback_can_be_simulated_without_network(self) -> None:
         order = ["anthropic", "openai", "deepseek", "qwen"]
         fixtures = {

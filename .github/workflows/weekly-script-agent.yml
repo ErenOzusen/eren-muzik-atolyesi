@@ -22,11 +22,26 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
 
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
 
       - name: Merkezi işletme profilini doğrula ve yükle
         shell: bash
@@ -291,6 +306,24 @@ jobs:
           )
           PY
 
+      - name: Cost guard ön kontrolü (preflight)
+        if: ${{ env.TEST_MODE != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
       - name: Claude ile tek çağrıda 3 senaryo üret
         if: ${{ env.TEST_MODE != 'true' }}
         shell: bash
@@ -345,48 +378,47 @@ jobs:
           EOF
           )
 
-          REQUEST="$(jq -n \
-            --arg prompt "$PROMPT" \
-            --arg ideas "$IDEAS" \
-            --arg model "$DEFAULT_MODEL" \
-            --argjson max_tokens "$SCRIPT_MAX_MODEL_OUTPUT" \
-            '{
-              model: $model,
-              max_tokens: $max_tokens,
-              messages: [
-                {
-                  role: "user",
-                  content: ($prompt + "\n\nİLK ÜÇ İÇERİK FİKRİ:\n\n" + $ideas)
-                }
-              ]
-            }')"
+          printf '%s\n\nİLK ÜÇ İÇERİK FİKRİ:\n\n%s' "$PROMPT" "$IDEAS" > /tmp/weekly-script-prompt.txt
 
-          RESPONSE="$(curl --fail-with-body -sS \
-            https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "content-type: application/json" \
-            -d "$REQUEST")"
+          # Orijinal çağrıda ayrı bir sistem promptu yoktu (tek user-role
+          # mesajı, fikir listesi promptun sonuna eklenmiş) — --system-file
+          # bu yüzden verilmiyor; router icat etmiyor.
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --prompt-file /tmp/weekly-script-prompt.txt \
+            --output-file /tmp/scripts-raw.txt \
+            --meta-file /tmp/weekly-script-meta.json \
+            --max-tokens "$SCRIPT_MAX_MODEL_OUTPUT" \
+            --primary-model "$DEFAULT_MODEL"
 
-          STOP_REASON="$(jq -r '.stop_reason // empty' <<<"$RESPONSE")"
-          INPUT_TOKENS="$(jq -r '.usage.input_tokens // 0' <<<"$RESPONSE")"
-          OUTPUT_TOKENS="$(jq -r '.usage.output_tokens // 0' <<<"$RESPONSE")"
-          SENARYOLAR="$(jq -r '[.content[]? | select(.type == "text") | .text] | join("\n\n")' <<<"$RESPONSE")"
+          SCRIPT_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/weekly-script-meta.json)
+          SCRIPT_AI_MODEL=$(jq -r '.model // ""' /tmp/weekly-script-meta.json)
+          STOP_REASON=$(jq -r '.stop_reason // empty' /tmp/weekly-script-meta.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/weekly-script-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/weekly-script-meta.json)
 
-          echo "AI kullanım özeti: idea_chars=$IDEA_CHARS input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
+          echo "AI kullanım özeti: provider=$SCRIPT_AI_PROVIDER model=$SCRIPT_AI_MODEL idea_chars=$IDEA_CHARS input=$INPUT_TOKENS output=$OUTPUT_TOKENS web_search=0"
 
-          if [ -z "$SENARYOLAR" ] || [ "$SENARYOLAR" = "null" ]; then
-            echo "Claude senaryo çıktısı üretmedi."
-            jq '{stop_reason, usage, error}' <<<"$RESPONSE"
+          if [ -z "$SCRIPT_AI_PROVIDER" ] || [ -z "$SCRIPT_AI_MODEL" ] || [ ! -s /tmp/scripts-raw.txt ]; then
+            echo "Router geçerli provider/model/senaryo üretmedi."
             exit 1
           fi
 
+          # ai_router.py'nin usable() kabul kriteri bu iş akışının kendi
+          # sıkı end_turn kontrolünden daha gevşektir; migration'ın
+          # davranışı sessizce gevşetmemesi için aynı sıkı kontrol burada
+          # seçilen sağlayıcının gerçek stop_reason'ı üzerinde korunur.
           if [ "$STOP_REASON" != "end_turn" ]; then
-            echo "Claude üç senaryoyu tamamlamadı: stop_reason=$STOP_REASON"
+            echo "AI üç senaryoyu tamamlamadı: provider=$SCRIPT_AI_PROVIDER stop_reason=$STOP_REASON"
             exit 1
           fi
 
-          printf '%s\n' "$SENARYOLAR" > /tmp/scripts-raw.txt
+          # Cost guard kullanım doğrulaması (postflight) — bu run'ın gerçek
+          # kullanımı yapılandırılmış sınırı aştıysa aşağıdaki hiçbir ileri
+          # adım çalışmadan işi kapalı (fail-closed) durdurur.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/weekly-script-meta.json \
+            --config .github/config/cost-guard.json
 
           python3 - <<'PY'
           from pathlib import Path
@@ -462,6 +494,8 @@ jobs:
           PY
 
           {
+            echo "SCRIPT_AI_PROVIDER=$SCRIPT_AI_PROVIDER"
+            echo "SCRIPT_AI_MODEL=$SCRIPT_AI_MODEL"
             echo "SCRIPT_AI_INPUT=$INPUT_TOKENS"
             echo "SCRIPT_AI_OUTPUT=$OUTPUT_TOKENS"
             echo "SCRIPT_IDEA_CHARS=$IDEA_CHARS"
@@ -478,7 +512,7 @@ jobs:
           DATE="$(TZ="$BUSINESS_TIMEZONE" date '+%d-%m-%Y')"
 
           {
-            echo "<!-- AGENT_USAGE_V1 agent=weekly-script model=$DEFAULT_MODEL input=$SCRIPT_AI_INPUT output=$SCRIPT_AI_OUTPUT web_search=0 idea_chars=$SCRIPT_IDEA_CHARS source_issue=$SOURCE_ISSUE_NUMBER profile_sha=$PROFILE_FILE_SHA -->"
+            echo "<!-- AGENT_USAGE_V1 agent=weekly-script provider=$SCRIPT_AI_PROVIDER model=$SCRIPT_AI_MODEL input=$SCRIPT_AI_INPUT output=$SCRIPT_AI_OUTPUT web_search=0 idea_chars=$SCRIPT_IDEA_CHARS source_issue=$SOURCE_ISSUE_NUMBER profile_sha=$PROFILE_FILE_SHA -->"
             cat /tmp/scripts.txt
           } > /tmp/scripts-issue.txt
 

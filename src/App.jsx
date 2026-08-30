@@ -6,128 +6,22 @@ import {
   Guitar,
   Piano,
   AudioWaveform,
-  Star,
-  TrendingUp,
   MessageCircle,
   CalendarCheck,
 } from "lucide-react";
 import "./App.css";
 import erenLogo from "./assets/eren-logo-navbar.webp";
 import erenHeroLogo from "./assets/eren-logo-transparent.webp";
-
-const API_BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000"
-    : "https://eren-muzik-atolyesi-backend.onrender.com";
-
-const WHATSAPP_PREFILL_MESSAGE =
-  "Merhaba, Eren Müzik Atölyesi'ne yaptığınız başvuru için size ulaşıyorum.";
-
-function normalizePhoneForWhatsApp(phone) {
-  if (!phone || typeof phone !== "string") return null;
-
-  let digits = phone.replace(/[\s\-().]/g, "").replace(/^\+/, "");
-
-  if (!digits || !/^\d+$/.test(digits)) return null;
-
-  if (digits.startsWith("0")) {
-    digits = "90" + digits.slice(1);
-  } else if (digits.length === 10 && digits.startsWith("5")) {
-    digits = "90" + digits;
-  }
-
-  if (digits.length < 10 || digits.length > 15) return null;
-
-  return digits;
-}
-
-function buildWhatsAppLink(phone) {
-  const normalizedPhone = normalizePhoneForWhatsApp(phone);
-  if (!normalizedPhone) return null;
-
-  const text = encodeURIComponent(WHATSAPP_PREFILL_MESSAGE);
-  return `https://wa.me/${normalizedPhone}?text=${text}`;
-}
-
-function getSubmissionDate(submission) {
-  return submission?.date || submission?.createdAt || null;
-}
-
-function normalizeLessonName(lesson) {
-  return (lesson || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function getLessonStatCategory(lesson) {
-  const normalized = normalizeLessonName(lesson);
-  if (!normalized) return null;
-
-  if (normalized.includes("bas") && normalized.includes("gitar")) {
-    return "Bas Gitar";
-  }
-
-  if (normalized.includes("piyano")) {
-    return "Piyano";
-  }
-
-  if (
-    normalized.includes("müzik teorisi") ||
-    normalized.includes("muzik teorisi")
-  ) {
-    return "Müzik Teorisi";
-  }
-
-  if (normalized.includes("gitar")) {
-    return "Gitar";
-  }
-
-  return null;
-}
-
-function computeSubmissionStats(submissions) {
-  const stats = {
-    total: submissions.length,
-    gitar: 0,
-    piyano: 0,
-    basGitar: 0,
-    muzikTeorisi: 0,
-  };
-
-  submissions.forEach((item) => {
-    const category = getLessonStatCategory(item.lesson);
-
-    if (category === "Gitar") stats.gitar += 1;
-    else if (category === "Piyano") stats.piyano += 1;
-    else if (category === "Bas Gitar") stats.basGitar += 1;
-    else if (category === "Müzik Teorisi") stats.muzikTeorisi += 1;
-  });
-
-  return stats;
-}
-const getYoutubeVideoId = (url = "") => {
-  const patterns = [
-    /youtube\.com\/watch\?v=([^&?/]+)/,
-    /youtube\.com\/shorts\/([^&?/]+)/,
-    /youtube\.com\/embed\/([^&?/]+)/,
-    /youtu\.be\/([^&?/]+)/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-
-  return "";
-};
-
-const getYoutubeThumbnail = (url = "") => {
-  const videoId = getYoutubeVideoId(url);
-  return videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : "";
-};
-
-const getYoutubeEmbedUrl = (url = "") => {
-  const videoId = getYoutubeVideoId(url);
-  return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
-};
+import { API_BASE_URL, fetchWithAdminToken } from "./services/api";
+import {
+  getSavedAdminToken,
+  hasSavedAdminToken,
+  saveAdminToken,
+  clearAdminToken,
+} from "./utils/adminSession";
+import { buildWhatsAppLink, buildBusinessWhatsAppLink } from "./utils/whatsapp";
+import { getSubmissionDate, computeSubmissionStats } from "./utils/submissionStats";
+import { getYoutubeThumbnail, getYoutubeEmbedUrl } from "./utils/youtube";
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -139,6 +33,7 @@ function App() {
     phone: "",
     lesson: "",
     message: "",
+    website: "", // honeypot: must stay empty; hidden from real visitors
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -155,9 +50,10 @@ const [appointmentForm, setAppointmentForm] = useState({
   appointmentDate: "",
   appointmentTime: "",
   note: "",
+  website: "", // honeypot: must stay empty; hidden from real visitors
 });
 
-const [unavailableAppointmentTimes, setUnavailableAppointmentTimes] =
+const [, setUnavailableAppointmentTimes] =
   useState([]);
 
   const [availableAppointmentTimes, setAvailableAppointmentTimes] =
@@ -214,7 +110,7 @@ const [videoFormStatus, setVideoFormStatus] = useState(null);
 const [isVideoSubmitting, setIsVideoSubmitting] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(
-  Boolean(localStorage.getItem("adminToken"))
+  hasSavedAdminToken()
 );
   const [adminToken, setAdminToken] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -332,33 +228,6 @@ const currentAdminSectionInfo =
   adminSectionInfo[activeAdminSection] || adminSectionInfo.dashboard;
 
 
-  const getYouTubeEmbedUrl = (url) => {
-  if (!url) return "";
-
-  try {
-    const parsedUrl = new URL(url);
-
-    if (parsedUrl.hostname.includes("youtube.com")) {
-      if (parsedUrl.pathname.startsWith("/shorts/")) {
-        const videoId = parsedUrl.pathname.split("/shorts/")[1]?.split("?")[0];
-        return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
-      }
-
-      const videoId = parsedUrl.searchParams.get("v");
-      return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
-    }
-
-    if (parsedUrl.hostname.includes("youtu.be")) {
-      const videoId = parsedUrl.pathname.replace("/", "").split("?")[0];
-      return videoId ? `https://www.youtube.com/embed/${videoId}` : "";
-    }
-
-    return url;
-  } catch (error) {
-    return "";
-  }
-};
-
 const fetchVideos = async () => {
   try {
 const response = await fetch(`${API_BASE_URL}/api/videos`);
@@ -387,7 +256,7 @@ const handleContactSubmit = async (e) => {
   });
 
   try {
-    const response = await fetch("https://eren-muzik-atolyesi-backend.onrender.com/api/contact", {
+    const response = await fetch(`${API_BASE_URL}/api/contact`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -436,6 +305,13 @@ useEffect(() => {
   const selectedDate = appointmentForm.appointmentDate;
 
   if (!selectedDate) {
+    // Resetting availability UI state synchronously when the date is
+    // cleared is intentional — it must happen immediately, in the same
+    // effect that would otherwise start fetching availability for a date.
+    // Restructuring this into derived-state-during-render would change
+    // when/whether these resets are visible, so it is deliberately left
+    // as-is rather than "fixed" at the risk of changing behavior.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAvailableAppointmentTimes([]);
     setUnavailableAppointmentTimes([]);
     setIsSelectedAppointmentDayOpen(true);
@@ -570,18 +446,9 @@ const handleAppointmentSubmit = async (e) => {
 
 const fetchSubmissions = async (token = adminToken) => {
   try {
-    const response = await fetch(
-      "https://eren-muzik-atolyesi-backend.onrender.com/api/submissions",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const { ok, data } = await fetchWithAdminToken("/api/submissions", token);
 
-    const data = await response.json();
-
-    if (response.ok) {
+    if (ok) {
       setSubmissions(Array.isArray(data) ? data : []);
     } else {
       alert(data.message || "Başvurular alınamadı");
@@ -594,18 +461,9 @@ const fetchSubmissions = async (token = adminToken) => {
 
 const fetchAppointments = async (token = adminToken) => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/admin/appointments`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const { ok, data } = await fetchWithAdminToken("/api/admin/appointments", token);
 
-    const data = await response.json();
-
-    if (response.ok) {
+    if (ok) {
       setAppointments(Array.isArray(data) ? data : []);
     } else {
       alert(data.message || "Ön görüşmeler alınamadı");
@@ -618,18 +476,9 @@ const fetchAppointments = async (token = adminToken) => {
 
 const fetchBlockedSlots = async (token = adminToken) => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/admin/blocked-slots`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const { ok, data } = await fetchWithAdminToken("/api/admin/blocked-slots", token);
 
-    const data = await response.json();
-
-    if (response.ok) {
+    if (ok) {
       setBlockedSlots(
         Array.isArray(data.blockedSlots) ? data.blockedSlots : []
       );
@@ -646,18 +495,9 @@ const fetchWeeklySchedule = async (token = adminToken) => {
   setIsWeeklyScheduleLoading(true);
 
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/admin/weekly-schedule`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const { ok, data } = await fetchWithAdminToken("/api/admin/weekly-schedule", token);
 
-    const data = await response.json();
-
-    if (response.ok) {
+    if (ok) {
       setWeeklySchedule(
         Array.isArray(data.schedules) ? data.schedules : []
       );
@@ -748,17 +588,12 @@ const handleSaveWeeklySchedule = async (day) => {
 
 const fetchAdminVideos = async (token = adminToken) => {
   try {
- const response = await fetch(`${API_BASE_URL}/api/admin/videos`, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-});
+    const { ok, data } = await fetchWithAdminToken("/api/admin/videos", token);
 
-    if (!response.ok) {
+    if (!ok) {
       throw new Error("Videolar alınamadı");
     }
 
-    const data = await response.json();
     setAdminVideos(Array.isArray(data) ? data : []);
   } catch (error) {
     console.error("Admin videoları alınırken hata:", error);
@@ -766,9 +601,14 @@ const fetchAdminVideos = async (token = adminToken) => {
 };
 
 useEffect(() => {
-  const savedToken = localStorage.getItem("adminToken");
+  const savedToken = getSavedAdminToken();
 
   if (savedToken) {
+    // Restoring a saved admin session on mount is intentional and must run
+    // exactly once — see the deliberately-empty deps array below (adding
+    // the fetch* functions, none of which are memoized, would make this
+    // effect re-run on every render instead of once on mount).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAdminToken(savedToken);
     setIsAdminLoggedIn(true);
     fetchSubmissions(savedToken);
@@ -777,6 +617,7 @@ useEffect(() => {
     fetchBlockedSlots(savedToken);
     fetchWeeklySchedule(savedToken);
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
 const handleBlockedSlotFormChange = (e) => {
@@ -1049,7 +890,7 @@ const handleStatusChange = async (id, newStatus) => {
 
   try {
     const response = await fetch(
-  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${id}/status`,
+  `${API_BASE_URL}/api/submissions/${id}/status`,
   {
       method: "PATCH",
       headers: {
@@ -1165,7 +1006,7 @@ const handleDeleteSubmission = async (id) => {
 
   try {
 const response = await fetch(
-  `https://eren-muzik-atolyesi-backend.onrender.com/api/submissions/${id}`,
+  `${API_BASE_URL}/api/submissions/${id}`,
   {
     method: "DELETE",
     headers: {
@@ -1197,7 +1038,7 @@ const handleAdminLogin = async (e) => {
 
   try {
     const response = await fetch(
-      "https://eren-muzik-atolyesi-backend.onrender.com/api/admin/login",
+      `${API_BASE_URL}/api/admin/login`,
       {
         method: "POST",
         headers: {
@@ -1212,7 +1053,7 @@ const handleAdminLogin = async (e) => {
     const data = await response.json();
 
 if (data.success) {
-  localStorage.setItem("adminToken", data.token);
+  saveAdminToken(data.token);
   setAdminToken(data.token);
   setIsAdminLoggedIn(true);
   fetchSubmissions(data.token);
@@ -1229,7 +1070,7 @@ if (data.success) {
 };
 
   const handleAdminLogout = () => {
-    localStorage.removeItem("adminToken");
+    clearAdminToken();
   setIsAdminLoggedIn(false);
   setAdminToken("");
   setAdminPassword("");
@@ -1240,6 +1081,10 @@ if (data.success) {
 };
 
   useEffect(() => {
+     // Standard fetch-on-mount pattern: fetchVideos sets state only inside
+     // its own async fetch callback, not synchronously here — flagged by
+     // this lint rule's static heuristic regardless.
+     // eslint-disable-next-line react-hooks/set-state-in-effect
      fetchVideos();
 
   const revealElements = document.querySelectorAll(".reveal");
@@ -2234,7 +2079,7 @@ aralığını belirleyebilirsin..
 </a>
 
 <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20Eren%20M%C3%BCzik%20At%C3%B6lyesi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+  href={buildBusinessWhatsAppLink("Merhaba, Eren Müzik Atölyesi hakkında bilgi almak istiyorum.")}
   className="mobile-menu-whatsapp"
   target="_blank"
   rel="noopener noreferrer"
@@ -2267,7 +2112,7 @@ aralığını belirleyebilirsin..
   </a>
 
   <a
-    href="https://wa.me/905558089585?text=Merhaba%2C%20m%C3%BCzik%20dersleri%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+    href={buildBusinessWhatsAppLink("Merhaba, müzik dersleri hakkında bilgi almak istiyorum.")}
     target="_blank"
     rel="noopener noreferrer"
     className="whatsapp-button"
@@ -2397,7 +2242,7 @@ aralığını belirleyebilirsin..
       </div>
 
       <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        href={buildBusinessWhatsAppLink("Merhaba, gitar dersi hakkında bilgi almak istiyorum.")}
         target="_blank"
         rel="noopener noreferrer"
         className="lesson-button"
@@ -2433,7 +2278,7 @@ aralığını belirleyebilirsin..
       </div>
 
       <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20piyano%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        href={buildBusinessWhatsAppLink("Merhaba, piyano dersi hakkında bilgi almak istiyorum.")}
         target="_blank"
         rel="noopener noreferrer"
         className="lesson-button"
@@ -2468,7 +2313,7 @@ aralığını belirleyebilirsin..
       </div>
 
       <a
-        href="https://wa.me/905558089585?text=Merhaba%2C%20bas%20gitar%20dersi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+        href={buildBusinessWhatsAppLink("Merhaba, bas gitar dersi hakkında bilgi almak istiyorum.")}
         target="_blank"
         rel="noopener noreferrer"
         className="lesson-button"
@@ -2703,7 +2548,7 @@ aralığını belirleyebilirsin..
     <p>Aklınıza takılan başka bir soru mu var?</p>
 
 <a
-  href="https://wa.me/905558089585?text=Merhaba%2C%20akl%C4%B1ma%20tak%C4%B1lan%20bir%20soru%20var.%20Bilgi%20alabilir%20miyim%3F"
+  href={buildBusinessWhatsAppLink("Merhaba, aklıma takılan bir soru var. Bilgi alabilir miyim?")}
   target="_blank"
   rel="noopener noreferrer"
   className="whatsapp-button"
@@ -2730,7 +2575,7 @@ aralığını belirleyebilirsin..
 
   <div className="contact-buttons">
     <a
-      href="https://wa.me/905558089585?text=Merhaba%2C%20dersler%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+      href={buildBusinessWhatsAppLink("Merhaba, dersler hakkında bilgi almak istiyorum.")}
       target="_blank"
       rel="noopener noreferrer"
       className="contact-button"
@@ -2805,6 +2650,26 @@ aralığını belirleyebilirsin..
   </div>
 
   <form className="contact-form" onSubmit={handleContactSubmit}>
+    {/* Honeypot: hidden from real visitors, some bots fill it anyway. */}
+    <input
+      type="text"
+      name="website"
+      value={contactForm.website}
+      onChange={(e) =>
+        setContactForm({ ...contactForm, website: e.target.value })
+      }
+      tabIndex="-1"
+      autoComplete="off"
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: "-9999px",
+        width: "1px",
+        height: "1px",
+        opacity: 0,
+        overflow: "hidden",
+      }}
+    />
     <input
       type="text"
       placeholder="Ad Soyad"
@@ -2885,6 +2750,26 @@ aralığını belirleyebilirsin..
     className="appointment-form"
     onSubmit={handleAppointmentSubmit}
   >
+    {/* Honeypot: hidden from real visitors, some bots fill it anyway. */}
+    <input
+      type="text"
+      name="website"
+      value={appointmentForm.website}
+      onChange={(e) =>
+        setAppointmentForm({ ...appointmentForm, website: e.target.value })
+      }
+      tabIndex="-1"
+      autoComplete="off"
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: "-9999px",
+        width: "1px",
+        height: "1px",
+        opacity: 0,
+        overflow: "hidden",
+      }}
+    />
     <input
       type="text"
       placeholder="Ad Soyad"
@@ -3032,7 +2917,7 @@ aralığını belirleyebilirsin..
         </div>
 
         <a
-          href="https://wa.me/905558089585?text=Merhaba%2C%20Eren%20M%C3%BCzik%20At%C3%B6lyesi%20hakk%C4%B1nda%20bilgi%20almak%20istiyorum."
+          href={buildBusinessWhatsAppLink("Merhaba, Eren Müzik Atölyesi hakkında bilgi almak istiyorum.")}
           className="mobile-bottom-cta-button"
           target="_blank"
           rel="noopener noreferrer"

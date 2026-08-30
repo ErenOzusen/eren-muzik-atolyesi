@@ -31,8 +31,31 @@ const readerPaths = {
   subtitle: ".github/workflows/subtitle-package-agent.yml",
   youtubePublicationPackage: ".github/workflows/youtube-publication-package-agent.yml",
 };
+// editing/subtitle/thumbnail/youtube-publication-package-agent.yml now
+// delegate their own label mutation (including the "own identity label
+// creation" this file checks happens AFTER the readiness verification) to
+// a shared, single-call-site persistence script rather than doing it
+// inline. For these 4 files only, the text scanned below is the workflow
+// YAML concatenated with its shared script — since the script is invoked
+// from a step that is textually (and therefore, in GitHub Actions'
+// top-to-bottom step execution, actually) AFTER the readiness-check step,
+// appending it preserves rather than weakens the ordering assertion this
+// file's verifyJqReadiness() makes: any position found only in the
+// appended script is still provably later than the readiness check found
+// in the workflow's own text.
+const SHARED_PERSISTENCE_SCRIPT_BY_READER = {
+  editing: ".github/scripts/persist_editing_package_labels.sh",
+  subtitle: ".github/scripts/persist_subtitle_package_labels.sh",
+  thumbnail: ".github/scripts/persist_thumbnail_package_labels.sh",
+  youtubePublicationPackage: ".github/scripts/persist_youtube_publication_package_labels.sh",
+};
 const readers = Object.fromEntries(
-  Object.entries(readerPaths).map(([key, relativePath]) => [key, stripComments(read(relativePath))]),
+  Object.entries(readerPaths).map(([key, relativePath]) => {
+    const workflowText = stripComments(read(relativePath));
+    const scriptPath = SHARED_PERSISTENCE_SCRIPT_BY_READER[key];
+    const combined = scriptPath ? `${workflowText}\n${stripComments(read(scriptPath))}` : workflowText;
+    return [key, combined];
+  }),
 );
 
 const mustInclude = (text, needle, message = needle) => {

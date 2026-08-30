@@ -38,8 +38,30 @@ const TARGET_WORKFLOWS = [
   "youtube-publication-package-agent.yml",
 ];
 
+// editing/subtitle/thumbnail/youtube-publication-package-agent.yml now
+// delegate ALL of their own label mutation to a shared, single-call-site
+// persistence script (same MUTATE -> REFETCH -> VERIFY -> SUCCESS standard
+// used by persist_filming_package_labels.sh) instead of creating/adding
+// labels inline. The checks below still scan "workflows[name]" for those
+// exact label-mutation contracts, so — for these 4 files only — that text
+// is the workflow YAML concatenated with its shared script, matching how
+// test_filming_package_label_migration_phase1.mjs already treats
+// persist_filming_package_labels.sh as logically part of that workflow's
+// persistence.
+const SHARED_PERSISTENCE_SCRIPT_BY_WORKFLOW = {
+  "editing-package-agent.yml": ".github/scripts/persist_editing_package_labels.sh",
+  "subtitle-package-agent.yml": ".github/scripts/persist_subtitle_package_labels.sh",
+  "thumbnail-package-agent.yml": ".github/scripts/persist_thumbnail_package_labels.sh",
+  "youtube-publication-package-agent.yml": ".github/scripts/persist_youtube_publication_package_labels.sh",
+};
+
 const workflows = Object.fromEntries(
-  TARGET_WORKFLOWS.map((name) => [name, read(`.github/workflows/${name}`)]),
+  TARGET_WORKFLOWS.map((name) => {
+    const workflowText = read(`.github/workflows/${name}`);
+    const scriptPath = SHARED_PERSISTENCE_SCRIPT_BY_WORKFLOW[name];
+    const combined = scriptPath ? `${workflowText}\n${read(scriptPath)}` : workflowText;
+    return [name, combined];
+  }),
 );
 
 // ---------------------------------------------------------------------------
@@ -162,18 +184,34 @@ for (const [name, content] of Object.entries(workflows)) {
   );
 }
 // The two UI-only producers must add the generic label only to their OWN new/updated
-// issue, not wire it as a precondition for any downstream workflow.
+// issue, not wire it as a precondition for any downstream workflow. Both now add it
+// via their shared persistence script's ISSUE_LABELS set, applied to the same
+// create/edit call that determines SUBTITLE_NUMBER/THUMBNAIL_NUMBER — a stronger
+// guarantee than the old design (that label used to be added via a SEPARATE
+// follow-up gh issue edit call, a torn-state risk this hardening pass removed).
 assert.ok(
   workflows["subtitle-package-agent.yml"].includes(
-    'gh issue edit "$SUBTITLE_NUMBER" --add-label "owner-approval-pending"',
+    'ISSUE_LABELS=("altyazi-paketi" "subtitle-package" "eren-onayi-bekliyor" "owner-approval-pending")',
   ),
   "subtitle-package-agent.yml: generic status label kendi Issue'una eklenmiyor",
 );
 assert.ok(
+  !workflows["subtitle-package-agent.yml"].includes(
+    'gh issue edit "$SUBTITLE_NUMBER" --add-label "owner-approval-pending"',
+  ),
+  "subtitle-package-agent.yml: eski torn-state follow-up call geri gelmiş",
+);
+assert.ok(
   workflows["thumbnail-package-agent.yml"].includes(
-    'gh issue edit "$THUMBNAIL_NUMBER" --add-label "owner-approval-pending"',
+    'ISSUE_LABELS=("thumbnail-paketi" "thumbnail-package" "eren-onayi-bekliyor" "owner-approval-pending")',
   ),
   "thumbnail-package-agent.yml: generic status label kendi Issue'una eklenmiyor",
+);
+assert.ok(
+  !workflows["thumbnail-package-agent.yml"].includes(
+    'gh issue edit "$THUMBNAIL_NUMBER" --add-label "owner-approval-pending"',
+  ),
+  "thumbnail-package-agent.yml: eski torn-state follow-up call geri gelmiş",
 );
 // ---------------------------------------------------------------------------
 // 6. Publication label migration (previous package) must be completely untouched.

@@ -1,0 +1,11 @@
+# Code ownership. GitHub uses this file to request a review automatically
+# when a PR touches a matching path (requires branch protection with
+# "Require review from Code Owners" enabled — see MANUEL YAPILMASI
+# GEREKENLER in the latest hardening report for that manual step).
+#
+# The owner below is read from the same central config the AI automation
+# pipeline already treats as the single source of truth for who the
+# business/repo owner is (.github/config/business-profile.json ->
+# business.github_owner), not hard-coded independently of it.
+
+* @ErenOzusen

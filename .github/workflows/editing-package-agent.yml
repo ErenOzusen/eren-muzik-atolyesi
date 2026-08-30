@@ -35,6 +35,14 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       RUN_ACTOR: ${{ github.actor }}
       TEST_MODE: ${{ inputs.test_mode }}
       REQUESTED_PACKAGE_NUMBER: ${{ inputs.filming_package_issue }}
@@ -44,6 +52,13 @@ jobs:
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
 
       - name: Çalıştıranı ve çalışma modunu doğrula
         shell: bash
@@ -333,7 +348,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Token tasarruflu kurgu planı isteğini hazırla
-        if: env.SKIP_EDITING != 'true'
+        if: env.SKIP_EDITING != 'true' && env.TEST_MODE != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -344,7 +359,6 @@ jobs:
             --metadata-output /tmp/editing-profile-metadata.json
 
           jq -n \
-            --rawfile system /tmp/system-prompt.txt \
             --rawfile intake /tmp/intake.md \
             --rawfile package /tmp/package-excerpt.md \
             --rawfile final /tmp/final-clean.md \
@@ -352,117 +366,167 @@ jobs:
             --arg package_url "$PACKAGE_URL" \
             --arg final_url "$FINAL_URL" \
             --arg test_mode "$TEST_MODE" \
-            '{
-              model: "claude-sonnet-4-6",
-              max_tokens: 5000,
-              temperature: 0.1,
-              system: $system,
-              messages: [
-                {
-                  role: "user",
-                  content: (
-                    "Aşağıdaki kaynaklardan uygulanabilir kurgu paketi hazırla.\n" +
-                    "Test modu: " + $test_mode + "\n" +
-                    "Teslim kaydı: " + $intake_url + "\n" +
-                    "Çekim paketi: " + $package_url + "\n" +
-                    "Nihai senaryo: " + $final_url + "\n\n" +
-                    "TESLİM KAYDI\n\n" + $intake +
-                    "\n\nÇEKİM PAKETİNDEN GEREKLİ BÖLÜMLER\n\n" + $package +
-                    "\n\nONAYLI NİHAİ SENARYO\n\n" + $final
-                  )
-                }
-              ]
-            }' > /tmp/request.json
+            -r \
+            '(
+              "Aşağıdaki kaynaklardan uygulanabilir kurgu paketi hazırla.\n" +
+              "Test modu: " + $test_mode + "\n" +
+              "Teslim kaydı: " + $intake_url + "\n" +
+              "Çekim paketi: " + $package_url + "\n" +
+              "Nihai senaryo: " + $final_url + "\n\n" +
+              "TESLİM KAYDI\n\n" + $intake +
+              "\n\nÇEKİM PAKETİNDEN GEREKLİ BÖLÜMLER\n\n" + $package +
+              "\n\nONAYLI NİHAİ SENARYO\n\n" + $final
+            )' > /tmp/editing-package-prompt.txt
 
-      - name: Kurgu paketini oluştur ve doğrula
-        if: env.SKIP_EDITING != 'true'
+      - name: Cost guard ön kontrolü (preflight)
+        if: env.SKIP_EDITING != 'true' && env.TEST_MODE != 'true'
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-            echo "ANTHROPIC_API_KEY secret'ı bulunamadı."
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
+      - name: Kurgu paketi test modu fixture'ını üret ve doğrula
+        if: env.SKIP_EDITING != 'true' && env.TEST_MODE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # TEST_MODE izolasyonu: bu adım hiçbir AI Router / provider
+          # çağrısı yapmaz, hiçbir Cost Guard çağrısı yapmaz (gerçek
+          # kullanım verisi olmadığından uydurma bir meta-dosya da
+          # üretilmez), ve gerçek kaynak metnini (package-excerpt.md /
+          # final-clean.md) HİÇ okumaz — tamamen sabit, deterministik bir
+          # metin yazar. SKIP_EDITING bu adımı etkilemez; SKIP_EDITING
+          # yalnızca "bu kaynaklar için güncel paket zaten var mı"
+          # idempotency kontrolüdür, TEST_MODE ise "gerçek dış etki/provider
+          # erişilebilir mi" sorusudur — ikisi kasıtlı olarak ayrı kalır.
+          cat > /tmp/editing-package.md <<'FIXTURE'
+          <!-- EDITING_TEST_MODE_FIXTURE_V1 -->
+          ## 1. Kaynak Dosya Kontrolü
+          Sabit test verisi: TEST-video.mp4, TEST-shorts.mp4. Bu bölüm dosya adlarının ve biçimlerinin listelendiğini doğrular.
+
+          ## 2. Ana Video Kurgu Akışı
+          Sabit test verisi: kanca, gelişme ve kapanış sırası örnek olarak gösterilir. Bu pakette ham video hiç görülmeden, yalnızca metinsel bir kurgu planı taslağı üretilmiştir.
+
+          ## 3. Ekran Yazıları
+          Sabit test verisi: örnek ekran yazısı zamanlamaları ve içerikleri.
+
+          ## 4. Ses Düzenleme
+          Sabit test verisi: örnek ses seviyesi ve arka plan müziği notları.
+
+          ## 5. Kısa Video (Shorts/Reels) Kurgusu
+          Sabit test verisi: örnek dikey kesit zaman kodları.
+
+          ## 6. Dışa Aktarma Ayarları
+          Sabit test verisi: örnek çözünürlük ve format notları.
+
+          ## 7. Son Kontrol Listesi
+          Sabit test verisi: örnek son kontrol maddeleri.
+          FIXTURE
+
+          if ! grep -Fq "EDITING_TEST_MODE_FIXTURE_V1" /tmp/editing-package.md; then
+            echo "Test modu fixture işareti eksik — fixture bütünlüğü doğrulanamadı."
             exit 1
           fi
 
-          curl --fail-with-body --silent --show-error \
-            https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $ANTHROPIC_API_KEY" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "content-type: application/json" \
-            --data-binary @/tmp/request.json \
-            > /tmp/response.json
-
-          if jq -e '.error != null' /tmp/response.json > /dev/null; then
-            jq -r '.error.message // "Anthropic API hatası"' /tmp/response.json
-            exit 1
-          fi
-
-          STOP_REASON=$(jq -r '.stop_reason // empty' /tmp/response.json)
-          INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' /tmp/response.json)
-          OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' /tmp/response.json)
-
-          if [[ "$STOP_REASON" != "end_turn" ]]; then
-            echo "Kurgu paketi tamamlanmadı: stop_reason=$STOP_REASON"
-            exit 1
-          fi
-
-          jq -r '[.content[]? | select(.type == "text") | .text] | join("\n")' \
-            /tmp/response.json > /tmp/editing-package.md
-
-          if [[ ! -s /tmp/editing-package.md ]]; then
-            echo "Kurgu paketi çıktısı boş geldi."
-            exit 1
-          fi
-
-          REQUIRED_PATTERNS=(
-            '^##[[:space:]]+1\.[[:space:]].*Kaynak.*Dosya'
-            '^##[[:space:]]+2\.[[:space:]].*Ana Video.*Kurgu'
-            '^##[[:space:]]+3\.[[:space:]].*(Ekran Yazı|Altyazı)'
-            '^##[[:space:]]+4\.[[:space:]].*Ses'
-            '^##[[:space:]]+5\.[[:space:]].*(Kısa|Dikey|Shorts|Reels).*Kurgu'
-            '^##[[:space:]]+6\.[[:space:]].*(Dışa Aktarma|Disa Aktarma)'
-            '^##[[:space:]]+7\.[[:space:]].*Son Kontrol'
-          )
-
-          for pattern in "${REQUIRED_PATTERNS[@]}"; do
-            if ! grep -Eiq "$pattern" /tmp/editing-package.md; then
-              echo "Zorunlu bölüm eksik; Issue yayımlanmadı: $pattern"
-              exit 1
-            fi
-          done
-
-          SECTION_COUNT=$(grep -Ec '^##[[:space:]]+[1-7]\.' /tmp/editing-package.md)
-          if [[ "$SECTION_COUNT" -ne 7 ]]; then
-            echo "Kurgu paketinde tam olarak yedi numaralı bölüm bulunmalı; bulunan: $SECTION_COUNT"
-            exit 1
-          fi
-
-          if ! grep -Eiq 'ham video.*görülmeden|ham görüntü.*görülmeden' \
-            /tmp/editing-package.md; then
-            echo "Ham videonun görülmediği zorunlu uyarı eksik."
-            exit 1
-          fi
-
-          if grep -Eiq '(videoyu|görüntüyü|ham videoyu)[[:space:]]+(izledim|inceledim)' \
-            /tmp/editing-package.md; then
-            echo "Ajan ham videoyu izlemiş gibi yanlış iddia üretti."
-            exit 1
-          fi
-
-          if grep -Eiq 'onay[ıi]?[[:space:]]+bekleniyor|onay[[:space:]]+gelmeden|senaryo[[:space:]]+durumu.*bekleniyor' \
-            /tmp/editing-package.md; then
-            echo "Ajan, onaylı kaynak için yanlış onay durumu üretti."
-            exit 1
-          fi
+          # Fixture'ın gerçek editing-package çıktı sözleşmesini temsil
+          # ettiğini kanıtlamak için, gerçek AI çıktısını doğrulayan AYNI
+          # script burada da çalıştırılır — iki ayrı, birbirinden
+          # sapabilecek kopya değil, tek bir paylaşılan sözleşme.
+          bash .github/scripts/validate_editing_package_output.sh /tmp/editing-package.md
 
           PACKAGE_OUTPUT_CHARS=$(wc -c < /tmp/editing-package.md)
-          if [[ "$PACKAGE_OUTPUT_CHARS" -gt 28000 ]]; then
-            echo "Kurgu paketi 28.000 karakter sınırını aştı."
+
+          {
+            echo "EDITING_AI_PROVIDER=test-mode-fixture"
+            echo "EDITING_AI_MODEL=test-mode-fixture"
+            echo "EDITING_INPUT_TOKENS=0"
+            echo "EDITING_OUTPUT_TOKENS=0"
+            echo "EDITING_OUTPUT_CHARS=$PACKAGE_OUTPUT_CHARS"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "### Kurgu ajanı test modu özeti"
+            echo "- test_mode: $TEST_MODE"
+            echo "- provider: test-mode-fixture (gerçek provider çağrısı yapılmadı)"
+            echo "- ai_router_calls: 0"
+            echo "- cost_guard_calls: 0"
+            echo "- input_tokens: 0"
+            echo "- output_tokens: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Kurgu paketini oluştur ve doğrula
+        if: env.SKIP_EDITING != 'true' && env.TEST_MODE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Router, provider'lardan hiçbiri kullanılamıyorsa (eksik anahtar
+          # dahil) diğerini otomatik dener — bu yüzden yalnız
+          # ANTHROPIC_API_KEY'in varlığını arayan eski sabit ön kontrol
+          # kaldırıldı; asıl fail-closed garanti aşağıdaki
+          # provider/model/çıktı kontrolüdür. Model ve token bütçesi
+          # öncekiyle birebir aynı şekilde sabit kalıyor (business-profile
+          # üzerinden değil, filming-package-agent-v4-router.yml'deki
+          # sabit --primary-model deseniyle tutarlı).
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --system-file /tmp/system-prompt.txt \
+            --prompt-file /tmp/editing-package-prompt.txt \
+            --output-file /tmp/editing-package.md \
+            --meta-file /tmp/editing-package-meta.json \
+            --max-tokens 5000 \
+            --primary-model claude-sonnet-4-6
+
+          EDITING_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/editing-package-meta.json)
+          EDITING_AI_MODEL=$(jq -r '.model // ""' /tmp/editing-package-meta.json)
+          STOP_REASON=$(jq -r '.stop_reason // empty' /tmp/editing-package-meta.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/editing-package-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/editing-package-meta.json)
+
+          if [[ -z "$EDITING_AI_PROVIDER" || -z "$EDITING_AI_MODEL" || ! -s /tmp/editing-package.md ]]; then
+            echo "Router geçerli provider/model/kurgu paketi üretmedi."
             exit 1
           fi
 
+          # ai_router.py'nin usable() kabul kriteri bu iş akışının kendi
+          # sıkı end_turn kontrolünden daha gevşektir; migration'ın
+          # davranışı sessizce gevşetmemesi için aynı sıkı kontrol burada
+          # seçilen sağlayıcının gerçek stop_reason'ı üzerinde korunur.
+          if [[ "$STOP_REASON" != "end_turn" ]]; then
+            echo "Kurgu paketi tamamlanmadı: provider=$EDITING_AI_PROVIDER stop_reason=$STOP_REASON"
+            exit 1
+          fi
+
+          # Cost guard kullanım doğrulaması (postflight) — bu run'ın gerçek
+          # kullanımı yapılandırılmış sınırı aştıysa aşağıdaki hiçbir ileri
+          # adım (yapısal doğrulama, Issue yazımı) çalışmadan işi kapalı
+          # (fail-closed) durdurur.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/editing-package-meta.json \
+            --config .github/config/cost-guard.json
+
+          # Test modu fixture'ıyla aynı paylaşılan sözleşme scriptini
+          # çalıştırır — gerçek AI çıktısı ve fixture asla iki farklı
+          # kopya kontrolle doğrulanmaz.
+          bash .github/scripts/validate_editing_package_output.sh /tmp/editing-package.md
+
+          PACKAGE_OUTPUT_CHARS=$(wc -c < /tmp/editing-package.md)
+
           {
+            echo "EDITING_AI_PROVIDER=$EDITING_AI_PROVIDER"
+            echo "EDITING_AI_MODEL=$EDITING_AI_MODEL"
             echo "EDITING_INPUT_TOKENS=$INPUT_TOKENS"
             echo "EDITING_OUTPUT_TOKENS=$OUTPUT_TOKENS"
             echo "EDITING_OUTPUT_CHARS=$PACKAGE_OUTPUT_CHARS"
@@ -471,6 +535,8 @@ jobs:
           {
             echo "### Kurgu ajanı AI kullanım özeti"
             echo "- test_mode: $TEST_MODE"
+            echo "- provider: $EDITING_AI_PROVIDER"
+            echo "- model: $EDITING_AI_MODEL"
             echo "- intake_chars: $INTAKE_CHARS"
             echo "- filming_package_chars: $PACKAGE_CHARS"
             echo "- final_script_chars: $FINAL_CHARS"
@@ -479,7 +545,7 @@ jobs:
             echo "- web_searches: 0"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Kurgu paketini Issue olarak kaydet
+      - name: Kurgu paketi içeriğini hazırla
         if: env.SKIP_EDITING != 'true'
         shell: bash
         run: |
@@ -488,7 +554,7 @@ jobs:
           {
             echo "<!-- source-bundle-sha256: $SOURCE_SHA -->"
             echo "<!-- editing-package-version: $EDITING_PACKAGE_VERSION -->"
-            echo "<!-- EDITING_AI_USAGE_V1 test=$TEST_MODE intake_chars=$INTAKE_CHARS package_chars=$PACKAGE_CHARS final_chars=$FINAL_CHARS input=$EDITING_INPUT_TOKENS output=$EDITING_OUTPUT_TOKENS web_search=0 output_chars=$EDITING_OUTPUT_CHARS -->"
+            echo "<!-- EDITING_AI_USAGE_V1 test=$TEST_MODE provider=$EDITING_AI_PROVIDER model=$EDITING_AI_MODEL intake_chars=$INTAKE_CHARS package_chars=$PACKAGE_CHARS final_chars=$FINAL_CHARS input=$EDITING_INPUT_TOKENS output=$EDITING_OUTPUT_TOKENS web_search=0 output_chars=$EDITING_OUTPUT_CHARS -->"
             if [[ "$TEST_MODE" == "true" ]]; then
               echo "> **Durum:** 🧪 Videosuz sistem testi — gerçek teslim veya yayın kaydı değildir"
             else
@@ -503,45 +569,20 @@ jobs:
             cat /tmp/editing-package.md
           } > /tmp/editing-issue-body.md
 
-          gh label create "kurgu-paketi" \
-            --color "5319E7" \
-            --description "Video kurgu akışı ve yayın öncesi kontrol planı" \
-            --force
+      - name: Kurgu paketi etiketlerini kalıcı hale getir
+        if: env.SKIP_EDITING != 'true'
+        shell: bash
+        env:
+          EDITING_BODY_FILE: /tmp/editing-issue-body.md
+        run: bash .github/scripts/persist_editing_package_labels.sh
 
-          gh label create "kurgu-plani-hazir" \
-            --color "0E8A16" \
-            --description "Ham video teslimi için kurgu planı hazır" \
-            --force
-
-          if [[ "$TEST_MODE" == "true" ]]; then
-            gh label create "sistem-testi" \
-              --color "BFD4F2" \
-              --description "Gerçek üretim kayıtlarını değiştirmeyen sistem testi" \
-              --force
-            ISSUE_LABELS=("kurgu-paketi" "sistem-testi")
-          else
-            ISSUE_LABELS=("kurgu-paketi" "kurgu-plani-hazir")
-          fi
-
-          if [[ -n "$EXISTING_NUMBER" ]]; then
-            gh issue edit "$EXISTING_NUMBER" \
-              --title "$EDITING_TITLE" \
-              --body-file /tmp/editing-issue-body.md \
-              --add-label "${ISSUE_LABELS[0]}" \
-              --add-label "${ISSUE_LABELS[1]}"
-            EDITING_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
-            EDITING_NUMBER="$EXISTING_NUMBER"
-          else
-            EDITING_URL=$(gh issue create \
-              --title "$EDITING_TITLE" \
-              --body-file /tmp/editing-issue-body.md \
-              --label "${ISSUE_LABELS[0]}" \
-              --label "${ISSUE_LABELS[1]}")
-            EDITING_NUMBER=$(grep -oE '[0-9]+$' <<< "$EDITING_URL")
-          fi
+      - name: Kurgu paketi hazırlandı yorumunu ve özetini yaz
+        if: env.SKIP_EDITING != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
 
           if [[ "$TEST_MODE" == "false" ]]; then
-            gh issue edit "$INTAKE_NUMBER" --add-label "kurgu-plani-hazir"
             gh issue comment "$INTAKE_NUMBER" \
               --body "✂️ Kurgu paketi hazırlandı: $EDITING_URL"
           fi

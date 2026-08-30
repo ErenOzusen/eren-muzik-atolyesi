@@ -32,6 +32,7 @@ on:
       - ".github/scripts/test_runtime_message_portability.mjs"
       - ".github/scripts/test_legacy_workflow_cleanup.mjs"
       - ".github/scripts/test_owner_approval_portability.mjs"
+      - ".github/scripts/test_owner_approval_fail_closed_hardening.mjs"
       - ".github/scripts/test_manual_package_owner_authorization_portability.mjs"
       - ".github/scripts/test_owner_label_migration_phase1.mjs"
       - ".github/scripts/test_production_selection_label_migration_phase1.mjs"
@@ -41,6 +42,37 @@ on:
       - ".github/scripts/persist_filming_package_labels.sh"
       - ".github/scripts/test_quality_control_portability.mjs"
       - ".github/scripts/test_script_correction_portability.mjs"
+      - ".github/scripts/cost_guard.py"
+      - ".github/scripts/test_cost_guard.py"
+      - ".github/config/cost-guard.json"
+      - ".github/scripts/persist_editing_package_labels.sh"
+      - ".github/scripts/test_editing_package_hardening.mjs"
+      - ".github/scripts/persist_subtitle_package_labels.sh"
+      - ".github/scripts/test_subtitle_package_hardening.mjs"
+      - ".github/scripts/persist_thumbnail_package_labels.sh"
+      - ".github/scripts/test_thumbnail_package_hardening.mjs"
+      - ".github/scripts/persist_youtube_publication_package_labels.sh"
+      - ".github/scripts/test_youtube_publication_package_hardening.mjs"
+      - ".github/scripts/ai_router.py"
+      - ".github/scripts/test_ai_router.py"
+      - ".github/config/ai-router.json"
+      - ".github/scripts/test_cost_guard_router_integration.mjs"
+      - ".github/scripts/test_cost_guard_router_integration_phase2.mjs"
+      - ".github/scripts/test_router_cost_guard_integration_scenarios.py"
+      - ".github/workflows/ci.yml"
+      - ".github/scripts/test_ci_master_gate.mjs"
+      - ".github/scripts/repo_safety_scan.py"
+      - ".github/scripts/test_repo_safety_scan.py"
+      - ".github/scripts/validate_editing_package_output.sh"
+      - ".github/scripts/test_editing_package_test_mode_isolation.mjs"
+      - ".github/scripts/test_pipeline_test_mode_matrix.mjs"
+      - ".github/scripts/test_weekly_content_research_router_migration.mjs"
+      - ".github/workflows/weekly-content-research.yml"
+      - ".github/scripts/test_weekly_script_agent_router_migration.mjs"
+      - ".github/workflows/weekly-script-agent.yml"
+      - ".github/scripts/test_weekly_script_correction_router_migration.mjs"
+      - ".github/scripts/test_final_technical_check_router_migration.mjs"
+      - ".github/scripts/test_editing_package_router_migration.mjs"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -93,6 +125,7 @@ jobs:
           node .github/scripts/test_runtime_message_portability.mjs
           node .github/scripts/test_legacy_workflow_cleanup.mjs
           node .github/scripts/test_owner_approval_portability.mjs
+          node .github/scripts/test_owner_approval_fail_closed_hardening.mjs
           node .github/scripts/test_manual_package_owner_authorization_portability.mjs
           node .github/scripts/test_owner_label_migration_phase1.mjs
           node .github/scripts/test_production_selection_label_migration_phase1.mjs
@@ -101,6 +134,24 @@ jobs:
           node .github/scripts/test_filming_package_live_label_validation.mjs
           node .github/scripts/test_quality_control_portability.mjs
           node .github/scripts/test_script_correction_portability.mjs
+          python3 .github/scripts/test_cost_guard.py
+          node .github/scripts/test_editing_package_hardening.mjs
+          node .github/scripts/test_subtitle_package_hardening.mjs
+          node .github/scripts/test_thumbnail_package_hardening.mjs
+          node .github/scripts/test_youtube_publication_package_hardening.mjs
+          python3 .github/scripts/test_ai_router.py
+          node .github/scripts/test_cost_guard_router_integration.mjs
+          node .github/scripts/test_cost_guard_router_integration_phase2.mjs
+          python3 .github/scripts/test_router_cost_guard_integration_scenarios.py
+          node .github/scripts/test_ci_master_gate.mjs
+          python3 .github/scripts/test_repo_safety_scan.py
+          node .github/scripts/test_editing_package_test_mode_isolation.mjs
+          node .github/scripts/test_pipeline_test_mode_matrix.mjs
+          node .github/scripts/test_weekly_content_research_router_migration.mjs
+          node .github/scripts/test_weekly_script_agent_router_migration.mjs
+          node .github/scripts/test_weekly_script_correction_router_migration.mjs
+          node .github/scripts/test_final_technical_check_router_migration.mjs
+          node .github/scripts/test_editing_package_router_migration.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash

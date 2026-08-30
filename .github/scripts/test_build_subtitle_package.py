@@ -123,15 +123,30 @@ def main() -> None:
     # Main owner approval label migration Faz 1 — read-both on the source scenario gate.
     assert 'any(.name == "eren-onayli" or .name == "owner-approved")' in workflow
 
+    # This file's own identity/pending label mutation now goes through a
+    # shared, single-call-site persistence script (MUTATE -> REFETCH ->
+    # VERIFY -> SUCCESS) instead of inline gh label create/edit calls — see
+    # persist_subtitle_package_labels.sh. Checked as part of "workflow" here
+    # too, since it's logically that workflow's own persistence.
+    persist_script = (ROOT / ".github/scripts/persist_subtitle_package_labels.sh").read_text(encoding="utf-8")
+    workflow_and_persistence = workflow + "\n" + persist_script
+
     # This file's own eren-onayi-bekliyor is UI/status only (audit-confirmed no
     # downstream reader) — dual-write it alongside the legacy label without creating
     # any new functional gate.
-    assert '"eren-onayi-bekliyor"' in workflow, "legacy status label kayboldu"
-    assert '"owner-approval-pending"' in workflow, "generic status label eklenmedi"
+    assert '"eren-onayi-bekliyor"' in workflow_and_persistence, "legacy status label kayboldu"
+    assert '"owner-approval-pending"' in workflow_and_persistence, "generic status label eklenmedi"
+    # Both pending labels are added together, in the SAME create/edit call
+    # that determines SUBTITLE_NUMBER — a stronger guarantee than the old
+    # design (a separate follow-up call was a torn-state risk, now removed).
+    assert (
+        'ISSUE_LABELS=("altyazi-paketi" "subtitle-package" "eren-onayi-bekliyor" "owner-approval-pending")'
+        in persist_script
+    ), "generic status label yeni/güncellenen Issue'ya eklenmiyor"
     assert (
         'gh issue edit "$SUBTITLE_NUMBER" --add-label "owner-approval-pending"'
-        in workflow
-    ), "generic status label yeni/güncellenen Issue'ya eklenmiyor"
+        not in workflow_and_persistence
+    ), "eski torn-state follow-up call geri gelmiş"
 
     print("subtitle_package_portability_ok ai_calls=0 api_calls=0 video_calls=0")
 

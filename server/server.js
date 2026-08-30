@@ -1,26 +1,141 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const mongoose = require("mongoose");
 const Submission = require("./models/Submission");
 const Video = require("./models/Video");
 const Appointment = require("./models/Appointment");
+const { verifyAppointmentSlotIndexExists, isAppointmentSlotConflictError } = Appointment;
 const BlockedSlot = require("./models/BlockedSlot");
 const WeeklySchedule = require("./models/WeeklySchedule");
-const nodemailer = require("nodemailer");
+const {
+  loadAdminSecrets,
+  createAdminToken,
+  verifyAdminToken,
+  revokeAdminToken,
+  timingSafeEqualStrings,
+} = require("./auth");
+const {
+  checkPayloadShape,
+  isValidLesson,
+  isValidPhone,
+  isValidEmail,
+  exceedsMaxLength,
+  isValidNotPastDate,
+} = require("./validation");
+const { resolveTrustProxySetting } = require("./proxyConfig");
+const { resolveAllowedOrigins } = require("./corsConfig");
 
-  const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// A hidden field the public forms send (see src/services rendered forms in
+// App.jsx: a visually-hidden, aria-hidden, tab-unreachable input named
+// "website"). A human never sees or fills it; if it arrives non-empty, the
+// request is silently treated as spam (see checkPayloadShape).
+const HONEYPOT_FIELDS = ["website"];
+
+// Fail-closed: refuses to start rather than run with an insecure default
+// admin password/token, in every environment (see auth.js).
+const { adminPassword: ADMIN_PASSWORD, tokenSecret: ADMIN_TOKEN_SECRET } =
+  loadAdminSecrets();
+
+// Defined here (before any route registration) so every /api/admin/* route
+// below can reference it regardless of declaration order in the file.
+const checkAdminToken = (req, res, next) => {
+  const authorizationHeader = req.headers.authorization || "";
+  const token = authorizationHeader.startsWith("Bearer ")
+    ? authorizationHeader.slice("Bearer ".length)
+    : "";
+
+  const result = verifyAdminToken(token, ADMIN_TOKEN_SECRET);
+
+  if (result.valid) {
+    req.adminTokenId = result.jti;
+    return next();
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: "Yetkisiz erişim",
+  });
+};
+
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// See proxyConfig.js: trusts exactly the reverse-proxy hop count that's
+// actually real for this deployment (env-overridable via TRUST_PROXY),
+// instead of either ignoring X-Forwarded-For entirely (breaks per-client
+// rate limiting behind Render) or blindly trusting it (lets a direct local
+// client forge its own IP).
+app.set("trust proxy", resolveTrustProxySetting());
+
+// See corsConfig.js: the production frontend origin and localhost dev
+// origins are ALWAYS included, deterministically, regardless of whether
+// ALLOWED_ORIGINS is set — so configuring it (e.g. to add a staging
+// frontend) can never accidentally drop the real production site's access.
+// Malformed entries or a literal "*" wildcard fail closed at startup.
+const allowedOrigins = resolveAllowedOrigins();
+
+const corsOptions = {
+  origin(origin, callback) {
+    // No Origin header (same-origin requests, curl, server-to-server,
+    // health checks) is not a browser cross-origin request — allow it.
+    if (!origin || allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("CORS: origin izinli değil"));
+  },
+};
+
+app.use(helmet());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "20kb" }));
+
+// Generic API rate limit: baseline abuse protection without affecting
+// normal admin-dashboard or public-site usage.
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Çok fazla giriş denemesi. Lütfen daha sonra tekrar deneyin.",
+  },
+});
+
+const publicFormRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Çok fazla istek gönderildi. Lütfen daha sonra tekrar deneyin.",
+  },
+});
+
+// CORS rejections must never leak a stack trace or internal detail to the
+// client — respond with a plain, generic 403.
+app.use((err, req, res, next) => {
+  if (err && err.message === "CORS: origin izinli değil") {
+    return res.status(403).json({ success: false, message: "Yetkisiz kaynak" });
+  }
+
+  return next(err);
+});
 const sendBrevoEmail = async ({
   subject,
   text,
@@ -140,6 +255,37 @@ async function connectMongo() {
     await mongoose.connect(mongoUri);
     isDbConnected = true;
     console.log("MongoDB bağlantısı başarılı");
+
+    // Wait for index building to settle (Model.init() resolves once any
+    // pending autoIndex work — including the appointment slot unique index —
+    // has finished, success or failure), then explicitly confirm the
+    // appointment double-booking index is actually live on the collection.
+    // This is a READ-ONLY check: it never creates, drops, or repairs any
+    // index or data, and it never deletes/modifies existing appointments —
+    // if duplicate active slots already exist in production, resolving
+    // that is a deliberate, separate, human decision, not something this
+    // check attempts automatically.
+    try {
+      await Appointment.init();
+    } catch {
+      // Swallowed here — verifyAppointmentSlotIndexExists() below reads the
+      // live index list directly, which is the authoritative check.
+    }
+
+    const indexHealth = await verifyAppointmentSlotIndexExists();
+
+    if (!indexHealth.healthy) {
+      console.error(
+        "‼️  RANDEVU ÇAKIŞMA KORUMASI (DB seviyesi) AKTİF DEĞİL:",
+        indexHealth.reason,
+        "— Uygulama seviyesi çakışma kontrolü hâlâ çalışıyor, ancak eşzamanlı " +
+          "isteklerde ek atomik koruma yok. Mevcut randevu verisinde aynı " +
+          "tarih/saat için birden fazla aktif kayıt olup olmadığını manuel " +
+          "kontrol edin; bu kontrol hiçbir veriyi otomatik silmez/değiştirmez."
+      );
+    } else {
+      console.log("Randevu çakışma koruması (unique index) doğrulandı: aktif.");
+    }
   } catch (error) {
     console.error("MongoDB bağlantı hatası:", error.message);
   }
@@ -208,9 +354,24 @@ https://eren-muzik-atolyesi.vercel.app/admin
     result?.messageId
   );
 };
-app.post("/api/contact", async (req, res) => {
-  if (!ensureDbConnection(res)) {
-    return;
+app.post("/api/contact", publicFormRateLimiter, async (req, res) => {
+  // Input shape/format is checked before touching the DB layer: cheap,
+  // no I/O, and a malformed/bot request should get a plain 400 rather than
+  // a 503 that leaks DB-connectivity state.
+  const shapeCheck = checkPayloadShape(
+    req.body,
+    ["name", "phone", "lesson", "message"],
+    HONEYPOT_FIELDS
+  );
+
+  if (!shapeCheck.ok) {
+    // A filled honeypot or an unexpected field shape is treated as spam —
+    // respond exactly like a normal validation failure, without revealing
+    // that this was specifically flagged as bot traffic.
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz istek",
+    });
   }
 
   const { name, phone, lesson, message } = req.body;
@@ -222,6 +383,35 @@ app.post("/api/contact", async (req, res) => {
     });
   }
 
+  if (
+    exceedsMaxLength(name, "name") ||
+    exceedsMaxLength(phone, "phone") ||
+    exceedsMaxLength(message, "message")
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Girdiğiniz bilgiler çok uzun",
+    });
+  }
+
+  if (!isValidLesson(lesson)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz ders seçimi",
+    });
+  }
+
+  if (!isValidPhone(phone)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz telefon numarası",
+    });
+  }
+
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const submission = await Submission.create({
       name: name.trim(),
@@ -230,7 +420,12 @@ app.post("/api/contact", async (req, res) => {
       message: message.trim(),
     });
 
-    console.log("Yeni başvuru kaydedildi:", formatSubmission(submission));
+    // Operational log only — no name/phone/message. See PII/log audit (B3).
+    console.log("Yeni başvuru kaydedildi:", {
+      id: submission._id.toString(),
+      lesson: submission.lesson,
+      status: submission.status,
+    });
 
  sendNewSubmissionEmail(submission)
   .then(() => {
@@ -255,9 +450,18 @@ app.post("/api/contact", async (req, res) => {
 });
 
 // Public: yeni randevu talebi oluştur
-app.post("/api/appointments", async (req, res) => {
-  if (!ensureDbConnection(res)) {
-    return;
+app.post("/api/appointments", publicFormRateLimiter, async (req, res) => {
+  const shapeCheck = checkPayloadShape(
+    req.body,
+    ["name", "phone", "email", "lesson", "appointmentDate", "appointmentTime", "note"],
+    HONEYPOT_FIELDS
+  );
+
+  if (!shapeCheck.ok) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz istek",
+    });
   }
 
   const {
@@ -280,6 +484,41 @@ app.post("/api/appointments", async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Zorunlu alanların tamamını doldurmanız gerekiyor",
+    });
+  }
+
+  if (
+    exceedsMaxLength(name, "name") ||
+    exceedsMaxLength(phone, "phone") ||
+    exceedsMaxLength(email, "email") ||
+    exceedsMaxLength(note, "note")
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Girdiğiniz bilgiler çok uzun",
+    });
+  }
+
+  if (!isValidLesson(lesson)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz ders seçimi",
+    });
+  }
+
+  if (!isValidPhone(phone)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz telefon numarası",
+    });
+  }
+
+  // Email stays optional (unchanged from prior behavior) — only its format
+  // is validated when the caller does provide one.
+  if (email?.trim() && !isValidEmail(email)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçersiz e-posta adresi",
     });
   }
 
@@ -314,8 +553,19 @@ app.post("/api/appointments", async (req, res) => {
     });
   }
 
+  if (!isValidNotPastDate(normalizedDate)) {
+    return res.status(400).json({
+      success: false,
+      message: "Geçmiş bir tarihe randevu oluşturamazsınız",
+    });
+  }
+
   const dayOfWeek = selectedDate.getUTCDay();
   const appointmentDuration = 30;
+
+  if (!ensureDbConnection(res)) {
+    return;
+  }
 
   try {
     const weeklySchedule = await WeeklySchedule.findOne({
@@ -441,10 +691,14 @@ app.post("/api/appointments", async (req, res) => {
       note: note?.trim() || "",
     });
 
-    console.log(
-      "Yeni randevu talebi oluşturuldu:",
-      formatAppointment(appointment)
-    );
+    // Operational log only — no name/phone/email/note. See PII/log audit (B3).
+    console.log("Yeni randevu talebi oluşturuldu:", {
+      id: appointment._id.toString(),
+      lesson: appointment.lesson,
+      appointmentDate: appointment.appointmentDate,
+      appointmentTime: appointment.appointmentTime,
+      status: appointment.status,
+    });
 
     sendNewAppointmentEmail(appointment).catch((emailError) => {
   console.error(
@@ -459,6 +713,22 @@ app.post("/api/appointments", async (req, res) => {
       appointment: formatAppointment(appointment),
     });
   } catch (error) {
+    // E11000 on the appointment-slot index specifically (see
+    // models/Appointment.js's isAppointmentSlotConflictError): the DB-level
+    // unique partial index caught a race the application-level conflict
+    // check above missed — two concurrent requests for the same active
+    // slot. Report it exactly like the existing application-level conflict
+    // response, not a generic server error. Any OTHER duplicate-key error
+    // (a different, future unique index) deliberately falls through to the
+    // generic 500 below instead of being misreported as "slot taken".
+    if (isAppointmentSlotConflictError(error)) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Seçtiğiniz saat uygun değil. Lütfen başka bir randevu saati seçin.",
+      });
+    }
+
     console.error("Randevu oluşturulamadı:", error.message);
 
     res.status(500).json({
@@ -640,7 +910,7 @@ app.get("/api/appointments/availability", async (req, res) => {
 });
 
 // Admin: kapalı gün veya saat aralığı ekle
-app.post("/api/admin/blocked-slots", async (req, res) => {
+app.post("/api/admin/blocked-slots", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
   }
@@ -678,7 +948,7 @@ app.post("/api/admin/blocked-slots", async (req, res) => {
 });
 
 // Admin: kapalı gün ve saat aralıklarını getir
-app.get("/api/admin/blocked-slots", async (req, res) => {
+app.get("/api/admin/blocked-slots", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
   }
@@ -703,7 +973,7 @@ app.get("/api/admin/blocked-slots", async (req, res) => {
 });
 
 // Admin: kapalı gün veya saat aralığını sil
-app.delete("/api/admin/blocked-slots/:id", async (req, res) => {
+app.delete("/api/admin/blocked-slots/:id", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
   }
@@ -735,7 +1005,7 @@ app.delete("/api/admin/blocked-slots/:id", async (req, res) => {
 });
 
 // Admin: haftalık çalışma programını getir
-app.get("/api/admin/weekly-schedule", async (req, res) => {
+app.get("/api/admin/weekly-schedule", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
   }
@@ -776,7 +1046,7 @@ app.get("/api/admin/weekly-schedule", async (req, res) => {
 });
 
 // Admin: haftalık çalışma programındaki bir günü güncelle
-app.put("/api/admin/weekly-schedule/:dayOfWeek", async (req, res) => {
+app.put("/api/admin/weekly-schedule/:dayOfWeek", checkAdminToken, async (req, res) => {
   if (!ensureDbConnection(res)) {
     return;
   }
@@ -843,40 +1113,37 @@ app.put("/api/admin/weekly-schedule/:dayOfWeek", async (req, res) => {
   }
 });
 
-app.post("/api/admin/login", (req, res) => {
+app.post("/api/admin/login", loginRateLimiter, (req, res) => {
   const { password } = req.body;
 
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "eren123";
-  const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "eren-admin-token";
-
-  if (password === ADMIN_PASSWORD) {
-    return res.json({
-      success: true,
-      message: "Admin girişi başarılı",
-      token: ADMIN_TOKEN,
+  if (
+    typeof password !== "string" ||
+    !timingSafeEqualStrings(password, ADMIN_PASSWORD)
+  ) {
+    return res.status(401).json({
+      success: false,
+      message: "Şifre hatalı",
     });
   }
 
-  return res.status(401).json({
-    success: false,
-    message: "Şifre hatalı",
+  const token = createAdminToken(ADMIN_TOKEN_SECRET);
+
+  return res.json({
+    success: true,
+    message: "Admin girişi başarılı",
+    token,
   });
 });
 
-const checkAdminToken = (req, res, next) => {
-  const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "eren-admin-token";
+// Admin: oturumu sonlandır (token'ı sunucu tarafında geçersiz kıl)
+app.post("/api/admin/logout", checkAdminToken, (req, res) => {
+  revokeAdminToken(req.adminTokenId);
 
-  const token = req.headers.authorization;
-
-  if (token === `Bearer ${ADMIN_TOKEN}`) {
-    next();
-  } else {
-    return res.status(403).json({
-      success: false,
-      message: "Yetkisiz erişim",
-    });
-  }
-};
+  res.json({
+    success: true,
+    message: "Çıkış yapıldı",
+  });
+});
 
 const VALID_SUBMISSION_STATUSES = [
   "Yeni",
@@ -911,6 +1178,10 @@ function formatVideo(video) {
 
 // Public: sadece aktif videolar
 app.get("/api/videos", async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const videos = await Video.find({ isActive: true }).sort({
       order: 1,
@@ -926,6 +1197,10 @@ app.get("/api/videos", async (req, res) => {
 
 // Admin: tüm videolar
 app.get("/api/admin/videos", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const videos = await Video.find().sort({
       order: 1,
@@ -941,6 +1216,10 @@ app.get("/api/admin/videos", checkAdminToken, async (req, res) => {
 
 // Admin: yeni video ekle
 app.post("/api/admin/videos", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const {
       title,
@@ -977,6 +1256,10 @@ app.post("/api/admin/videos", checkAdminToken, async (req, res) => {
 
 // Admin: video güncelle
 app.patch("/api/admin/videos/:id", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const { id } = req.params;
 
@@ -1023,6 +1306,10 @@ app.patch("/api/admin/videos/:id", checkAdminToken, async (req, res) => {
 
 // Admin: video sil
 app.delete("/api/admin/videos/:id", checkAdminToken, async (req, res) => {
+  if (!ensureDbConnection(res)) {
+    return;
+  }
+
   try {
     const { id } = req.params;
 
@@ -1156,9 +1443,10 @@ Eren Müzik Atölyesi`,
 
           confirmationEmailSent = true;
 
-          console.log(
-            `Ön görüşme onay e-postası gönderildi: ${updatedAppointment.email}`
-          );
+          // Operational log only — no email address. See PII/log audit (B3).
+          console.log("Ön görüşme onay e-postası gönderildi:", {
+            appointmentId: updatedAppointment._id.toString(),
+          });
         } catch (emailError) {
           console.error(
             "Öğrenci onay e-postası gönderilemedi:",
@@ -1341,8 +1629,15 @@ app.delete("/api/submissions/:id", checkAdminToken, async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-connectMongo().finally(() => {
-  app.listen(PORT, () => {
-    console.log(`Backend ${PORT} portunda çalışıyor`);
+// Only connect to Mongo and start listening when this file is run directly
+// (`node server.js`). When required as a module — e.g. by the test suite —
+// this stays a plain, inert Express app with no network/DB side effects.
+if (require.main === module) {
+  connectMongo().finally(() => {
+    app.listen(PORT, () => {
+      console.log(`Backend ${PORT} portunda çalışıyor`);
+    });
   });
-});
+}
+
+module.exports = app;

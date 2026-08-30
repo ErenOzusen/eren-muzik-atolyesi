@@ -1,0 +1,145 @@
+name: CI
+
+# Single required gate for every push/PR to main: frontend lint/test/build,
+# backend tests (including a real, ephemeral MongoDB via
+# mongodb-memory-server — no production database is ever touched), every
+# zero-token/zero-network Python and Node automation test under
+# .github/scripts, and repo-wide safety checks (diff whitespace/format,
+# known-bad hardcoded credential scan). No step here makes a real AI/API
+# call, spends a real provider token, generates real video, publishes to
+# YouTube, or touches a production database — everything is either a unit/
+# integration test against disposable local state, or a static source-text
+# check.
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (lint, test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Node kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (Vitest)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend tests (incl. ephemeral MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Node kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Bağımlılıkları kur
+        working-directory: server
+        run: npm ci
+
+      - name: Test
+        working-directory: server
+        run: npm test
+
+  automation-tests:
+    name: Automation (Python + Node zero-token tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Node kurulumu
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: .github/scripts altındaki her test_*.py ve test_*.mjs dosyasını çalıştır
+        shell: bash
+        run: |
+          set -uo pipefail
+          total=0
+          fails=0
+          for f in $(find .github/scripts -maxdepth 1 \( -name "test_*.py" -o -name "test_*.mjs" \) | sort); do
+            total=$((total+1))
+            echo "::group::$f"
+            if [[ "$f" == *.py ]]; then
+              python3 "$f"
+            else
+              node "$f"
+            fi
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              fails=$((fails+1))
+              echo "FAIL ($status): $f"
+            fi
+            echo "::endgroup::"
+          done
+          echo "TOTAL=$total FAILS=$fails"
+          if [ "$fails" -ne 0 ]; then
+            exit 1
+          fi
+
+  repo-safety-checks:
+    name: Repo safety (diff format, hardcoded-credential scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: git diff --check (trailing whitespace / conflict markers in the diff)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null || git hash-object -t tree /dev/null)
+          fi
+          git diff --check "$BASE" HEAD
+
+      - name: Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bilinen sabit kimlik bilgisi taraması
+        run: python3 .github/scripts/repo_safety_scan.py
