@@ -50,9 +50,12 @@ FORBIDDEN_LITERALS = [
 # to repo root, POSIX-style. Each entry's own legitimate reason:
 #   - src/services/api.js: THE canonical fallback resolver (API_BASE_URL)
 #   - src/services/api.test.js: tests that same resolver
-#   - server/corsConfig.js: THE canonical CORS allowlist source
-#   - server/server.js: includes the real admin-panel URL in an owner
-#     notification email body (not an API call)
+#   - server/config/corsConfig.js: THE canonical CORS allowlist source
+#     (moved here from server/corsConfig.js by the backend architecture
+#     refactor)
+#   - server/services/emailService.js: includes the real admin-panel URL in
+#     an owner notification email body (not an API call) — moved here from
+#     server/server.js by the same refactor
 #   - .github/config/business-profile.json: the actual business config
 #     (reservation_url etc.)
 #   - .github/scripts/test_build_youtube_package.py: asserts the URL is
@@ -60,8 +63,8 @@ FORBIDDEN_LITERALS = [
 ALLOWED_PRODUCTION_URL_FILES = {
     "src/services/api.js",
     "src/services/api.test.js",
-    "server/corsConfig.js",
-    "server/server.js",
+    "server/config/corsConfig.js",
+    "server/services/emailService.js",
     ".github/config/business-profile.json",
     ".github/scripts/test_build_youtube_package.py",
 }

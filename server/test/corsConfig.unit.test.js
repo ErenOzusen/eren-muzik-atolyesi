@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveAllowedOrigins, PRODUCTION_ORIGIN } = require("../corsConfig");
+const { resolveAllowedOrigins, PRODUCTION_ORIGIN } = require("../config/corsConfig");
 
 test("B4 — production origin is included even when ALLOWED_ORIGINS is unset", () => {
   const origins = resolveAllowedOrigins({});

@@ -1,15 +1,46 @@
-// B3 — static scan: no console.* call anywhere in server.js may log raw
+// B3 — static scan: no console.* call anywhere in the backend's own source
+// (server.js plus every route/controller/service/middleware/config/model
+// file the backend architecture refactor split it into) may log raw
 // personal fields (name/phone/email/message/note) or secrets
 // (password/token/authorization). Zero-network, zero-DB, source-text-only —
 // matches the static-assertion testing style already used across this
 // repo's automation test suite.
+//
+// This scans the whole server/ source tree (excluding node_modules and
+// test/) rather than just server.js specifically so the guarantee survives
+// future extractions: a PII-leaking log added inside, say,
+// controllers/appointmentController.js is just as much a B3 violation as
+// one added directly in server.js used to be, back when that file held all
+// of this logic itself.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const { readFileSync } = require("node:fs");
+const { readFileSync, readdirSync } = require("node:fs");
+
+const SKIP_DIRS = new Set(["node_modules", "test", ".git"]);
+
+function collectServerSourceFiles(dir) {
+  const files = [];
+
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      files.push(...collectServerSourceFiles(path.join(dir, entry.name)));
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      files.push(path.join(dir, entry.name));
+    }
+  }
+
+  return files;
+}
 
 function readServerSource() {
-  return readFileSync(path.join(__dirname, "..", "server.js"), "utf8").replace(/\r\n/g, "\n");
+  const serverRoot = path.join(__dirname, "..");
+
+  return collectServerSourceFiles(serverRoot)
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n")
+    .replace(/\r\n/g, "\n");
 }
 
 // Finds the substring of `text` starting at `openParenIndex` (which must
@@ -63,11 +94,11 @@ const FORBIDDEN_PATTERNS = [
   { pattern: /req\.body\b/, label: "req.body (raw payload)" },
 ];
 
-test("B3 — no console.* call in server.js logs PII fields or secrets", () => {
+test("B3 — no console.* call in the backend source logs PII fields or secrets", () => {
   const source = readServerSource();
   const calls = findConsoleCallArgs(source);
 
-  assert.ok(calls.length > 10, "sanity check: expected many console.* calls in server.js");
+  assert.ok(calls.length > 10, "sanity check: expected many console.* calls across the backend source");
 
   for (const call of calls) {
     for (const { pattern, label } of FORBIDDEN_PATTERNS) {

@@ -2,6 +2,12 @@
 // (/api/contact, /api/appointments). Kept dependency-free and DB-free so it
 // can be unit-tested directly with no network/DB involved.
 
+// A hidden field the public forms send (see the visually-hidden,
+// aria-hidden, tab-unreachable "website" input rendered in App.jsx). A
+// human never sees or fills it; if it arrives non-empty, checkPayloadShape
+// treats the request as spam.
+const HONEYPOT_FIELDS = ["website"];
+
 const LESSON_WHITELIST = [
   "Gitar",
   "Piyano",
@@ -107,6 +113,7 @@ function isValidNotPastDate(dateString) {
 }
 
 module.exports = {
+  HONEYPOT_FIELDS,
   LESSON_WHITELIST,
   MAX_LENGTHS,
   isNonEmptyString,

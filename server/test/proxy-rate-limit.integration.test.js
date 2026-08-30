@@ -16,9 +16,48 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
+const path = require("node:path");
 
 process.env.ADMIN_PASSWORD = "proxy-rate-limit-test-password";
 process.env.ADMIN_TOKEN_SECRET = "proxy-rate-limit-test-token-secret-with-enough-length-123456";
+
+// Force a fresh module load of every server-owned module (route, controller,
+// service, middleware, config file — everything under server/ except
+// node_modules) so proxyConfig's env read (via app.js's top-level
+// `app.set("trust proxy", resolveTrustProxySetting())`) picks up overrides
+// applied per test, AND so singleton state — e.g. the shared rate-limiter
+// request-count buckets in middleware/rateLimiters.js — resets between test
+// cases. Busting only server.js itself is not enough post-refactor: any
+// intermediate cached module (a route file, say) that already required a
+// singleton once would otherwise keep handing out its stale, non-reset
+// reference. This reproduces, file-layout-agnostically, the isolation the
+// old single-file server.js got for free whenever its one cache entry was
+// busted and the whole module body re-ran.
+//
+// models/*.js and auth.js are deliberately EXCLUDED from the bust:
+//   - models/*.js call `mongoose.model("Name", schema)` at require-time;
+//     mongoose itself (never busted — it's a node_modules singleton) keeps
+//     its own model registry keyed by name, so re-executing a model file a
+//     second time throws OverwriteModelError. Leaving models cached is also
+//     exactly what the pre-refactor test did (it only ever busted server.js
+//     + proxyConfig.js — model files were never part of that list either).
+//   - auth.js holds the in-memory admin-token revocation set, which this
+//     suite doesn't exercise and which was likewise never busted before.
+const SERVER_ROOT = path.resolve(__dirname, "..");
+const MODELS_DIR = path.join(SERVER_ROOT, "models") + path.sep;
+const AUTH_JS_PATH = path.join(SERVER_ROOT, "auth.js");
+
+function bustServerRequireCache() {
+  for (const cachedPath of Object.keys(require.cache)) {
+    if (!cachedPath.startsWith(SERVER_ROOT + path.sep)) continue;
+    if (cachedPath.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    if (cachedPath.startsWith(MODELS_DIR)) continue;
+    if (cachedPath === AUTH_JS_PATH) continue;
+    if (cachedPath === __filename) continue;
+
+    delete require.cache[cachedPath];
+  }
+}
 
 function startServerWithEnv(envOverrides) {
   const previous = {};
@@ -31,13 +70,7 @@ function startServerWithEnv(envOverrides) {
     }
   }
 
-  // Force a fresh module load so proxyConfig's env read (via server.js's
-  // top-level `app.set("trust proxy", resolveTrustProxySetting())`) picks
-  // up the overrides applied above — require() caches modules by default.
-  const serverPath = require.resolve("../server.js");
-  const proxyConfigPath = require.resolve("../proxyConfig.js");
-  delete require.cache[serverPath];
-  delete require.cache[proxyConfigPath];
+  bustServerRequireCache();
 
   const app = require("../server.js");
   const server = http.createServer(app);

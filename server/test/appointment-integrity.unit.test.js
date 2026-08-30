@@ -98,12 +98,19 @@ test("isAppointmentSlotConflictError: rejects non-duplicate-key errors entirely"
 });
 
 test("the appointment-creation route uses isAppointmentSlotConflictError (not a bare error.code check) and maps it to 409, not 500", () => {
-  const serverSource = readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  // The route registration itself lives in routes/appointmentRoutes.js; the
+  // actual error-discrimination logic this test cares about lives in its
+  // controller (extracted from server.js by the backend architecture
+  // refactor — same behavior, new location).
+  const serverSource = readFileSync(
+    path.join(__dirname, "..", "controllers", "appointmentController.js"),
+    "utf8"
+  );
 
-  const routeStart = serverSource.indexOf('app.post("/api/appointments"');
+  const routeStart = serverSource.indexOf("async function createAppointment(req, res)");
   assert.ok(routeStart >= 0, "could not find the appointment creation route");
 
-  const nextRouteStart = serverSource.indexOf("\napp.", routeStart + 1);
+  const nextRouteStart = serverSource.indexOf("\nasync function", routeStart + 1);
   const routeBlock = serverSource.slice(routeStart, nextRouteStart === -1 ? undefined : nextRouteStart);
 
   assert.match(
@@ -132,11 +139,14 @@ test("Appointment model logs (rather than silently swallowing) an index-build fa
 });
 
 test("B2 — connectMongo performs an explicit, visible startup health check of the appointment-slot index", () => {
-  const serverSource = readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const connectMongoStart = serverSource.indexOf("async function connectMongo()");
+  // connectMongo/ensureDbConnection live in config/database.js (extracted
+  // from server.js by the backend architecture refactor) — same behavior,
+  // new location.
+  const databaseSource = readFileSync(path.join(__dirname, "..", "config", "database.js"), "utf8");
+  const connectMongoStart = databaseSource.indexOf("async function connectMongo()");
   assert.ok(connectMongoStart >= 0);
-  const connectMongoEnd = serverSource.indexOf("\nfunction ensureDbConnection", connectMongoStart);
-  const connectMongoBlock = serverSource.slice(connectMongoStart, connectMongoEnd);
+  const connectMongoEnd = databaseSource.indexOf("\nfunction ensureDbConnection", connectMongoStart);
+  const connectMongoBlock = databaseSource.slice(connectMongoStart, connectMongoEnd);
 
   assert.match(connectMongoBlock, /verifyAppointmentSlotIndexExists\s*\(\s*\)/);
   assert.match(connectMongoBlock, /indexHealth\.healthy/);

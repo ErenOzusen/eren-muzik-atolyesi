@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { resolveTrustProxySetting } = require("../proxyConfig");
+const { resolveTrustProxySetting } = require("../config/proxyConfig");
 
 test("A2 — no TRUST_PROXY, not Render/production: defaults to false (plain local dev, no reverse proxy)", () => {
   const env = {};
