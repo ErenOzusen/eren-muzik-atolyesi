@@ -182,23 +182,51 @@ test("architecture — app.listen is called exactly once in the whole backend so
 });
 
 test("architecture — requiring server.js as a module never binds a real port (no listen side effect)", async () => {
-  for (const resolved of [require.resolve("../server.js"), require.resolve("../app.js")]) {
-    delete require.cache[resolved];
+  // Requiring server.js fresh pulls in middleware/authMiddleware.js, whose
+  // top-level loadAdminSecrets() call fails closed (throws) without a real
+  // ADMIN_PASSWORD/ADMIN_TOKEN_SECRET. Locally that's masked by server/.env
+  // (dotenv fills them in) — CI has no .env file, so this test needs its
+  // own explicit, test-only values, scoped to just this test and restored
+  // immediately after, exactly like the other integration test files that
+  // require server.js already do (see e.g. admin-auth.integration.test.js).
+  // These are throwaway fixture strings, never real secrets, and are never
+  // written into production code or test/setupTestEnv.js's process-wide
+  // bootstrap — they only need to exist for the instant this one require()
+  // call resolves.
+  const previousEnv = {
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
+    ADMIN_TOKEN_SECRET: process.env.ADMIN_TOKEN_SECRET,
+  };
+  process.env.ADMIN_PASSWORD = "architecture-regression-test-password";
+  process.env.ADMIN_TOKEN_SECRET = "architecture-regression-test-token-secret-with-enough-length-1234567890";
+
+  try {
+    for (const resolved of [require.resolve("../server.js"), require.resolve("../app.js")]) {
+      delete require.cache[resolved];
+    }
+
+    const app = require("../server.js");
+    assert.equal(typeof app, "function", "server.js must still export the Express app directly (require.main !== module here)");
+
+    // If server.js's require.main guard were broken, requiring it above
+    // would already have bound the default PORT — this probe binding to
+    // that same port would then fail with EADDRINUSE.
+    const port = Number(process.env.PORT) || 5000;
+    const probe = http.createServer();
+
+    await new Promise((resolve, reject) => {
+      probe.once("error", reject);
+      probe.listen(port, "127.0.0.1", resolve);
+    });
+
+    await new Promise((resolve) => probe.close(resolve));
+  } finally {
+    for (const key of Object.keys(previousEnv)) {
+      if (previousEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previousEnv[key];
+      }
+    }
   }
-
-  const app = require("../server.js");
-  assert.equal(typeof app, "function", "server.js must still export the Express app directly (require.main !== module here)");
-
-  // If server.js's require.main guard were broken, requiring it above would
-  // already have bound the default PORT — this probe binding to that same
-  // port would then fail with EADDRINUSE.
-  const port = Number(process.env.PORT) || 5000;
-  const probe = http.createServer();
-
-  await new Promise((resolve, reject) => {
-    probe.once("error", reject);
-    probe.listen(port, "127.0.0.1", resolve);
-  });
-
-  await new Promise((resolve) => probe.close(resolve));
 });
