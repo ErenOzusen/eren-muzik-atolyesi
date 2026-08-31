@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --require ./testSetup.js --test test/"
+    "test": "node --require ./testSetup.js --test"
   },
   "keywords": [],
   "author": "",
