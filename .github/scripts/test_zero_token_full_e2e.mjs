@@ -13,10 +13,14 @@
  * package validation, the final-technical-check decision contract) invoke
  * their REAL, unmodified scripts as real subprocesses. Gate/state-machine
  * stages (owner approval, scenario selection, filming handoff, raw-video
- * eligibility, publication approval eligibility) never touch a real GitHub
- * Issue — they apply the exact label/provenance rules those workflows use
- * (source-anchored against the real YAML below) to fixture state, driven by
- * the REAL content artifacts the earlier stages produced.
+ * eligibility, YouTube review readiness, publication approval eligibility)
+ * never touch a real GitHub Issue — they apply the exact label/provenance
+ * rules those workflows use (source-anchored against the real YAML below)
+ * to fixture state, driven by the REAL content artifacts the earlier
+ * stages produced. Stage 16 (youtube-review-readiness-gate.yml ->
+ * youtube-publication-approval-gate.yml) is a body-revision-bound,
+ * bot-authored-comment marker chain — see computeReviewReadiness /
+ * computePublicationApprovalEligibility below.
  *
  * MUTUAL EXCLUSION WITH REALITY: this file makes zero real Anthropic/
  * OpenAI/DeepSeek/Qwen calls, zero real web requests, zero real video
@@ -213,6 +217,7 @@ const filmingAgentWf = readNorm(".github/workflows/filming-package-agent-v4-rout
 const rawVideoWf = readNorm(".github/workflows/raw-video-intake-gate.yml");
 const pubApprovalWf = readNorm(".github/workflows/youtube-publication-approval-gate.yml");
 const pubInvalidationWf = readNorm(".github/workflows/publication-approval-invalidation-gate.yml");
+const reviewReadinessWf = readNorm(".github/workflows/youtube-review-readiness-gate.yml");
 
 // Source-anchor the exact conditions this simulator relies on.
 mustInclude(ownerApprovalWf, "grep -Eq \"^\\*\\*Kalite kontrol raporu:\\*\\*", "owner approval requires QC link");
@@ -224,7 +229,19 @@ mustInclude(filmingAgentWf, "body_sha256=$SOURCE_SHA", "filming agent re-checks 
 mustInclude(rawVideoWf, "PACKAGE_SOURCE_SHA=$(grep -oE", "raw video intake reads package provenance hash");
 mustInclude(rawVideoWf, 'if [[ "$PACKAGE_SOURCE_SHA" != "$CURRENT_FINAL_SHA" ]]; then', "raw video intake rejects stale package");
 mustInclude(pubApprovalWf, "YOUTUBE_REVIEW_READY_V1", "publication approval requires readiness marker");
+mustInclude(pubApprovalWf, 'CURRENT_BODY_SHA=$(sha256sum /tmp/youtube-package.md | awk \'{print $1}\')', "publication approval recomputes current package body sha");
+mustInclude(pubApprovalWf, 'select(.author.login == "github-actions[bot]")', "publication approval only trusts bot-authored readiness comments");
 mustInclude(pubInvalidationWf, "eren-yayin-onayi-bekliyor", "publication invalidation re-establishes pending");
+mustInclude(pubInvalidationWf, "youtube-review-ready", "publication invalidation also clears a stale readiness label");
+
+// The readiness gate itself: fail-closed on any missing attestation, real
+// package/state validation, owner-only authorization, and a body-revision-
+// bound comment marker (never written into the package body itself).
+mustInclude(reviewReadinessWf, 'if [[ "$VIDEO_READY" != "true" || "$SRT_READY" != "true" || \\', "readiness gate fails closed unless every attestation is true");
+mustInclude(reviewReadinessWf, 'CONFIG_OWNER=$(jq -er \'.business.github_owner', "readiness gate uses the same owner-only authorization contract");
+mustInclude(reviewReadinessWf, "BODY_SHA=$(sha256sum /tmp/youtube-package.md | awk '{print $1}')", "readiness gate binds its marker to the current package body sha");
+mustInclude(reviewReadinessWf, 'READY_MARKER="<!-- YOUTUBE_REVIEW_READY_V1 issue=$ISSUE_NUMBER test=$TEST_MODE video=1 srt=1 thumbnail=1 public=0 body_sha256=$BODY_SHA -->"', "readiness gate writes the exact marker format the approval gate verifies");
+mustInclude(reviewReadinessWf, "gh issue comment", "readiness gate records proof as a comment, not the package body");
 
 function computeOwnerApprovalEligibility(finalBody, ftcDecision) {
   const hasQcLink = new RegExp(`^\\*\\*Kalite kontrol raporu:\\*\\* https://github\\.com/[^\\s]+/issues/\\d+\\s*$`, "m").test(finalBody);
@@ -263,13 +280,46 @@ function computeRawVideoEligibility(packageBody, currentFinalBody) {
   return { accepted: true };
 }
 
-function computePublicationApprovalEligibility(youtubePackageBody, labels) {
+// Mirrors youtube-review-readiness-gate.yml: records real pre-publication
+// media-readiness evidence as a bot-authored comment marker bound to the
+// package's CURRENT body sha256 — never embedded in the body itself (that
+// would be self-referential: the marker's own hash would have to exclude
+// the marker).
+function computeReviewReadiness(youtubePackageBody, labels, flags, testMode) {
+  if (!labels.has("youtube-yayin-paketi")) throw new Error("readiness: source Issue is not a YouTube Yayın Paketi");
+  const pending = labels.has("eren-yayin-onayi-bekliyor") || labels.has("publication-approval-pending");
+  const already = labels.has("eren-yayin-onayli") || labels.has("publication-approved");
+  if (already) throw new Error("readiness: package already has final publication approval");
+  if (!pending) throw new Error("readiness: package not in publication-approval-pending state");
+  if (!flags.videoReady || !flags.srtReady || !flags.thumbnailReady || !flags.confirmedNotPublic) {
+    throw new Error(
+      `readiness: media attestation incomplete, fail closed (video=${flags.videoReady} srt=${flags.srtReady} thumbnail=${flags.thumbnailReady} confirmedNotPublic=${flags.confirmedNotPublic})`
+    );
+  }
+  const bodySha = sha256(youtubePackageBody);
+  const readyLabel = testMode ? "test-youtube-review-ready" : "youtube-review-ready";
+  return {
+    marker: `<!-- YOUTUBE_REVIEW_READY_V1 issue=1 test=${testMode} video=1 srt=1 thumbnail=1 public=0 body_sha256=${bodySha} -->`,
+    bodySha,
+    botAuthored: true, // simulates the comment being posted via GH_TOKEN as github-actions[bot]
+    labels: new Set([...labels, readyLabel]),
+  };
+}
+
+function computePublicationApprovalEligibility(youtubePackageBody, labels, readinessState) {
   const pending = labels.has("eren-yayin-onayi-bekliyor") || labels.has("publication-approval-pending");
   const already = labels.has("eren-yayin-onayli") || labels.has("publication-approved");
   if (already && pending) throw new Error("publication approval: approved+pending coexist (invariant violated)");
   if (!pending) throw new Error("publication approval: not in pending state");
-  if (!youtubePackageBody.includes("<!-- YOUTUBE_REVIEW_READY_V1 video=1 srt=1 thumbnail=1 public=0 -->")) {
-    throw new Error("publication approval: YOUTUBE_REVIEW_READY_V1 readiness marker missing");
+  if (!readinessState) {
+    throw new Error("publication approval: YOUTUBE_REVIEW_READY_V1 readiness marker missing (readiness never recorded)");
+  }
+  if (!readinessState.botAuthored) {
+    throw new Error("publication approval: readiness comment was not authored by github-actions[bot] (forged marker rejected)");
+  }
+  const currentSha = sha256(youtubePackageBody);
+  if (readinessState.bodySha !== currentSha) {
+    throw new Error("publication approval: readiness marker is stale (package body changed since readiness was recorded)");
   }
   return { labels: new Set([...labels, "eren-yayin-onayli", "publication-approved", "yayina-hazir"]) };
 }
@@ -951,44 +1001,42 @@ function runStage15() {
 }
 
 // ===========================================================================
-// STAGE 16 — Final YouTube Publication Approval eligibility
+// STAGE 16 — YouTube Review Readiness -> Final YouTube Publication Approval
+//
+// Two real gates run in sequence, both driven by S[15]'s REAL
+// build_youtube_package.py output:
+//   16a. youtube-review-readiness-gate.yml — the owner explicitly attests
+//        video/SRT/thumbnail/not-yet-public; the gate fails closed unless
+//        ALL FOUR are true, then records a body-revision-bound comment
+//        marker (never in the package body — see computeReviewReadiness).
+//   16b. youtube-publication-approval-gate.yml — now genuinely finds that
+//        marker, verifies it was bot-authored and still matches the
+//        CURRENT package body, and only then grants final approval.
+// This closes the gap the previous zero-token E2E run reported as a real
+// BLOCKER (no stage produced YOUTUBE_REVIEW_READY_V1) — 16a is that
+// producer, deliberately kept OUT of build_youtube_package.py itself (see
+// the file header comment in youtube-review-readiness-gate.yml for why).
 // ===========================================================================
 function runStage16() {
-  const pendingLabels = new Set(["youtube-yayin-paketi", "eren-yayin-onayi-bekliyor", "publication-approval-pending"]);
-  try {
-    const result = computePublicationApprovalEligibility(S[15].body, pendingLabels);
-    // If this ever succeeds against the REAL, unmodified build_youtube_
-    // package.py output, that would mean a producer for YOUTUBE_REVIEW_
-    // READY_V1 now exists somewhere in the real pipeline — worth knowing.
-    REPORT.push({ n: 16, name: "Final YouTube Publication Approval eligibility", status: "PASS", codePath: "youtube-publication-approval-gate.yml (fixture state)" });
-    S[16] = result;
-    console.log("\n=== [16] Final YouTube Publication Approval eligibility ===\n  -> PASS (unexpected — see report)");
-  } catch (error) {
-    stageBlocked(
-      16,
-      "Final YouTube Publication Approval eligibility",
-      "youtube-publication-approval-gate.yml (real build_youtube_package.py output)",
-      error.message,
-      {
-        productionBlocker: true,
-        detail:
-          "build_youtube_package.py's real, unmodified output never contains " +
-          "YOUTUBE_REVIEW_READY_V1 — no code path in the current repository " +
-          "produces it. Section 7 of the real package explicitly records " +
-          "video/SRT/thumbnail as 'Sağlanmadı'. This is not a bug in the gate " +
-          "(it fails closed, exactly as intended) — it is a missing producer.",
-      }
-    );
+  return stage(16, "YouTube Review Readiness -> Final Publication Approval", "youtube-review-readiness-gate.yml -> youtube-publication-approval-gate.yml", () => {
+    const pendingLabels = new Set(["youtube-yayin-paketi", "eren-yayin-onayi-bekliyor", "publication-approval-pending"]);
 
-    // Demonstrate, using an EXPLICITLY-LABELED fixture-only insertion (never
-    // produced by any real code path), that the REST of the gate's own
-    // logic (readiness-marker-gated, approved+pending exclusivity) is
-    // otherwise correct once given proof.
-    const withFixtureMarker = S[15].body + "\n<!-- YOUTUBE_REVIEW_READY_V1 video=1 srt=1 thumbnail=1 public=0 --> <!-- FIXTURE-ONLY: no real producer for this marker exists in the repository -->\n";
-    const demo = computePublicationApprovalEligibility(withFixtureMarker, pendingLabels);
-    assert.ok(demo.labels.has("eren-yayin-onayli"));
-    console.log("  (fixture-only demonstration, NOT counted toward the real stage 16 result: gate logic itself is correct once given a readiness marker — see report)");
-  }
+    const readiness = computeReviewReadiness(
+      S[15].body,
+      pendingLabels,
+      { videoReady: true, srtReady: true, thumbnailReady: true, confirmedNotPublic: true },
+      false
+    );
+    assert.ok(readiness.labels.has("youtube-review-ready"), "16a: real-mode readiness must add youtube-review-ready");
+    console.log(`  16a Review Readiness -> PASS (marker: ${readiness.marker})`);
+
+    const approval = computePublicationApprovalEligibility(S[15].body, readiness.labels, readiness);
+    assert.ok(approval.labels.has("eren-yayin-onayli") && approval.labels.has("publication-approved"));
+    console.log("  16b Final Publication Approval -> PASS");
+
+    S[16] = { readiness, approval };
+    return { artifactsOut: [`readiness comment marker (issue-bound, sha256=${readiness.bodySha.slice(0, 12)}…)`, "approval labels: eren-yayin-onayli, publication-approved, yayina-hazir"], value: S[16] };
+  });
 }
 
 // ===========================================================================
@@ -1096,6 +1144,93 @@ function runNegativeTests() {
     assert.ok(!realLabels.includes(testOnlyLabel), "test approval label must never equal a real production approval label");
   });
 
+  // ---- N13-N21: youtube-review-readiness-gate.yml contract (closes the
+  // stage-16 blocker the previous zero-token E2E run reported) ----
+
+  const readinessPendingLabels = () => new Set(["youtube-yayin-paketi", "eren-yayin-onayi-bekliyor", "publication-approval-pending"]);
+  const readyFlags = { videoReady: true, srtReady: true, thumbnailReady: true, confirmedNotPublic: true };
+
+  negative("N13", "video_ready=false -> readiness rejected (fail closed)", () => {
+    assert.throws(
+      () => computeReviewReadiness(S[15].body, readinessPendingLabels(), { ...readyFlags, videoReady: false }, false),
+      /media attestation incomplete/
+    );
+  });
+
+  negative("N14", "srt_ready=false -> readiness rejected (fail closed)", () => {
+    assert.throws(
+      () => computeReviewReadiness(S[15].body, readinessPendingLabels(), { ...readyFlags, srtReady: false }, false),
+      /media attestation incomplete/
+    );
+  });
+
+  negative("N15", "thumbnail_ready=false -> readiness rejected (fail closed)", () => {
+    assert.throws(
+      () => computeReviewReadiness(S[15].body, readinessPendingLabels(), { ...readyFlags, thumbnailReady: false }, false),
+      /media attestation incomplete/
+    );
+  });
+
+  negative("N16", "public already true (not confirmed unlisted) -> readiness rejected (fail closed)", () => {
+    assert.throws(
+      () => computeReviewReadiness(S[15].body, readinessPendingLabels(), { ...readyFlags, confirmedNotPublic: false }, false),
+      /media attestation incomplete/
+    );
+  });
+
+  negative("N17", "Non-owner actor attempting readiness gate -> rejected by the same owner-only authorization contract as the other 4 agents", () => {
+    mustInclude(reviewReadinessWf, 'if [[ "$NORMALIZED_RUN_ACTOR" != "$NORMALIZED_CONFIG_OWNER" ]]; then', "readiness gate rejects non-owner actors before any Issue read/write");
+    mustInclude(reviewReadinessWf, "uses: actions/checkout@v4", "readiness gate still checks out source before authorizing");
+    const normalizeLogin = (value) => value.toLocaleLowerCase("en-US");
+    const configuredOwner = B.github_owner;
+    const attacker = "some-other-github-user";
+    assert.notEqual(normalizeLogin(attacker), normalizeLogin(configuredOwner));
+    assert.throws(() => {
+      // Mirrors the exact bash condition the gate runs before touching any Issue.
+      if (normalizeLogin(attacker) !== normalizeLogin(configuredOwner)) {
+        throw new Error("readiness: run actor is not the authorized business.github_owner");
+      }
+    }, /not the authorized/);
+  });
+
+  negative("N18", "Non-YouTube-package Issue -> readiness rejected", () => {
+    const wrongLabels = new Set(["thumbnail-paketi", "thumbnail-package", "eren-onayi-bekliyor"]);
+    assert.throws(
+      () => computeReviewReadiness(S[15].body, wrongLabels, readyFlags, false),
+      /not a YouTube Yayın Paketi/
+    );
+  });
+
+  negative("N19", "Package body changed after readiness recorded -> stale readiness rejected at final approval", () => {
+    const readiness = computeReviewReadiness(S[15].body, readinessPendingLabels(), readyFlags, false);
+    const mutatedBody = S[15].body + "\n<!-- N19: package re-generated after readiness was recorded -->\n";
+    assert.notEqual(mutatedBody, S[15].body);
+    assert.throws(
+      () => computePublicationApprovalEligibility(mutatedBody, readiness.labels, readiness),
+      /stale/
+    );
+  });
+
+  negative("N20", "Final approval attempted with readiness never recorded at all -> rejected", () => {
+    assert.throws(
+      () => computePublicationApprovalEligibility(S[15].body, readinessPendingLabels(), undefined),
+      /readiness marker missing \(readiness never recorded\)/
+    );
+  });
+
+  negative("N21", "Forged (non-bot-authored) readiness comment -> rejected at final approval", () => {
+    // Anyone can post an issue comment on a public repo; a hand-typed comment that
+    // merely LOOKS like the marker (even with a correctly-computed body sha256, since
+    // the body is public) must never be trusted — only one posted by
+    // youtube-review-readiness-gate.yml itself (as github-actions[bot]) counts.
+    const genuineReadiness = computeReviewReadiness(S[15].body, readinessPendingLabels(), readyFlags, false);
+    const forged = { ...genuineReadiness, botAuthored: false };
+    assert.throws(
+      () => computePublicationApprovalEligibility(S[15].body, forged.labels, forged),
+      /forged marker rejected/
+    );
+  });
+
   console.log(`--- NEGATIVE TESTS: ${NEGATIVE_RESULTS.filter((r) => r.status === "PASS").length}/${NEGATIVE_RESULTS.length} PASS ---`);
 }
 
@@ -1111,7 +1246,7 @@ function printReport() {
     6: "Owner Approval", 7: "Scenario Selection", 8: "Filming Handoff",
     9: "Video Orchestrator", 10: "Filming Package", 11: "Raw Video Eligibility",
     12: "Editing", 13: "Subtitle", 14: "Thumbnail", 15: "YouTube Package",
-    16: "Publication Approval",
+    16: "Readiness+Approval",
   };
   for (let n = 1; n <= 16; n++) {
     const row = REPORT.find((r) => r.n === n);

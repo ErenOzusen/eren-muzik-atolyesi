@@ -1,0 +1,276 @@
+name: YouTube İnceleme Hazırlık Kapısı
+
+# Records real pre-publication media-readiness evidence for a YouTube
+# Yayın Paketi Issue, WITHOUT ever calling the YouTube API, uploading
+# anything, or publishing anything. This is deliberately a separate gate
+# from build_youtube_package.py: that builder can only ever honestly report
+# "Sağlanmadı"/"Yapılmadı" for video/SRT/thumbnail (it never sees the real
+# media), so it must never emit a readiness marker itself. Readiness can
+# only be attested by the authorized business owner explicitly confirming
+# each condition here.
+#
+# Real-mode sequence:
+#   YouTube Publication Package -> (this gate) -> Final Publication Approval
+#
+# The readiness marker is written as an ISSUE COMMENT, not into the package
+# Issue's own body, specifically to avoid a self-referential hash: the
+# marker binds to a sha256 of the package body, and if the marker were
+# embedded IN that same body, computing the hash would have to exclude the
+# marker itself in some ad hoc way. Keeping it in a comment means the body
+# hash is simply the body's own current content, with nothing to exclude.
+
+"on":
+  workflow_dispatch:
+    inputs:
+      youtube_package_issue:
+        description: "YouTube Yayın Paketi Issue numarası"
+        required: true
+        type: string
+      test_mode:
+        description: "Yüklemesiz güvenli test modu"
+        required: true
+        default: true
+        type: boolean
+      video_ready:
+        description: "Gerçek nihai video hazır ve son kez izlendi mi?"
+        required: true
+        default: false
+        type: boolean
+      srt_ready:
+        description: "Zamanlanmış (timed) SRT dosyası hazır ve videoyla birebir uyumlu mu?"
+        required: true
+        default: false
+        type: boolean
+      thumbnail_ready:
+        description: "Onaylı thumbnail görseli hazır mı?"
+        required: true
+        default: false
+        type: boolean
+      confirmed_not_public:
+        description: "Video henüz herkese açık/yayında DEĞİL mi? (public=0)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: youtube-review-readiness-${{ inputs.youtube_package_issue }}
+  cancel-in-progress: false
+
+jobs:
+  record-review-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ACTOR: ${{ github.actor }}
+      ISSUE_NUMBER: ${{ inputs.youtube_package_issue }}
+      TEST_MODE: ${{ inputs.test_mode }}
+      VIDEO_READY: ${{ inputs.video_ready }}
+      SRT_READY: ${{ inputs.srt_ready }}
+      THUMBNAIL_READY: ${{ inputs.thumbnail_ready }}
+      CONFIRMED_NOT_PUBLIC: ${{ inputs.confirmed_not_public }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Çalıştıranı ve girdileri doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIG_OWNER=$(jq -er '.business.github_owner | select(type == "string" and length > 0)' \
+            .github/config/business-profile.json)
+          NORMALIZED_RUN_ACTOR=$(printf '%s' "$RUN_ACTOR" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+          NORMALIZED_CONFIG_OWNER=$(printf '%s' "$CONFIG_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+
+          if [[ "$NORMALIZED_RUN_ACTOR" != "$NORMALIZED_CONFIG_OWNER" ]]; then
+            echo "Bu ajanı yalnızca işletme profilinde yetkilendirilen GitHub hesabı çalıştırabilir."
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" != "true" && "$TEST_MODE" != "false" ]]; then
+            echo "test_mode yalnızca true veya false olabilir."
+            exit 1
+          fi
+
+          if [[ ! "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Geçerli bir YouTube Yayın Paketi Issue numarası gerekli."
+            exit 1
+          fi
+
+          for FLAG_NAME in VIDEO_READY SRT_READY THUMBNAIL_READY CONFIRMED_NOT_PUBLIC; do
+            FLAG_VALUE="${!FLAG_NAME}"
+            if [[ "$FLAG_VALUE" != "true" && "$FLAG_VALUE" != "false" ]]; then
+              echo "$FLAG_NAME yalnızca true veya false olabilir."
+              exit 1
+            fi
+          done
+
+      - name: Gerçek medya hazırlık koşullarını doğrula (FAIL CLOSED)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Unconditional structural contract — applies in both test and
+          # real mode. There is no bypass: any one of the four attestations
+          # being false means readiness is not recorded, in either mode.
+          # Test mode's own fixture must set all four true to reach the
+          # happy path; a negative test sets one false to prove rejection.
+          if [[ "$VIDEO_READY" != "true" || "$SRT_READY" != "true" || \
+                "$THUMBNAIL_READY" != "true" || "$CONFIRMED_NOT_PUBLIC" != "true" ]]; then
+            echo "Medya hazırlık kanıtı eksik; readiness kaydedilmedi:"
+            echo "  video_ready=$VIDEO_READY srt_ready=$SRT_READY thumbnail_ready=$THUMBNAIL_READY confirmed_not_public=$CONFIRMED_NOT_PUBLIC"
+            exit 1
+          fi
+
+      - name: Kaynak YouTube yayın paketini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$ISSUE_NUMBER" \
+            --json title,body,url,state,labels > /tmp/youtube-package.json
+
+          ISSUE_TITLE=$(jq -r '.title' /tmp/youtube-package.json)
+          ISSUE_URL=$(jq -r '.url' /tmp/youtube-package.json)
+          jq -r '.body' /tmp/youtube-package.json > /tmp/youtube-package.md
+
+          if ! jq -e '.labels | any(.name == "youtube-yayin-paketi")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Kaynak Issue bir YouTube Yayın Paketi değil."
+            exit 1
+          fi
+
+          IS_TEST_PACKAGE=false
+          if jq -e '.labels | any(.name == "sistem-testi")' \
+            /tmp/youtube-package.json > /dev/null; then
+            IS_TEST_PACKAGE=true
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if [[ "$IS_TEST_PACKAGE" != "true" ]]; then
+              echo "Test modu yalnızca sistem-testi etiketli paketle çalışır."
+              exit 1
+            fi
+            if [[ "$ISSUE_TITLE" != "TEST YouTube Yayın Paketi - Thumbnail Paketi #"* ]]; then
+              echo "Test modu için geçerli TEST YouTube Yayın Paketi başlığı gerekli."
+              exit 1
+            fi
+          else
+            if [[ "$IS_TEST_PACKAGE" == "true" ]]; then
+              echo "Gerçek mod sistem testi paketiyle çalışamaz."
+              exit 1
+            fi
+            if [[ "$ISSUE_TITLE" != "YouTube Yayın Paketi - Thumbnail Paketi #"* ]]; then
+              echo "Gerçek paket başlığı güvenlik kuralıyla eşleşmiyor."
+              exit 1
+            fi
+          fi
+
+          # Kaynak provenance kanıtı — gerçekten build_youtube_package.py
+          # tarafından üretilmiş bir paket mi, sanity check.
+          if ! grep -Eq '^<!-- youtube-source-sha256: [0-9a-f]{64} -->$' /tmp/youtube-package.md; then
+            echo "Pakette kaynak provenance işareti (youtube-source-sha256) bulunamadı."
+            exit 1
+          fi
+          if ! grep -Eq '^<!-- youtube-package-version: ' /tmp/youtube-package.md; then
+            echo "Pakette paket sürüm işareti (youtube-package-version) bulunamadı."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor" or .name == "publication-approval-pending")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Paket işletme sahibinin yayın onayını bekleyen durumda değil; readiness bu aşamada kaydedilemez."
+            exit 1
+          fi
+
+          if jq -e '.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")' \
+            /tmp/youtube-package.json > /dev/null; then
+            echo "Bu paket zaten son yayın onayı almış; readiness artık yeniden kaydedilemez."
+            exit 1
+          fi
+
+          {
+            echo "ISSUE_TITLE=$ISSUE_TITLE"
+            echo "ISSUE_URL=$ISSUE_URL"
+          } >> "$GITHUB_ENV"
+
+      - name: Readiness işaretini hesapla ve yorum olarak kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The marker binds to the package Issue's CURRENT full body — not
+          # a reassembled/filtered subset — so ANY later edit to that body
+          # (including a re-run of the package agent) changes this hash and
+          # makes this exact readiness record stop matching at approval
+          # time. No comment ever needs to be deleted for that staleness
+          # protection to take effect.
+          BODY_SHA=$(sha256sum /tmp/youtube-package.md | awk '{print $1}')
+
+          READY_MARKER="<!-- YOUTUBE_REVIEW_READY_V1 issue=$ISSUE_NUMBER test=$TEST_MODE video=1 srt=1 thumbnail=1 public=0 body_sha256=$BODY_SHA -->"
+
+          # Idempotency: if this EXACT marker (same body revision) was
+          # already posted by this same automation identity, do not post a
+          # duplicate comment.
+          gh issue view "$ISSUE_NUMBER" --comments --json comments \
+            --jq '.comments[] | select(.author.login == "github-actions[bot]") | .body' \
+            > /tmp/bot-comments.txt
+
+          if grep -Fqx "$READY_MARKER" /tmp/bot-comments.txt; then
+            echo "Bu paket revizyonu için readiness zaten kaydedilmiş."
+            echo "BODY_SHA=$BODY_SHA" >> "$GITHUB_ENV"
+            echo "READINESS_ALREADY_RECORDED=true" >> "$GITHUB_ENV"
+          else
+            READY_COMMENT=$(printf '## 🎬 YouTube inceleme hazırlığı kaydedildi\n\n%s\n\n**Video hazır:** Evet  \n**Zamanlanmış SRT hazır:** Evet  \n**Onaylı thumbnail hazır:** Evet  \n**Herkese açık/yayında mı:** Hayır  \n**Bağlı paket revizyonu (sha256):** `%s`\n\nBu kayıt hiçbir video yüklemesi veya YouTube yayını yapmaz; yalnızca son yayın onayı için ön koşul kanıtıdır.' "$READY_MARKER" "$BODY_SHA")
+            gh issue comment "$ISSUE_NUMBER" --body "$READY_COMMENT"
+
+            echo "BODY_SHA=$BODY_SHA" >> "$GITHUB_ENV"
+            echo "READINESS_ALREADY_RECORDED=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Readiness etiketini kalıcı hale getir ve doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            READY_LABEL="test-youtube-review-ready"
+            LABEL_DESCRIPTION="Sıfır-token sistem testi: YouTube inceleme hazırlığı kapısı geçti (gerçek onay durumunu etkilemez)"
+            LABEL_COLOR="BFD4F2"
+          else
+            READY_LABEL="youtube-review-ready"
+            LABEL_DESCRIPTION="Video, zamanlanmış SRT ve thumbnail hazır; henüz herkese açık değil"
+            LABEL_COLOR="0E8A16"
+          fi
+
+          gh label create "$READY_LABEL" --color "$LABEL_COLOR" --description "$LABEL_DESCRIPTION" --force
+          gh issue edit "$ISSUE_NUMBER" --add-label "$READY_LABEL" > /dev/null
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            > /tmp/youtube-package-labels-after.txt
+
+          if ! grep -qx "$READY_LABEL" /tmp/youtube-package-labels-after.txt; then
+            echo "Readiness etiketi doğrulaması başarısız: $READY_LABEL eksik."
+            exit 1
+          fi
+
+          {
+            echo "### YouTube inceleme hazırlığı kaydedildi"
+            echo "- Issue: $ISSUE_URL"
+            echo "- Test modu: $TEST_MODE"
+            echo "- Zaten kayıtlıydı: $READINESS_ALREADY_RECORDED"
+            echo "- Bağlı paket revizyonu (sha256): $BODY_SHA"
+            echo "- Etiket: $READY_LABEL"
+            echo "- AI kullanımı: 0 token"
+            echo "- YouTube API çağrısı: 0"
+            echo "- Video yükleme: yapılmadı"
+            echo "- Yayın: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -111,12 +111,20 @@ assert.ok(ytPackageGuardIdx > issueViewIdx, "youtube-yayin-paketi guard must run
 const sistemTestiIdx = must("grep -qx 'sistem-testi'", "sistem-testi exclusion");
 assert.ok(sistemTestiIdx < firstMutationIdx, "sistem-testi exclusion must precede mutation");
 
-// 8. No-approved-state early exit occurs before mutation.
+// 8. No-approved-state-AND-no-readiness early exit occurs before mutation.
+// (Phase: also clears a stale youtube-review-ready readiness label, not just
+// prior final approval — see HAD_READINESS below.)
 const hadApprovalExitIdx = must(
-  '[[ "$HAD_PUBLICATION_APPROVAL" != "true" ]]',
-  "no-prior-approval early exit",
+  '[[ "$HAD_PUBLICATION_APPROVAL" != "true" && "$HAD_READINESS" != "true" ]]',
+  "no-prior-approval-and-no-readiness early exit",
 );
-assert.ok(hadApprovalExitIdx < firstMutationIdx, "no-prior-approval early exit must precede mutation");
+assert.ok(hadApprovalExitIdx < firstMutationIdx, "no-prior-approval-and-no-readiness early exit must precede mutation");
+must("HAD_READINESS=false", "readiness-had flag initialization", sistemTestiIdx);
+must(
+  "grep -qx 'youtube-review-ready' /tmp/publication-labels.txt",
+  "readiness label detected from the pre-mutation snapshot",
+  sistemTestiIdx,
+);
 
 // ---------------------------------------------------------------------------
 // 9 & 10. BOTH pending labels are prepared AND added before approved labels are
@@ -195,23 +203,23 @@ invocationLines.forEach((line, i) => {
 // independently verified (each name checked on its own).
 // ---------------------------------------------------------------------------
 const removalDeclIdx = must(
-  "for LABEL in eren-yayin-onayli publication-approved yayina-hazir; do",
+  "for LABEL in eren-yayin-onayli publication-approved yayina-hazir youtube-review-ready; do",
   "approved-label removal-args loop",
   pendingVerifyGuardIdx, // the second occurrence — the first is PHASE 1's read-only check
 );
 const removalDeclLine = workflow.slice(removalDeclIdx, workflow.indexOf("\n", removalDeclIdx));
-for (const label of ["eren-yayin-onayli", "publication-approved", "yayina-hazir"]) {
+for (const label of ["eren-yayin-onayli", "publication-approved", "yayina-hazir", "youtube-review-ready"]) {
   assert.ok(
     removalDeclLine.includes(label),
     `${label} is not independently present in the removal-args declaration`,
   );
 }
-// Exactly these three, in this order, and no fourth value smuggled into the same loop.
+// Exactly these four, in this order, and no fifth value smuggled into the same loop.
 const removalDeclList = removalDeclLine.match(/for LABEL in ([^;]+); do/)[1].trim().split(/\s+/);
 assert.deepEqual(
   removalDeclList,
-  ["eren-yayin-onayli", "publication-approved", "yayina-hazir"],
-  "removal-args loop must declare exactly these three labels, in this order, and no others",
+  ["eren-yayin-onayli", "publication-approved", "yayina-hazir", "youtube-review-ready"],
+  "removal-args loop must declare exactly these four labels, in this order, and no others",
 );
 assert.ok(
   workflow.includes('REMOVE_ARGS+=(--remove-label "$LABEL")'),
@@ -232,7 +240,7 @@ assert.ok(
 // restricted to exactly the two permitted pending labels.
 // ---------------------------------------------------------------------------
 const PERMITTED_ADD = new Set(["eren-yayin-onayi-bekliyor", "publication-approval-pending"]);
-const PERMITTED_REMOVE = new Set(["eren-yayin-onayli", "publication-approved", "yayina-hazir"]);
+const PERMITTED_REMOVE = new Set(["eren-yayin-onayli", "publication-approved", "yayina-hazir", "youtube-review-ready"]);
 const PERMITTED_ANY = new Set([...PERMITTED_ADD, ...PERMITTED_REMOVE]);
 
 const forLoopDeclarations = [...workflow.matchAll(/for\s+(\w+)\s+in\s+([^;]+);\s*do/g)].map((m) => ({
@@ -358,7 +366,7 @@ const requiredPresentIdx = must(
   "final-state presence verification",
 );
 const requiredAbsentIdx = must(
-  "for REQUIRED_ABSENT in eren-yayin-onayli publication-approved yayina-hazir; do",
+  "for REQUIRED_ABSENT in eren-yayin-onayli publication-approved yayina-hazir youtube-review-ready; do",
   "final-state absence verification",
 );
 assert.ok(requiredPresentIdx > finalFetchIdx, "presence verification must use the post-removal fetch");

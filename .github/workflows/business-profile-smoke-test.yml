@@ -87,6 +87,7 @@ on:
       - ".github/workflows/youtube-publication-package-agent.yml"
       - ".github/workflows/youtube-publication-approval-gate.yml"
       - ".github/workflows/publication-approval-invalidation-gate.yml"
+      - ".github/workflows/youtube-review-readiness-gate.yml"
       - ".github/workflows/system-status-cost-agent.yml"
       - ".github/workflows/final-technical-check.yml"
       - ".github/workflows/raw-video-intake-gate.yml"

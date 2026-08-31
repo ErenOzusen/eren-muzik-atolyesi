@@ -141,10 +141,28 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Fq \
-            '<!-- YOUTUBE_REVIEW_READY_V1 video=1 srt=1 thumbnail=1 public=0 -->' \
-            /tmp/youtube-package.md; then
-            echo "Video, SRT ve thumbnail hazır / herkese açık yayın yapılmadı kanıtı eksik."
+          # Review-readiness proof lives in an issue COMMENT (posted only by
+          # youtube-review-readiness-gate.yml, running as github-actions[bot]
+          # after the owner explicitly attested to all four conditions),
+          # never in the package body itself — this sidesteps a
+          # self-referential hash (the marker binds to a sha256 of the body
+          # it is NOT part of). The marker must bind to the CURRENT body
+          # revision: if the package body changed after readiness was
+          # recorded (e.g. the package agent re-ran), the sha256 in any
+          # existing marker comment no longer matches and approval fails
+          # closed — no comment ever needs to be deleted for that to work.
+          # Author is checked too so no other commenter — this is a public
+          # repo, anyone can post an issue comment — can forge a marker by
+          # hand-computing the body's public sha256.
+          CURRENT_BODY_SHA=$(sha256sum /tmp/youtube-package.md | awk '{print $1}')
+          READY_MARKER="<!-- YOUTUBE_REVIEW_READY_V1 issue=$ISSUE_NUMBER test=false video=1 srt=1 thumbnail=1 public=0 body_sha256=$CURRENT_BODY_SHA -->"
+
+          gh issue view "$ISSUE_NUMBER" --comments --json comments \
+            --jq '.comments[] | select(.author.login == "github-actions[bot]") | .body' \
+            > /tmp/bot-comments.txt
+
+          if ! grep -Fqx "$READY_MARKER" /tmp/bot-comments.txt; then
+            echo "Geçerli (güncel paket revizyonuna bağlı) YouTube inceleme hazırlığı işareti bulunamadı; paket, readiness kaydından sonra değişmiş olabilir veya readiness hiç kaydedilmemiş."
             exit 1
           fi
 

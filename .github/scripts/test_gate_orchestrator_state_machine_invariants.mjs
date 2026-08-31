@@ -6,7 +6,7 @@
  *   Nihai Senaryolar -> Owner Approval -> Production Scenario Selection ->
  *   Filming Handoff -> Filming Package -> Raw Video Intake ->
  *   Editing/Media pipeline -> YouTube Publication Package ->
- *   Final Publication Approval
+ *   YouTube Review Readiness -> Final Publication Approval
  *
  * Two layers, for every check below:
  *   1. SOURCE-ANCHORED: every condition this file models is first proven to
@@ -48,6 +48,7 @@ const filmingPackageAgent = read(".github/workflows/filming-package-agent-v4-rou
 const rawVideoIntake = read(".github/workflows/raw-video-intake-gate.yml");
 const publicationApproval = read(".github/workflows/youtube-publication-approval-gate.yml");
 const publicationInvalidation = read(".github/workflows/publication-approval-invalidation-gate.yml");
+const reviewReadiness = read(".github/workflows/youtube-review-readiness-gate.yml");
 
 const sha256 = (text) => crypto.createHash("sha256").update(text, "utf8").digest("hex");
 
@@ -100,11 +101,21 @@ mustFind(rawVideoIntake, 'if [[ "$RUN_ACTOR" != "$AUTHORIZED_GITHUB_OWNER" ]]; t
 mustFind(rawVideoIntake, "https?://|www\\.|drive\\.google|dropbox\\.", "raw video intake rejects private URLs");
 mustFind(rawVideoIntake, "token|key|signature|auth", "raw video intake rejects signed/secret URL parameters");
 
-mustFind(publicationInvalidation, 'for LABEL in eren-yayin-onayli publication-approved yayina-hazir; do', "publication invalidation clears approval labels");
+mustFind(publicationInvalidation, 'for LABEL in eren-yayin-onayli publication-approved yayina-hazir youtube-review-ready; do', "publication invalidation clears approval AND readiness labels");
 mustFind(publicationInvalidation, "eren-yayin-onayi-bekliyor", "publication invalidation establishes pending state");
-mustFind(publicationApproval, 'YOUTUBE_REVIEW_READY_V1 video=1 srt=1 thumbnail=1 public=0', "publication approval requires video+srt+thumbnail readiness proof");
+mustFind(publicationApproval, 'YOUTUBE_REVIEW_READY_V1 issue=$ISSUE_NUMBER test=false video=1 srt=1 thumbnail=1 public=0 body_sha256=$CURRENT_BODY_SHA', "publication approval requires a revision-bound video+srt+thumbnail readiness proof");
+mustFind(publicationApproval, 'select(.author.login == "github-actions[bot]")', "publication approval only trusts bot-authored readiness comments, never a hand-typed forgery");
 mustFind(publicationApproval, "eren-yayin-onayi-bekliyor", "real publication approval requires pending state first");
 mustFind(publicationApproval, 'jq -e \'.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")\'', "publication approval checks for prior approval before re-approving");
+
+// YouTube Review Readiness gate — the producer of YOUTUBE_REVIEW_READY_V1.
+// Deliberately NOT part of build_youtube_package.py (that builder can only
+// ever honestly report unready media) — a separate, owner-attested gate.
+mustFind(reviewReadiness, 'if [[ "$NORMALIZED_RUN_ACTOR" != "$NORMALIZED_CONFIG_OWNER" ]]; then', "readiness gate uses the same owner-only authorization as the other package agents");
+mustFind(reviewReadiness, 'if [[ "$VIDEO_READY" != "true" || "$SRT_READY" != "true" || \\', "readiness gate fails closed unless every one of the 4 attestations is true");
+mustFind(reviewReadiness, "BODY_SHA=$(sha256sum /tmp/youtube-package.md | awk '{print $1}')", "readiness gate binds its marker to the package's current body sha256");
+mustFind(reviewReadiness, "gh issue comment", "readiness proof is recorded as a comment, never written into the package body itself (avoids a self-referential hash)");
+mustFind(reviewReadiness, 'jq -e \'.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")\'', "readiness gate refuses to run on an already-approved package");
 
 for (const forbidden of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "ai_router.py", "curl "]) {
   for (const [name, source] of [
@@ -115,6 +126,7 @@ for (const forbidden of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KE
     ["raw-video-intake-gate.yml", rawVideoIntake],
     ["youtube-publication-approval-gate.yml", publicationApproval],
     ["publication-approval-invalidation-gate.yml", publicationInvalidation],
+    ["youtube-review-readiness-gate.yml", reviewReadiness],
   ]) {
     assert.ok(!source.includes(forbidden), `INVARIANT 9 violated: ${name} must spend zero AI tokens, found: ${forbidden}`);
   }
@@ -122,9 +134,10 @@ for (const forbidden of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KE
 for (const forbidden of ["youtube.googleapis.com", "videos.insert", "publishAt", "privacyStatus", "googleapis.com/upload"]) {
   assert.ok(!publicationApproval.includes(forbidden), `INVARIANT 11 violated: youtube-publication-approval-gate.yml must never call the real YouTube API, found: ${forbidden}`);
   assert.ok(!publicationInvalidation.includes(forbidden), `INVARIANT 11 violated: publication-approval-invalidation-gate.yml must never call the real YouTube API, found: ${forbidden}`);
+  assert.ok(!reviewReadiness.includes(forbidden), `INVARIANT 11 violated: youtube-review-readiness-gate.yml must never call the real YouTube API, found: ${forbidden}`);
 }
 
-console.log("source_anchored_verification_ok gates_checked=7");
+console.log("source_anchored_verification_ok gates_checked=8");
 
 // ===========================================================================
 // BEHAVIORAL SIMULATOR — mirrors the exact conditions verified above.
