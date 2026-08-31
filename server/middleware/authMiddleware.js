@@ -27,9 +27,12 @@ const checkAdminToken = async (req, res, next) => {
   // Second, independent revocation check: the in-memory revokedJtis Set
   // (inside verifyAdminToken above) only ever protects the current process
   // — this asks the persistent store too, so a token revoked before a
-  // restart/redeploy stays revoked after one. Any error here (a real store
-  // error, not "no store configured" — see revocationService's own
-  // readyState guard) fails CLOSED: the request is rejected, never
+  // restart/redeploy stays revoked after one. isJtiPersistentlyRevoked()
+  // only ever returns false without a real check when no persistent store
+  // is configured at all (no MONGODB_URI) — see its own comments. Every
+  // other failure — including "MONGODB_URI is set but the connection isn't
+  // ready" (disconnected/connecting/disconnecting/unreachable) — throws,
+  // and is caught here and fails CLOSED: the request is rejected, never
   // silently let through.
   try {
     if (await isJtiPersistentlyRevoked(result.jti)) {

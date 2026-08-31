@@ -17,7 +17,7 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 
 const RevokedAdminToken = require("../models/RevokedAdminToken");
-const { _resetRevokedTokensForTests } = require("../auth");
+const { createAdminToken, _resetRevokedTokensForTests } = require("../auth");
 
 let mongod;
 let server;
@@ -25,6 +25,14 @@ let baseUrl;
 
 test.before(async () => {
   mongod = await MongoMemoryServer.create();
+
+  // revocationService.js treats a persistent store as "configured for this
+  // deployment" exactly when MONGODB_URI is set (mirroring
+  // config/database.js's own connectMongo()) — set it here, exactly as a
+  // real deployment would, so this file's tests exercise the real
+  // "configured and connected" path rather than the "no store configured"
+  // fallback.
+  process.env.MONGODB_URI = mongod.getUri();
   await mongoose.connect(mongod.getUri());
 
   // Required as a module: server.js's own connectMongo()/app.listen() never
@@ -42,6 +50,7 @@ test.after(async () => {
   await new Promise((resolve) => server.close(resolve));
   await mongoose.disconnect();
   await mongod.stop();
+  delete process.env.MONGODB_URI;
 });
 
 test.beforeEach(async () => {
@@ -69,6 +78,19 @@ async function request(method, path, { token, body } = {}) {
   return { status: response.status, json };
 }
 
+// Mints tokens directly via auth.js's own createAdminToken, exactly what
+// the real POST /api/admin/login handler does internally — rather than
+// round-tripping through that rate-limited HTTP endpoint (10 requests /
+// 15 min, see middleware/rateLimiters.js's loginRateLimiter) for every
+// token this file needs. This file is testing REVOCATION, not the login
+// endpoint itself (admin-auth.integration.test.js already covers that in
+// full), so a directly minted token is both equivalent and appropriate;
+// test a) below still exercises the real HTTP login endpoint once, so the
+// full path is proven at least once in this file too.
+function mintToken() {
+  return createAdminToken(process.env.ADMIN_TOKEN_SECRET);
+}
+
 async function login() {
   const { json } = await request("POST", "/api/admin/login", {
     body: { password: "revocation-persistence-test-password" },
@@ -76,7 +98,7 @@ async function login() {
   return json.token;
 }
 
-test("a) a freshly issued token is accepted", async () => {
+test("a) a freshly issued token is accepted (via the real HTTP login endpoint)", async () => {
   const token = await login();
   const { status } = await request("GET", "/api/admin/weekly-schedule", { token });
   assert.notEqual(status, 401);
@@ -84,7 +106,7 @@ test("a) a freshly issued token is accepted", async () => {
 });
 
 test("b) logout revokes the token: rejected immediately afterward", async () => {
-  const token = await login();
+  const token = mintToken();
   const { status: logoutStatus } = await request("POST", "/api/admin/logout", { token });
   assert.equal(logoutStatus, 200);
 
@@ -93,7 +115,7 @@ test("b) logout revokes the token: rejected immediately afterward", async () => 
 });
 
 test("c) revocation survives a simulated backend restart (in-memory state wiped, DB-backed check still rejects)", async () => {
-  const token = await login();
+  const token = mintToken();
   await request("POST", "/api/admin/logout", { token });
 
   // Simulate exactly what a real process restart does to in-memory state:
@@ -107,8 +129,8 @@ test("c) revocation survives a simulated backend restart (in-memory state wiped,
 });
 
 test("d) revoking one token never affects a different, unrelated valid token", async () => {
-  const tokenA = await login();
-  const tokenB = await login();
+  const tokenA = mintToken();
+  const tokenB = mintToken();
 
   await request("POST", "/api/admin/logout", { token: tokenA });
   _resetRevokedTokensForTests(); // simulate restart, same as test c)
@@ -122,7 +144,7 @@ test("d) revoking one token never affects a different, unrelated valid token", a
 });
 
 test("e) a TTL index on expiresAt exists on the revocation collection (expired revocation records self-clean)", async () => {
-  const token = await login();
+  const token = mintToken();
   await request("POST", "/api/admin/logout", { token });
 
   const indexes = await RevokedAdminToken.collection.indexes();
@@ -141,7 +163,7 @@ test("e) a TTL index on expiresAt exists on the revocation collection (expired r
 });
 
 test("f) the persisted revocation record stores only jti + expiresAt — never the raw token, password, or secret", async () => {
-  const token = await login();
+  const token = mintToken();
   await request("POST", "/api/admin/logout", { token });
 
   const docs = await RevokedAdminToken.collection.find({}).toArray();
@@ -159,12 +181,14 @@ test("f) the persisted revocation record stores only jti + expiresAt — never t
 });
 
 test("g) a revocation-store error while checking fails CLOSED — the token is rejected, not silently accepted", async (t) => {
-  const token = await login();
+  const token = mintToken();
 
   // Force the persistent-revocation check itself to throw, simulating a
-  // real store error while the connection stays live (distinct from "not
-  // connected", which auth-middleware.js is deliberately allowed to
-  // tolerate — see revocationService.js's own comments on that trade-off).
+  // real store error while the connection stays live and configured
+  // (distinct from admin-revocation-store-unavailable.integration.test.js,
+  // which covers "MONGODB_URI set but the connection itself isn't ready" —
+  // both must fail closed, exercised as two separate, deliberate failure
+  // modes).
   const original = RevokedAdminToken.findOne;
   RevokedAdminToken.findOne = () => {
     throw new Error("simulated revocation store failure");
@@ -178,11 +202,47 @@ test("g) a revocation-store error while checking fails CLOSED — the token is r
 });
 
 test("h) a revoked token stays rejected across repeated requests, not just the first one after logout", async () => {
-  const token = await login();
+  const token = mintToken();
   await request("POST", "/api/admin/logout", { token });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { status } = await request("GET", "/api/admin/weekly-schedule", { token });
     assert.equal(status, 403);
   }
+});
+
+test("i) a logout whose persistence write fails is never presented as an identical, fully-successful logout", async (t) => {
+  const token = mintToken();
+
+  // Force the persistence write itself to fail, simulating a real store
+  // error at logout time (store configured and connected, write throws).
+  const original = RevokedAdminToken.updateOne;
+  RevokedAdminToken.updateOne = () => {
+    throw new Error("simulated persistence write failure");
+  };
+  t.after(() => {
+    RevokedAdminToken.updateOne = original;
+  });
+
+  const { status, json } = await request("POST", "/api/admin/logout", { token });
+
+  // Logout still succeeds outright: the in-memory revocation already made
+  // the token invalid in this process, so it must not be reported as a
+  // hard failure. But it must not look identical to a durable logout
+  // either — `persisted: false` is the honest signal a caller (or an
+  // ops/monitoring consumer) can check.
+  assert.equal(status, 200);
+  assert.equal(json.success, true);
+  assert.equal(json.persisted, false, "a failed persistence write must be reported, not silently reported as fully successful");
+
+  // The immediate, in-process revocation must still have happened despite
+  // the persistence failure.
+  const { status: afterLogout } = await request("GET", "/api/admin/weekly-schedule", { token });
+  assert.equal(afterLogout, 403);
+});
+
+test("j) a normal logout (persistence succeeds) reports persisted: true", async () => {
+  const token = mintToken();
+  const { json } = await request("POST", "/api/admin/logout", { token });
+  assert.equal(json.persisted, true);
 });

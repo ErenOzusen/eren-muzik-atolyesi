@@ -25,16 +25,23 @@ function login(req, res) {
 }
 
 // Admin: oturumu sonlandır (token'ı sunucu tarafında geçersiz kıl).
-// Revokes in-memory immediately (unchanged), then persists the same
-// revocation (jti + expiry only — see services/revocationService.js) so it
-// survives a backend restart/redeploy, not just this process.
+// Revokes in-memory immediately (unchanged) — the token is already invalid
+// in this process by the time persistAdminTokenRevocation runs, so a
+// durability failure never blocks or fails the logout call itself. But it
+// also must never be presented as an identical, fully-successful logout:
+// `persisted` reports honestly whether the revocation is guaranteed to
+// survive a restart/redeploy (see services/revocationService.js for every
+// case — no store configured, store configured but not ready, or a write
+// that itself failed — each already logs loudly server-side when it isn't
+// simply "no store configured at all").
 async function logout(req, res) {
   revokeAdminToken(req.adminTokenId);
-  await persistAdminTokenRevocation(req.adminTokenId, req.adminTokenExpiresAt);
+  const persisted = await persistAdminTokenRevocation(req.adminTokenId, req.adminTokenExpiresAt);
 
   res.json({
     success: true,
     message: "Çıkış yapıldı",
+    persisted,
   });
 }
 
