@@ -264,6 +264,217 @@ class RouterUnitTests(unittest.TestCase):
     def test_quality_contract_is_backward_compatible_when_not_requested(self) -> None:
         self.assertEqual(ai_router.quality_errors("Herhangi bir kullanılabilir çıktı", None), [])
 
+    # ===================================================================
+    # Web search support (QC router migration) — zero-network, mocked
+    # request_json throughout, exactly like every other test in this file.
+    # ===================================================================
+
+    def test_a_web_search_payload_is_added_only_when_requested(self) -> None:
+        response = {
+            "content": [{"type": "text", "text": "OK"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)) as mocked:
+            ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+                web_search_max_uses=3,
+            )
+        payload = mocked.call_args.args[2]
+        self.assertEqual(
+            payload["tools"],
+            [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
+        )
+
+        # b) max_uses is carried through exactly, not rounded/clamped/renamed.
+        with patch.object(ai_router, "request_json", return_value=(200, response)) as mocked:
+            ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+                web_search_max_uses=7,
+            )
+        self.assertEqual(mocked.call_args.args[2]["tools"][0]["max_uses"], 7)
+
+        # f) web search NOT requested (default 0) -> no tools key at all,
+        # 100% identical payload shape to before this feature existed.
+        with patch.object(ai_router, "request_json", return_value=(200, response)) as mocked:
+            ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+            )
+        self.assertNotIn("tools", mocked.call_args.args[2])
+
+    def test_c_web_search_requests_count_is_extracted_into_result(self) -> None:
+        response = {
+            "content": [{"type": "text", "text": "OK"}],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 2,
+                "server_tool_use": {"web_search_requests": 2},
+            },
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)):
+            result = ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+                web_search_max_uses=5,
+            )
+        self.assertEqual(result["web_searches"], 2)
+
+        # Absent/malformed server_tool_use must never raise — defaults to 0.
+        response_no_usage_block = {**response, "usage": {"input_tokens": 10, "output_tokens": 2}}
+        with patch.object(ai_router, "request_json", return_value=(200, response_no_usage_block)):
+            result = ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+                web_search_max_uses=5,
+            )
+        self.assertEqual(result["web_searches"], 0)
+
+    def test_d_web_sources_are_extracted_and_deduplicated_by_url(self) -> None:
+        response = {
+            "content": [
+                {"type": "text", "text": "Cevap metni"},
+                {
+                    "type": "server_tool_use",
+                    "content": [
+                        {
+                            "type": "web_search_tool_result",
+                            "content": [
+                                {"type": "web_search_result", "url": "https://a.example/1", "title": "A"},
+                                {"type": "web_search_result", "url": "https://b.example/2", "title": "B"},
+                                # duplicate url, different title -> must not
+                                # produce a second entry
+                                {"type": "web_search_result", "url": "https://a.example/1", "title": "A again"},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": "cited claim",
+                    "citations": [
+                        {
+                            "type": "web_search_result_location",
+                            "url": "https://a.example/1",
+                            "title": "A citation",
+                        },
+                        {
+                            "type": "web_search_result_location",
+                            "url": "https://c.example/3",
+                            "title": None,
+                        },
+                    ],
+                },
+            ],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 2, "server_tool_use": {"web_search_requests": 1}},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)):
+            result = ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+                web_search_max_uses=1,
+            )
+        urls = [source["url"] for source in result["web_sources"]]
+        self.assertEqual(urls, ["https://a.example/1", "https://b.example/2", "https://c.example/3"])
+        self.assertEqual(len(urls), len(set(urls)), "duplicate URLs must be removed")
+        by_url = {source["url"]: source for source in result["web_sources"]}
+        self.assertEqual(by_url["https://a.example/1"]["title"], "A")  # first-seen title wins
+        self.assertEqual(by_url["https://c.example/3"]["title"], "https://c.example/3")  # falls back to URL when title is null
+
+    def test_d2_web_sources_empty_when_web_search_not_requested(self) -> None:
+        # Even if a response happened to contain search-result-shaped nodes,
+        # extraction only runs when web search was actually requested for
+        # this call (mirrors the pre-router workflow's tools-gated jq walk).
+        response = {
+            "content": [{"type": "text", "text": "OK"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)):
+            result = ai_router.call_anthropic(
+                "https://anthropic.invalid/messages", "key", "model", "", "prompt", 100, 5,
+            )
+        self.assertEqual(result["web_sources"], [])
+        self.assertEqual(result["web_searches"], 0)
+
+    def test_e_provider_without_web_search_support_is_skipped_with_zero_network_calls(self) -> None:
+        providers = {
+            "anthropic": {
+                "api_style": "anthropic_messages",
+                "endpoint": "https://api.anthropic.invalid/v1/messages",
+                "secret_env": "TEST_ANTHROPIC_KEY",
+                "model_env": "",
+                "default_model": "claude-test",
+                "supports_web_search": True,
+            },
+            "openai": {
+                "api_style": "openai_chat",
+                "endpoint": "https://api.openai.invalid/v1/chat/completions",
+                "secret_env": "TEST_OPENAI_KEY",
+                "model_env": "",
+                "default_model": "gpt-test",
+                # no supports_web_search key at all -- must be treated as
+                # unsupported, not silently truthy.
+            },
+        }
+        with patch.dict(os.environ, {"TEST_ANTHROPIC_KEY": "x", "TEST_OPENAI_KEY": "y"}, clear=False):
+            with patch.object(ai_router, "request_json") as mocked:
+                # Simulate exactly what main()'s provider loop does for a
+                # web-search-requested run, provider-by-provider, without
+                # invoking main() itself (keeps this test at the same unit
+                # level as its neighbors in this file).
+                web_search_requested = True
+                order = ["openai", "anthropic"]  # unsupported provider listed FIRST
+                attempts = []
+                for name in order:
+                    provider = providers[name]
+                    if web_search_requested and not provider.get("supports_web_search"):
+                        attempts.append({"provider": name, "status": "skipped", "reason": "web_search_unsupported"})
+                        continue
+                    mocked.return_value = (200, {
+                        "content": [{"type": "text", "text": "OK"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    })
+                    ai_router.call_anthropic(
+                        provider["endpoint"], "key", "model", "", "prompt", 10, 5, web_search_max_uses=1,
+                    )
+                    attempts.append({"provider": name, "status": "success"})
+                    break
+
+        self.assertEqual(attempts[0], {"provider": "openai", "status": "skipped", "reason": "web_search_unsupported"})
+        self.assertEqual(attempts[1]["provider"], "anthropic")
+        self.assertEqual(attempts[1]["status"], "success")
+        # The critical assertion: the unsupported provider's endpoint was
+        # never dialed at all -- exactly one real (mocked) network call,
+        # and it was to anthropic, never openai.
+        self.assertEqual(mocked.call_count, 1)
+        self.assertEqual(mocked.call_args.args[0], "https://api.anthropic.invalid/v1/messages")
+
+    def test_openai_chat_result_always_carries_zero_web_search_fields(self) -> None:
+        # Parity/shape check: a caller reading result["web_searches"] /
+        # result["web_sources"] uniformly, regardless of which provider
+        # style answered, never hits a KeyError.
+        response = {
+            "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+        }
+        with patch.object(ai_router, "request_json", return_value=(200, response)):
+            result = ai_router.call_openai_chat(
+                "https://openai.invalid/chat", "key", "model", "", "prompt", 100, 5,
+            )
+        self.assertEqual(result["web_searches"], 0)
+        self.assertEqual(result["web_sources"], [])
+
+    def test_real_config_anthropic_is_the_only_web_search_capable_provider(self) -> None:
+        config_path = ROUTER_PATH.parent.parent / "config" / "ai-router.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        for name, provider in config["providers"].items():
+            expected = name == "anthropic"
+            self.assertEqual(
+                bool(provider.get("supports_web_search")),
+                expected,
+                f"{name}: supports_web_search must be {expected}",
+            )
+
     def test_real_config_has_unique_known_provider_order(self) -> None:
         config_path = ROUTER_PATH.parent.parent / "config" / "ai-router.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))

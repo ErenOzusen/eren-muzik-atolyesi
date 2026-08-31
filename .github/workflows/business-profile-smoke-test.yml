@@ -41,6 +41,7 @@ on:
       - ".github/scripts/test_filming_package_live_label_validation.mjs"
       - ".github/scripts/persist_filming_package_labels.sh"
       - ".github/scripts/test_quality_control_portability.mjs"
+      - ".github/scripts/test_weekly_quality_control_router_migration.mjs"
       - ".github/scripts/test_script_correction_portability.mjs"
       - ".github/scripts/fixtures/nova-coffee-business-profile.json"
       - ".github/scripts/test_second_business_portability.mjs"
@@ -135,6 +136,7 @@ jobs:
           node .github/scripts/test_filming_package_label_migration_phase1.mjs
           node .github/scripts/test_filming_package_live_label_validation.mjs
           node .github/scripts/test_quality_control_portability.mjs
+          node .github/scripts/test_weekly_quality_control_router_migration.mjs
           node .github/scripts/test_script_correction_portability.mjs
           node .github/scripts/test_second_business_portability.mjs
           python3 .github/scripts/test_cost_guard.py
