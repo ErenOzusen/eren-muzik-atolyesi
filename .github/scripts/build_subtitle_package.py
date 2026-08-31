@@ -23,13 +23,39 @@ def remove_comments(text: str) -> str:
 
 
 def extract_script_section(text: str, name: str) -> str:
+    # Stops at whichever comes first: a "---" separator, the NEXT bracketed
+    # section heading (**[...]**), or end of text. Stopping only at "---"/
+    # end (the previous behavior) silently let one section's capture run
+    # through every later section in the same scenario — e.g. KANCA would
+    # swallow ANA AKIŞ, KAPANIŞ VE CTA and SHORTS KESİTİ too, since nothing
+    # in the actual script-writing/correction prompts ever guaranteed a
+    # "---" between individual bracketed sections (only, at best, between
+    # whole scenarios). The extra alternation closes that regardless of
+    # whether "---" is present.
     pattern = re.compile(
-        rf"(?ms)^\*\*\[{re.escape(name)}\]\*\*\s*\n(.*?)(?=^---\s*$|\Z)"
+        rf"(?ms)^\*\*\[{re.escape(name)}\]\*\*\s*\n(.*?)(?=^\*\*\[[^\]]+\]\*\*\s*$|^---\s*$|\Z)"
     )
     match = pattern.search(text)
     if not match:
         raise SystemExit(f"Nihai senaryoda [{name}] bölümü bulunamadı.")
     return clean_spoken_text(match.group(1))
+
+
+def select_scenario_block(text: str, scenario: int) -> str:
+    # The "Nihai Senaryolar" issue body still holds all three scenarios side
+    # by side — the production-selection gate only changes labels, it never
+    # shortens the body. Every field/section extractor below runs a plain
+    # re.search, which only ever returns the FIRST match in the whole text —
+    # i.e. always SENARYO 1 — no matter which scenario the owner actually
+    # selected for production. Isolating the selected scenario's own block
+    # first keeps every later extraction correctly scoped to it.
+    match = re.search(
+        rf"(?ms)^##\s+SENARYO\s+{scenario}:.*?\n(.*?)(?=^##\s+SENARYO\s+[123]:|\Z)",
+        text,
+    )
+    if not match:
+        raise SystemExit(f"Nihai senaryoda SENARYO {scenario} bloğu bulunamadı.")
+    return match.group(0)
 
 
 def clean_spoken_text(text: str) -> str:
@@ -96,6 +122,7 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--final-url", required=True)
     parser.add_argument("--editing-url", required=True)
+    parser.add_argument("--scenario", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--profile", required=True)
     parser.add_argument("--test-mode", choices=("true", "false"), required=True)
     args = parser.parse_args()
@@ -109,7 +136,7 @@ def main() -> None:
     control_terms = list(dict.fromkeys([brand, category, *content["content_topics"]]))
     control_term_lines = "\n".join(f"- {term}" for term in control_terms)
 
-    final_source = remove_comments(read_text(args.final))
+    final_source = select_scenario_block(remove_comments(read_text(args.final)), args.scenario)
     editing_source = remove_comments(read_text(args.editing))
 
     parts = {name: extract_script_section(final_source, name) for name in SECTION_NAMES}
@@ -143,6 +170,7 @@ def main() -> None:
 
 - **Kaynak kurgu paketi:** {args.editing_url}
 - **Kaynak onaylı senaryo:** {args.final_url}
+- **Seçilen senaryo:** {args.scenario}
 - **AI kullanımı:** 0 giriş tokenı, 0 çıkış tokenı, 0 web araması
 - **Metin koruması:** Kelimeler değiştirilmedi; yalnızca satır sonları eklendi
 - **Zaman kodu:** Bilerek oluşturulmadı; gerçek ses duyulmadan saniye tahmini yapılmaz

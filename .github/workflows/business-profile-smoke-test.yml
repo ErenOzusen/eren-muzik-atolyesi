@@ -98,6 +98,15 @@ on:
       - ".github/workflows/weekly-quality-control.yml"
       - ".github/workflows/weekly-script-correction.yml"
       - ".github/workflows/business-profile-smoke-test.yml"
+      - ".github/scripts/test_zero_token_full_e2e.mjs"
+      - ".github/scripts/fixtures/e2e/**"
+      - ".github/workflows/eren-approval-gate.yml"
+      - ".github/workflows/eren-production-selection-gate.yml"
+      - ".github/workflows/filming-handoff-gate.yml"
+      - ".github/workflows/raw-video-intake-gate.yml"
+      - ".github/workflows/youtube-publication-approval-gate.yml"
+      - ".github/scripts/video_orchestrator.py"
+      - ".github/config/video-orchestrator.json"
 
 permissions:
   contents: read
@@ -163,6 +172,10 @@ jobs:
           node .github/scripts/test_final_technical_check_router_migration.mjs
           node .github/scripts/test_editing_package_router_migration.mjs
           node .github/scripts/test_production_ai_consolidation_audit.mjs
+
+      - name: Sifir-token tam zincir E2E testini calistir
+        shell: bash
+        run: node .github/scripts/test_zero_token_full_e2e.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash

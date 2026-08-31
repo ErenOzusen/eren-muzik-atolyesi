@@ -23,7 +23,12 @@ def load_profile(path: Path) -> dict:
 
 def scenario_text(topic: str) -> tuple[str, str]:
     seo_title = f"{topic} neden önemli? Güvenli günlük yaklaşım"
-    source = f"""**SEO Başlığı:** {seo_title}
+    # Wrapped in a real "## SENARYO 1: ..." heading, matching the real Nihai
+    # Senaryolar Issue body shape build_thumbnail_package.py's --scenario
+    # argument now scopes its extraction to (see select_scenario_block).
+    source = f"""## SENARYO 1: {seo_title}
+
+**SEO Başlığı:** {seo_title}
 
 **[KANCA]**
 KORUNACAK-ANLAM günlük yaklaşımın temel noktasını açıklar.
@@ -61,6 +66,8 @@ def build(profile_path: Path, directory: Path) -> tuple[str, str]:
             "https://example.test/final",
             "--subtitle-url",
             "https://example.test/subtitle",
+            "--scenario",
+            "1",
             "--profile",
             str(profile_path),
             "--test-mode",

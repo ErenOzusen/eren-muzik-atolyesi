@@ -30,7 +30,12 @@ def final_text(topic: str) -> dict[str, str]:
         "heading_one": "KORUNACAK Birinci Bölüm",
         "heading_two": "KORUNACAK İkinci Bölüm",
     }
-    values["source"] = f"""**SEO Başlığı:** {values['title']}
+    # Wrapped in a real "## SENARYO 1: ..." heading, matching the real Nihai
+    # Senaryolar Issue body shape build_youtube_package.py's --scenario
+    # argument now scopes its extraction to (see select_scenario_block).
+    values["source"] = f"""## SENARYO 1: {values['title']}
+
+**SEO Başlığı:** {values['title']}
 **Açıklamanın İlk Cümlesi:** {values['description']}
 **Etiketler:** {values['hashtags']}
 **Playlist Önerisi:** {values['playlist']}
@@ -89,6 +94,8 @@ def build(profile_path: Path, directory: Path) -> tuple[str, dict[str, str]]:
             "https://example.test/thumbnail",
             "--thumbnail-choice",
             "PENDING",
+            "--scenario",
+            "1",
             "--profile",
             str(profile_path),
             "--test-mode",

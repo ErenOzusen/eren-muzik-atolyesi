@@ -455,6 +455,42 @@ jobs:
             exit 1
           fi
 
+          # Downstream builders (build_subtitle_package.py, build_thumbnail_
+          # package.py, build_youtube_package.py) extract each **[KANCA]** /
+          # **[ANA AKIŞ]** / **[KAPANIŞ VE CTA]** / **[SHORTS KESİTİ]** block
+          # from the FULL, un-narrowed Nihai Senaryolar body by scanning
+          # forward to the next literal "---" line (or end of document) —
+          # they never stop at the next "## SENARYO" heading. Nothing in
+          # this workflow's own output contract has ever required a "---"
+          # between scenario sections, so a 3-scenario body with no
+          # separators would make every one of those extractions silently
+          # spill from SENARYO 1 through SENARYO 2 and 3. Fail closed here,
+          # before this becomes anyone's real editing/subtitle/thumbnail/
+          # YouTube package.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          text = Path("/tmp/final-scripts.md").read_text(encoding="utf-8")
+          scenario_count = int(os.environ["CORRECTION_SCENARIO_COUNT"])
+          headings = list(re.finditer(r"(?m)^## SENARYO ([123]):", text))
+          if len(headings) != scenario_count:
+              raise SystemExit("Ayraç kontrolü: senaryo başlığı sayısı beklenenle eşleşmiyor.")
+
+          for index, heading in enumerate(headings):
+              is_last = index == len(headings) - 1
+              end = headings[index + 1].start() if not is_last else len(text)
+              block = text[heading.start():end]
+              if not is_last and not re.search(r"(?m)^---\s*$", block):
+                  raise SystemExit(
+                      f"SENARYO {heading.group(1)} ile bir sonraki senaryo arasında "
+                      "\"---\" ayracı yok; alt akış (altyazı/thumbnail/YouTube) "
+                      "çıkarımı yanlış senaryoya taşabilir."
+                  )
+          print("scenario_separator_check_ok")
+          PY
+
           INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/weekly-script-correction-meta.json)
           OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/weekly-script-correction-meta.json)
           {
