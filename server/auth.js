@@ -207,7 +207,12 @@ function verifyAdminToken(token, secret) {
     return { valid: false, reason: "revoked" };
   }
 
-  return { valid: true, jti };
+  // expiresAt (epoch seconds, from the already-verified payload) is
+  // returned alongside jti so a caller that wants to persist revocation
+  // beyond this process (see services/revocationService.js) never needs to
+  // re-parse the token itself — it only ever sees the jti/expiry pair that
+  // has already passed signature and canonical-encoding verification.
+  return { valid: true, jti, expiresAt };
 }
 
 // Revokes by jti, not by raw token string. Callers should only ever pass a
