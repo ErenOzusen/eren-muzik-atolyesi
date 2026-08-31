@@ -19,7 +19,8 @@
       "endpoint": "https://api.anthropic.com/v1/messages",
       "secret_env": "ANTHROPIC_API_KEY",
       "model_env": "ANTHROPIC_MODEL",
-      "use_primary_model_as_default": true
+      "use_primary_model_as_default": true,
+      "supports_web_search": true
     },
     "openai": {
       "api_style": "openai_chat",

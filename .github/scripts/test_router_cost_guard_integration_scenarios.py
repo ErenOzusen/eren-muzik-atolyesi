@@ -302,6 +302,68 @@ class RouterCostGuardIntegrationTests(unittest.TestCase):
         self.assertEqual(len(violations), 1)
         self.assertIn("provider_attempts=3 exceeds max_provider_attempts=2", violations[0])
 
+    # 9. web search requested, unsupported provider skipped, zero network
+    # calls to it (QC router migration, item e) ---------------------------
+    def test_scenario_9_web_search_unsupported_provider_skipped_with_no_network_call(self) -> None:
+        # anthropic (first in provider order in this test's own config) is
+        # deliberately left WITHOUT supports_web_search; openai (second) is
+        # given it. Web search is requested, so anthropic must be skipped
+        # before any network call, and only openai is ever actually dialed.
+        config = json.loads(self.config_file.read_text(encoding="utf-8"))
+        config["providers"]["openai"]["supports_web_search"] = True
+        self.config_file.write_text(json.dumps(config), encoding="utf-8")
+
+        with patch.object(ai_router, "request_json", return_value=(200, {
+            "choices": [{"message": {"content": "OK from openai"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        })) as mocked:
+            exit_code = self.run_router(["--web-search-max-uses", "2"])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            mocked.call_count, 1,
+            "anthropic lacks supports_web_search and must never be dialed at all"
+        )
+        self.assertEqual(mocked.call_args.args[0], "https://api.openai.invalid/v1/chat/completions")
+
+        meta = self.read_meta()
+        self.assertEqual(meta["provider"], "openai")
+        skipped = [a for a in meta["attempts"] if a.get("status") == "skipped"]
+        self.assertTrue(
+            any(a["provider"] == "anthropic" and a["reason"] == "web_search_unsupported" for a in skipped),
+            f"expected anthropic skipped with reason=web_search_unsupported, got: {skipped}"
+        )
+
+    # 10. web search NOT requested -> full 3-provider fallback resilience
+    # is completely unaffected (backward compatibility, item f) -----------
+    def test_scenario_10_web_search_not_requested_is_fully_backward_compatible(self) -> None:
+        # Identical to scenario 2 (first-provider 429 -> second succeeds),
+        # run with the exact same config/providers used throughout this
+        # file (none marked supports_web_search) and --web-search-max-uses
+        # simply omitted -- proving the provider-capability skip introduced
+        # for web search never activates and never changes this pre-existing
+        # fallback behavior when web search isn't requested at all.
+        with patch.object(ai_router, "request_json", side_effect=[
+            (429, {"error": {"message": "rate limited"}}),
+            (200, {
+                "choices": [{"message": {"content": "OK from openai"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 80, "completion_tokens": 40},
+            }),
+        ]) as mocked:
+            exit_code = self.run_router()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(mocked.call_count, 2)
+        meta = self.read_meta()
+        self.assertEqual(meta["provider"], "openai")
+        self.assertEqual(meta["web_searches"], 0)
+        self.assertEqual(meta["web_source_count"], 0)
+        skipped = [a for a in meta["attempts"] if a.get("status") == "skipped"]
+        self.assertEqual(
+            [a.get("reason") for a in skipped if a.get("reason") == "web_search_unsupported"], [],
+            "no provider should ever be skipped for web_search_unsupported when web search wasn't requested"
+        )
+
     # 7. missing cost-guard config -> fails loudly, never silently passes -
     def test_scenario_7_missing_cost_guard_config_fails_loudly(self) -> None:
         missing_path = Path(self.tempdir.name) / "does-not-exist.json"

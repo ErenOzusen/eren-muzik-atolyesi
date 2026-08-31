@@ -86,7 +86,10 @@ assert.ok(
     "ALAN KURALLARI: Merkezi işletme profilinden gelen sektör doğrulama kurallarını uygula.",
   ),
 );
-assert.ok(workflow.includes("$domain_rules"));
+// Router migration: domain_rules is threaded straight from the bash env
+// var (QC_DOMAIN_RULES_TEXT) into the system-prompt heredoc — there is no
+// separate jq --arg rename anymore (that layer no longer exists).
+assert.ok(workflow.includes("$QC_DOMAIN_RULES_TEXT"));
 
 // --- New generic (sector-independent) evidence and sourcing rules --------
 
@@ -149,7 +152,12 @@ for (const musicTerm of ["akor", "nota", "riff", "bas gitar", "armoni"])
 for (const dentalTerm of ["teshis", "tedavi"])
   assert.ok(!currentContext.toLocaleLowerCase("tr-TR").includes(dentalTerm), dentalTerm);
 
-// --- E) Web-search budget and cost limits unchanged -----------------------
+// --- E) Web-search budget and cost limits unchanged, now threaded through
+// the shared AI router instead of an inline Anthropic tools: payload. The
+// exact web_search_20260209 payload SHAPE is ai_router.py's job now (see
+// test_ai_router.py's web-search tests) -- this file's job is only to
+// prove the WORKFLOW correctly threads the business-profile-driven budget
+// into the router call, never a hard-coded number. ---------------------
 
 assert.equal(currentProfile.content.quality_control.max_web_searches, 1);
 assert.equal(secondProfile.content.quality_control.max_web_searches, 1);
@@ -158,9 +166,10 @@ for (const profile of [currentProfile, secondProfile]) {
   assert.equal(profile.content.quality_control.max_model_output, 4500);
   assert.equal(profile.content.quality_control.target_report_output, 2500);
 }
-assert.ok(workflow.includes('type: "web_search_20260209"'));
-assert.ok(workflow.includes("max_uses: $max_web_searches"));
-assert.ok(workflow.includes("max_tokens: $max_tokens"));
+assert.ok(workflow.includes("python3 .github/scripts/ai_router.py"));
+assert.ok(workflow.includes('--web-search-max-uses "$QC_MAX_WEB_SEARCHES"'));
+assert.ok(workflow.includes('--max-tokens "$QC_MAX_MODEL_OUTPUT"'));
+assert.ok(!workflow.includes("api.anthropic.com"), "the direct Anthropic endpoint must no longer be hard-coded in the workflow");
 
 // --- F) Test-mode and secret safety remain unchanged ---------------------
 

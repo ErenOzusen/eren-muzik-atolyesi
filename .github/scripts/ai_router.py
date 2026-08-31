@@ -82,6 +82,41 @@ def request_json(url: str, headers: dict[str, str], payload: dict[str, Any], tim
         return 599, {"error": {"message": str(exc)}}
 
 
+def extract_web_sources(data: Any) -> list[dict[str, str]]:
+    """Recursively walks a raw Anthropic response for any object shaped like
+    a web_search_result / web_search_result_location item — mirroring the
+    `jq '.. | objects | select((.type? == "web_search_result_location" or
+    .type? == "web_search_result") and (.url? != null)) | {title: (.title
+    // .url), url}'` walk the pre-router workflow implementation used to do
+    itself directly on the raw API response. Returns deduplicated
+    {title, url} entries in first-seen order — never raw token/secret data,
+    since only these two fields are ever read off a matching node."""
+    found: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            node_type = node.get("type")
+            url = node.get("url")
+            if (
+                node_type in ("web_search_result", "web_search_result_location")
+                and isinstance(url, str)
+                and url
+                and url not in seen_urls
+            ):
+                seen_urls.add(url)
+                title = node.get("title")
+                found.append({"title": title if isinstance(title, str) and title else url, "url": url})
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(data)
+    return found
+
+
 def call_anthropic(
     endpoint: str,
     api_key: str,
@@ -90,6 +125,7 @@ def call_anthropic(
     prompt: str,
     max_tokens: int,
     timeout: int,
+    web_search_max_uses: int = 0,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
@@ -98,6 +134,14 @@ def call_anthropic(
     }
     if system_prompt.strip():
         payload["system"] = system_prompt
+    if web_search_max_uses > 0:
+        payload["tools"] = [
+            {
+                "type": "web_search_20260209",
+                "name": "web_search",
+                "max_uses": web_search_max_uses,
+            }
+        ]
 
     status, data = request_json(
         endpoint,
@@ -118,12 +162,17 @@ def call_anthropic(
             if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)
         ).strip()
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    server_tool_use = usage.get("server_tool_use") if isinstance(usage.get("server_tool_use"), dict) else {}
+    web_searches = int(server_tool_use.get("web_search_requests") or 0)
+    web_sources = extract_web_sources(data) if web_search_max_uses > 0 else []
     return {
         "http_status": status,
         "text": text,
         "stop_reason": data.get("stop_reason"),
         "input_tokens": int(usage.get("input_tokens") or 0),
         "output_tokens": int(usage.get("output_tokens") or 0),
+        "web_searches": web_searches,
+        "web_sources": web_sources,
         "raw_error": data.get("error"),
     }
 
@@ -171,6 +220,15 @@ def call_openai_chat(
         "stop_reason": finish_reason,
         "input_tokens": int(usage.get("prompt_tokens") or 0),
         "output_tokens": int(usage.get("completion_tokens") or 0),
+        # None of the openai_chat-style providers currently configured
+        # (openai/deepseek/qwen) support web search in this router — see
+        # the provider-capability skip in main() below, which never lets
+        # this function be called at all when web search was requested of
+        # a provider lacking it. These zero/empty defaults just keep the
+        # result shape uniform for any caller reading web_searches/
+        # web_sources regardless of which provider style answered.
+        "web_searches": 0,
+        "web_sources": [],
         "raw_error": data.get("error"),
     }
 
@@ -239,7 +297,29 @@ def main() -> None:
         default="",
         help="Opsiyonel yerel JSON çıktı sözleşmesi. Başarısız aday reddedilir ve sıradaki provider denenir.",
     )
+    parser.add_argument(
+        "--web-search-max-uses",
+        type=int,
+        default=0,
+        help=(
+            "0 (varsayılan) = web search istenmiyor, davranış tamamen geriye "
+            "uyumlu. >0 ise: yalnızca providers.<isim>.supports_web_search=true "
+            "olan sağlayıcılara Anthropic'in native web_search_20260209 aracı "
+            "bu üst sınırla eklenir; desteklemeyen bir sağlayıcı hiçbir ağ "
+            "çağrısı yapılmadan reason=web_search_unsupported ile atlanır."
+        ),
+    )
+    parser.add_argument(
+        "--web-sources-file",
+        default="",
+        help=(
+            "Opsiyonel. Verilirse, başarılı denemenin tekilleştirilmiş "
+            "{title, url} web kaynakları buraya JSON dizi olarak yazılır "
+            "(web search hiç kullanılmamışsa boş dizi yazılır)."
+        ),
+    )
     args = parser.parse_args()
+    web_search_requested = args.web_search_max_uses > 0
 
     config = load_json(args.config)
     routing = config.get("routing") if isinstance(config.get("routing"), dict) else {}
@@ -265,6 +345,15 @@ def main() -> None:
             attempts.append({"provider": provider_name, "status": "skipped", "reason": "provider_not_configured"})
             continue
 
+        if web_search_requested and not provider.get("supports_web_search"):
+            # Never silently fall back to a tool-less model when the caller
+            # explicitly asked for web-search capability — that would let a
+            # quality/verification pass that specifically needs web
+            # confirmation quietly run without it. Skipped before any
+            # credential/model/endpoint check and before any network call.
+            attempts.append({"provider": provider_name, "status": "skipped", "reason": "web_search_unsupported"})
+            continue
+
         secret_env = provider.get("secret_env")
         api_key = os.getenv(secret_env, "") if isinstance(secret_env, str) else ""
         model = resolve_model(provider_name, provider, args.primary_model)
@@ -284,7 +373,10 @@ def main() -> None:
         started = time.monotonic()
         try:
             if style == "anthropic_messages":
-                result = call_anthropic(endpoint, api_key, model, system_prompt, prompt, args.max_tokens, timeout)
+                result = call_anthropic(
+                    endpoint, api_key, model, system_prompt, prompt, args.max_tokens, timeout,
+                    web_search_max_uses=args.web_search_max_uses,
+                )
             elif style == "openai_chat":
                 result = call_openai_chat(endpoint, api_key, model, system_prompt, prompt, args.max_tokens, timeout)
             else:
@@ -308,6 +400,7 @@ def main() -> None:
             "stop_reason": result.get("stop_reason"),
             "input_tokens": result.get("input_tokens", 0),
             "output_tokens": result.get("output_tokens", 0),
+            "web_searches": result.get("web_searches", 0),
             "elapsed_ms": elapsed_ms,
         }
 
@@ -325,6 +418,7 @@ def main() -> None:
             attempts.append(attempt)
             Path(args.output_file).write_text(result["text"].strip() + "\n", encoding="utf-8")
             total_input_tokens, total_output_tokens = usage_totals(attempts)
+            web_sources = result.get("web_sources") or []
             meta = {
                 "provider": provider_name,
                 "model": model,
@@ -337,9 +431,15 @@ def main() -> None:
                 "quality_passed": True if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
+                "web_searches": result.get("web_searches", 0),
+                "web_source_count": len(web_sources),
                 "attempts": attempts,
             }
             Path(args.meta_file).write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            if args.web_sources_file:
+                Path(args.web_sources_file).write_text(
+                    json.dumps(web_sources, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                )
             print(json.dumps({"provider": provider_name, "model": model, "status": "success"}, ensure_ascii=False))
             return
 
