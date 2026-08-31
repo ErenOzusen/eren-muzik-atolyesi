@@ -1069,7 +1069,25 @@ if (data.success) {
   }
 };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    // Read the token before clearing any local state — it must still be in
+    // hand for the request below. Server-side revocation is best-effort
+    // from here: whether the request succeeds, fails, or the backend is
+    // unreachable, local logout below always completes so the admin is
+    // never stuck in the panel over a backend/DB problem.
+    const tokenAtLogout = adminToken;
+
+    if (tokenAtLogout) {
+      try {
+        await fetch(`${API_BASE_URL}/api/admin/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tokenAtLogout}` },
+        });
+      } catch (error) {
+        console.error("Admin çıkışı sunucuya bildirilemedi, yerel oturum yine de kapatılıyor:", error.message);
+      }
+    }
+
     clearAdminToken();
   setIsAdminLoggedIn(false);
   setAdminToken("");

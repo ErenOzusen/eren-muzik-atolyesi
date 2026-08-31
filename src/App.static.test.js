@@ -61,6 +61,38 @@ describe("D — admin login/logout session state", () => {
     expect(logoutBlock).toMatch(/setIsAdminLoggedIn\(false\)/);
   });
 
+  it("logout notifies the server (POST /api/admin/logout, bearer token) so backend-side revocation actually runs, reading the token BEFORE it is cleared", () => {
+    const logoutIdx = appSource.indexOf("const handleAdminLogout");
+    expect(logoutIdx).toBeGreaterThan(-1);
+    const logoutBlock = appSource.slice(logoutIdx, logoutIdx + 1500);
+
+    expect(logoutBlock).toMatch(/\/api\/admin\/logout/);
+    expect(logoutBlock).toMatch(/method:\s*"POST"/);
+    expect(logoutBlock).toMatch(/Authorization:\s*`Bearer \$\{tokenAtLogout\}`/);
+
+    const tokenCaptureIdx = logoutBlock.indexOf("const tokenAtLogout = adminToken");
+    const fetchIdx = logoutBlock.indexOf("/api/admin/logout");
+    const clearIdx = logoutBlock.indexOf("clearAdminToken()");
+    expect(tokenCaptureIdx).toBeGreaterThan(-1);
+    expect(tokenCaptureIdx).toBeLessThan(fetchIdx);
+    expect(tokenCaptureIdx).toBeLessThan(clearIdx);
+  });
+
+  it("logout clears local admin session unconditionally: the server notification is wrapped in try/catch, and local cleanup happens after the catch — not only on the happy path — so an unreachable backend can never leave the admin stuck in the panel", () => {
+    const logoutIdx = appSource.indexOf("const handleAdminLogout");
+    const logoutBlock = appSource.slice(logoutIdx, logoutIdx + 1500);
+
+    const tryIdx = logoutBlock.indexOf("try {");
+    const catchIdx = logoutBlock.indexOf("} catch");
+    const clearIdx = logoutBlock.indexOf("clearAdminToken()");
+    const setLoggedOutIdx = logoutBlock.indexOf("setIsAdminLoggedIn(false)");
+
+    expect(tryIdx).toBeGreaterThan(-1);
+    expect(catchIdx).toBeGreaterThan(tryIdx);
+    expect(clearIdx).toBeGreaterThan(catchIdx);
+    expect(setLoggedOutIdx).toBeGreaterThan(catchIdx);
+  });
+
   it("a saved token is restored on mount via getSavedAdminToken", () => {
     expect(appSource).toMatch(/getSavedAdminToken\(\)/);
   });
