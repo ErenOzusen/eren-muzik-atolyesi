@@ -1,5 +1,6 @@
 const { createAdminToken, revokeAdminToken, timingSafeEqualStrings } = require("../auth");
 const { ADMIN_PASSWORD, ADMIN_TOKEN_SECRET } = require("../middleware/authMiddleware");
+const { persistAdminTokenRevocation } = require("../services/revocationService");
 
 function login(req, res) {
   const { password } = req.body;
@@ -23,9 +24,13 @@ function login(req, res) {
   });
 }
 
-// Admin: oturumu sonlandır (token'ı sunucu tarafında geçersiz kıl)
-function logout(req, res) {
+// Admin: oturumu sonlandır (token'ı sunucu tarafında geçersiz kıl).
+// Revokes in-memory immediately (unchanged), then persists the same
+// revocation (jti + expiry only — see services/revocationService.js) so it
+// survives a backend restart/redeploy, not just this process.
+async function logout(req, res) {
   revokeAdminToken(req.adminTokenId);
+  await persistAdminTokenRevocation(req.adminTokenId, req.adminTokenExpiresAt);
 
   res.json({
     success: true,
