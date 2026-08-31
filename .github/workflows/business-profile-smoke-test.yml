@@ -76,6 +76,7 @@ on:
       - ".github/scripts/test_weekly_script_correction_router_migration.mjs"
       - ".github/scripts/test_final_technical_check_router_migration.mjs"
       - ".github/scripts/test_editing_package_router_migration.mjs"
+      - ".github/scripts/test_production_ai_consolidation_audit.mjs"
       - ".github/scripts/fixtures/**"
       - ".github/workflows/filming-package-agent-v4-router.yml"
       - ".github/workflows/editing-package-agent.yml"
@@ -157,6 +158,7 @@ jobs:
           node .github/scripts/test_weekly_script_correction_router_migration.mjs
           node .github/scripts/test_final_technical_check_router_migration.mjs
           node .github/scripts/test_editing_package_router_migration.mjs
+          node .github/scripts/test_production_ai_consolidation_audit.mjs
 
       - name: Sifir-token ozetini yaz
         shell: bash
