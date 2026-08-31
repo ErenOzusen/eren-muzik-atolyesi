@@ -205,15 +205,29 @@ assert.equal(resolveScenario(["uretim-senaryo-1", "uretim-senaryo-2"]), null);
 assert.equal(resolveScenario(["production-scenario-1", "production-scenario-2"]), null);
 assert.equal(resolveScenario(["uretim-senaryo-1", "production-scenario-2"]), null);
 
-// Completed approval migrations remain isolated from this label slice.
+// Completed approval/publication migrations remain isolated from this label
+// slice — with ONE deliberate, disclosed exception: approval-invalidation-
+// gate.yml (gate/orchestrator consolidation package) now ALSO cascades into
+// production-selected/production-scenario-N on a body edit. This is not a
+// modularity regression; it closes a real stale-selection vulnerability (see
+// test_gate_orchestrator_state_machine_invariants.mjs, INVARIANT 7): without
+// it, editing approved content and re-approving it (without a fresh SEÇ N)
+// could leave the OLD scenario selection sitting there, still authorizing a
+// real filming handoff for content nobody re-selected. ownerGate and BOTH
+// publication-layer files still have no legitimate reason to touch
+// selection state, so they keep the original isolation check.
 const ownerGate = read(".github/workflows/eren-approval-gate.yml");
 const ownerInvalidation = read(".github/workflows/approval-invalidation-gate.yml");
 const publicationGate = read(".github/workflows/youtube-publication-approval-gate.yml");
 const publicationInvalidation = read(".github/workflows/publication-approval-invalidation-gate.yml");
-for (const untouched of [ownerGate, ownerInvalidation, publicationGate, publicationInvalidation]) {
+for (const untouched of [ownerGate, publicationGate, publicationInvalidation]) {
   assert.ok(!untouched.includes("production-selected"));
   assert.ok(!untouched.includes("production-scenario-"));
 }
+assert.ok(
+  ownerInvalidation.includes("production-selected") && ownerInvalidation.includes("production-scenario-"),
+  "approval-invalidation-gate.yml must deliberately cascade into production-selected/production-scenario-N (stale-selection fix)"
+);
 mustInclude(ownerGate, "grep -qxE 'eren-onayli|owner-approved'");
 mustInclude(ownerInvalidation, "owner-approval-pending");
 mustInclude(publicationGate, 'any(.name == "eren-yayin-onayli" or .name == "publication-approved")');

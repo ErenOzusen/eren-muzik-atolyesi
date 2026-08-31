@@ -139,7 +139,7 @@ for (const rawVerb of [
 
 const detectionLoopIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "detection loop must include filming-package-ready",
 );
 const detectionLoopEndIdx = mustFind(invalidation, "done", "detection loop end", detectionLoopIdx);
@@ -164,7 +164,7 @@ const removeArgsInitIdx = mustFind(
 );
 const removalLoopDeclIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "removal-args loop must include filming-package-ready",
   removeArgsInitIdx,
 );
@@ -194,7 +194,7 @@ assert.ok(!invalidation.includes("|| true"), "no step in this file may suppress 
 
 const finalAbsentIdx = mustFind(
   invalidation,
-  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "final absent verification must include filming-package-ready",
   batchedRemovalIdx,
 );

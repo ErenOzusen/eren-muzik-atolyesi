@@ -220,10 +220,18 @@ jobs:
               exit 1
             fi
 
+            # The handoff marker must match the CURRENT body content, not just
+            # the issue/scenario numbers — otherwise a stale marker posted
+            # before a later content edit (which approval-invalidation-
+            # gate.yml already clears the selection labels for, but a marker
+            # comment itself is never deleted) could still authorize a real
+            # filming handoff for content nobody actually re-selected with a
+            # fresh SEÇ N after the edit.
+            CURRENT_BODY_SHA=$(sha256sum /tmp/body.md | awk '{print $1}')
             gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
-            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO body_sha256=$CURRENT_BODY_SHA -->"
             if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
-              echo "Seçim Kapısının geçerli handoff işareti bulunamadı."
+              echo "Seçim Kapısının geçerli (güncel içerik revizyonuna bağlı) handoff işareti bulunamadı; içerik SEÇ $EXPECTED_SCENARIO sonrasında değişmiş olabilir."
               exit 1
             fi
 

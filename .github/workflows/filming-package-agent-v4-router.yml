@@ -223,15 +223,22 @@ jobs:
               exit 1
             fi
 
+            # Same body-content binding as filming-handoff-gate.yml (this
+            # workflow's own caller): re-validates independently here too,
+            # since this step is the actual last line of defense before any
+            # real AI call / package Issue gets created. A stale
+            # FILMING_HANDOFF_V1 marker posted before a later content edit
+            # must never be treated as current authorization.
+            SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
             gh issue view "$FINAL_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/final-comments.txt
-            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$FINAL_NUMBER scenario=$EXPECTED_SCENARIO -->"
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$FINAL_NUMBER scenario=$EXPECTED_SCENARIO body_sha256=$SOURCE_SHA -->"
             if ! grep -Fqx "$HANDOFF_MARKER" /tmp/final-comments.txt; then
-              echo "Geçerli Seçim Kapısı handoff işareti bulunamadı."
+              echo "Geçerli (güncel içerik revizyonuna bağlı) Seçim Kapısı handoff işareti bulunamadı; içerik SEÇ $EXPECTED_SCENARIO sonrasında değişmiş olabilir."
               exit 1
             fi
           fi
 
-          SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
+          SOURCE_SHA="${SOURCE_SHA:-$(sha256sum /tmp/final-scripts.md | awk '{print $1}')}"
           PACKAGE_TITLE="Çekim Paketi - Nihai Senaryolar #$FINAL_NUMBER"
           export SELECTED_SCENARIO
 

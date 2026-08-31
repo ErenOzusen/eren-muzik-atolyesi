@@ -155,6 +155,7 @@ jobs:
 
           PACKAGE_TITLE=$(jq -r '.title' /tmp/package.json)
           PACKAGE_URL=$(jq -r '.url' /tmp/package.json)
+          jq -r '.body // ""' /tmp/package.json > /tmp/package-body.md
 
           if [[ "$PACKAGE_TITLE" != "Çekim Paketi - Nihai Senaryolar #"* ]]; then
             echo "#$PACKAGE_NUMBER geçerli bir Çekim Paketi Issue'su değil."
@@ -164,6 +165,24 @@ jobs:
           if ! jq -e '.labels | any(.name == "cekim-paketi")' /tmp/package.json > /dev/null \
             && ! jq -e '.labels | any(.name == "filming-package")' /tmp/package.json > /dev/null; then
             echo "Çekim Paketi Issue'sunda cekim-paketi etiketi bulunamadı."
+            exit 1
+          fi
+
+          # Deterministic provenance, not just a title-parsed number: every
+          # real filming package already embeds the exact SHA-256 of the
+          # Nihai Senaryolar body it was generated from (see
+          # filming-package-agent-v4-router.yml's <!-- source-body-sha256 -->
+          # marker). If that source Issue was edited afterwards, its CURRENT
+          # body hash will no longer match — proving the filming package is
+          # stale relative to content nobody re-approved/re-selected/re-
+          # handed-off for.
+          PACKAGE_SOURCE_SHA=$(grep -oE '<!-- source-body-sha256: [0-9a-f]{64} -->' /tmp/package-body.md \
+            | grep -oE '[0-9a-f]{64}' \
+            | head -n 1 \
+            || true)
+
+          if [[ -z "$PACKAGE_SOURCE_SHA" ]]; then
+            echo "Çekim paketinde kaynak içerik doğrulama imzası (source-body-sha256) bulunamadı."
             exit 1
           fi
 
@@ -178,7 +197,7 @@ jobs:
           fi
 
           gh issue view "$FINAL_NUMBER" \
-            --json title,url,labels > /tmp/final.json
+            --json title,body,url,labels > /tmp/final.json
 
           if ! jq -e '.labels | any(.name == "eren-onayli" or .name == "owner-approved")' \
             /tmp/final.json > /dev/null; then
@@ -189,6 +208,14 @@ jobs:
           if ! jq -e '.labels | any(.name == "cekime-hazir")' /tmp/final.json > /dev/null \
             && ! jq -e '.labels | any(.name == "production-ready")' /tmp/final.json > /dev/null; then
             echo "Kaynak Nihai Senaryolar çekime hazır değil."
+            exit 1
+          fi
+
+          jq -r '.body // ""' /tmp/final.json > /tmp/final-body.md
+          CURRENT_FINAL_SHA=$(sha256sum /tmp/final-body.md | awk '{print $1}')
+
+          if [[ "$PACKAGE_SOURCE_SHA" != "$CURRENT_FINAL_SHA" ]]; then
+            echo "Çekim paketi güncel olmayan bir Nihai Senaryolar içeriğine dayanıyor (kaynak içerik sonradan değişti); ham video teslimi kabul edilemez."
             exit 1
           fi
 
