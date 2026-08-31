@@ -18,6 +18,7 @@ FIXTURES = SCRIPTS_DIR / "fixtures"
 CASES = (
     (REPO_ROOT / ".github/config/business-profile.json", True, None),
     (FIXTURES / "second-business-profile.json", True, None),
+    (FIXTURES / "nova-coffee-business-profile.json", True, None),
     (
         FIXTURES / "invalid-approval-off.json",
         False,
@@ -113,6 +114,7 @@ def run_case(
         expected_primary_devices = {
             "business-profile.json": "Telefon",
             "second-business-profile.json": "Klinik kamera",
+            "nova-coffee-business-profile.json": "Telefon",
         }
         expected_device = expected_primary_devices.get(config_path.name)
         if expected_device is not None and primary_device != expected_device:
@@ -138,8 +140,8 @@ def run_case(
                 raise AssertionError(
                     f"{config_path.name}: profile value missing from report: {value!r}"
                 )
-        if config_path.name == "second-business-profile.json":
-            for hard_code in ("Eren", "EREN MÜZİK ATÖLYESİ"):
+        if config_path.name in ("second-business-profile.json", "nova-coffee-business-profile.json"):
+            for hard_code in ("Eren", "EREN MÜZİK ATÖLYESİ", "gitar", "piyano", "müzik teorisi"):
                 if hard_code in report:
                     raise AssertionError(
                         f"{config_path.name}: hidden business hard-code in report: {hard_code!r}"
