@@ -1118,6 +1118,11 @@ function printReport() {
     const label = `${String(n).padStart(2, "0")} ${names[n]}`.padEnd(28, ".");
     const status = row ? row.status : "MISSING";
     lines.push(`${label} ${status}`);
+    if (row) {
+      lines.push(`     code path: ${row.codePath}`);
+      const artifacts = row.artifactsOut && row.artifactsOut.length ? row.artifactsOut.join(", ") : "(none — gate/eligibility check only)";
+      lines.push(`     artifact:  ${artifacts}`);
+    }
   }
   lines.push("");
   lines.push(`AI INPUT TOKENS: ${USAGE.inputTokens}`);
