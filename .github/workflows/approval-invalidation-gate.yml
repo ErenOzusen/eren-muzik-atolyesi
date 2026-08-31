@@ -37,8 +37,19 @@ jobs:
           jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
           ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
 
+          # This list intentionally spans every downstream state a body edit can
+          # make stale: not just approval/ready labels, but also production
+          # SELECTION (uretime-secildi/production-selected + the specific
+          # uretim-senaryo-N/production-scenario-N picked) and the Video
+          # Orchestrator's recorded ROUTE (video-route-*). Without this, an
+          # owner could edit approved content, get re-approved, and have the
+          # OLD scenario selection / OLD FILMING_HANDOFF_V1 comment silently
+          # keep authorizing a real filming handoff for content nobody
+          # actually re-selected with a fresh SEÇ N — see filming-handoff-
+          # gate.yml's body_sha256-bound marker check, which is this fix's
+          # second, independent layer against exactly that gap.
           HAD_APPROVAL=false
-          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do
+          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do
             if grep -qx "$LABEL" /tmp/labels.txt; then
               HAD_APPROVAL=true
             fi
@@ -78,7 +89,7 @@ jobs:
           # ---- Pending doğrulandıktan sonra eski onaylı/hazır durum tek toplu mutasyonla kaldırılır ----
 
           REMOVE_ARGS=()
-          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do
+          for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do
             if grep -qx "$LABEL" /tmp/labels.txt; then
               REMOVE_ARGS+=(--remove-label "$LABEL")
             fi
@@ -97,7 +108,7 @@ jobs:
             fi
           done
 
-          for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do
+          for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do
             if grep -qx "$REQUIRED_ABSENT" /tmp/labels-final.txt; then
               echo "Beklenen nihai durum sağlanamadı; kaldırılması gereken etiket hâlâ mevcut: $REQUIRED_ABSENT"
               exit 1
@@ -107,9 +118,10 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --body "$(cat <<'MESSAGE'
           ## 🔄 Önceki Eren onayı geçersizleştirildi
 
-          Nihai senaryo içeriği değiştirildiği için önceki onay ve çekime-hazır durumu artık geçerli değil.
+          Nihai senaryo içeriği değiştirildiği için önceki onay, çekime-hazır durumu, üretim seçimi ve çekim handoff'u artık geçerli değil.
 
-          **Durum:** Eren onayı yeniden bekleniyor.  
+          **Durum:** Eren onayı yeniden bekleniyor.
+          **Gerekli işlem:** İçerik yeniden onaylandıktan sonra üretim seçimi için `SEÇ N` yeniden çalıştırılmalı — eski seçim otomatik olarak geçerli sayılmaz.
           **Güvenlik:** Hiçbir sonraki ajan otomatik başlatılmadı.
           MESSAGE
           )"
@@ -117,8 +129,9 @@ jobs:
           {
             echo "### Eski onay geçersizleştirildi"
             echo "- Issue: $ISSUE_URL"
-            echo "- Kaldırılan durumlar: mevcut olan eren-onayli / owner-approved / cekime-hazir / cekim-paketi-hazir / production-ready / filming-package-ready"
+            echo "- Kaldırılan durumlar: mevcut olan onay/hazır/üretim-seçimi/rota etiketleri (eren-onayli, owner-approved, cekime-hazir, cekim-paketi-hazir, production-ready, filming-package-ready, uretime-secildi, production-selected, uretim-senaryo-N, production-scenario-N, video-route-*)"
             echo "- Yeni durum: eren-onayi-bekliyor / owner-approval-pending"
+            echo "- Üretim seçimi: geçersiz kılındı — yeniden onaydan sonra SEÇ N yeniden gerekli"
             echo "- Sonraki ajan: otomatik başlatılmadı"
             echo "- AI kullanımı: 0 giriş / 0 çıkış tokenı"
           } >> "$GITHUB_STEP_SUMMARY"

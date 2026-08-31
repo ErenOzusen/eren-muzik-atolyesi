@@ -144,7 +144,7 @@ assert.ok(!verifyLoopBlock.includes("|| true"), "verification loop must not supp
 // remove or add a label before pending is established.
 const detectionLoopIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "read-only detection loop declaration",
 );
 const detectionLoopEndIdx = mustFind(invalidation, "done", "detection loop end", detectionLoopIdx);
@@ -211,7 +211,7 @@ const removeArgsInitIdx = mustFind(
 );
 const removalLoopDeclIdx = mustFind(
   invalidation,
-  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for LABEL in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "removal-args loop declaration",
   removeArgsInitIdx,
 );
@@ -254,7 +254,7 @@ mustInclude(invalidation.slice(finalPresentIdx, finalPresentEndIdx), "exit 1", "
 
 const finalAbsentIdx = mustFind(
   invalidation,
-  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready; do",
+  "for REQUIRED_ABSENT in eren-onayli owner-approved cekime-hazir cekim-paketi-hazir production-ready filming-package-ready uretime-secildi production-selected uretim-senaryo-1 uretim-senaryo-2 uretim-senaryo-3 production-scenario-1 production-scenario-2 production-scenario-3 video-route-human video-route-hybrid video-route-faceless video-route-decided; do",
   "final approved/readiness-absent verification",
   finalPresentEndIdx,
 );
