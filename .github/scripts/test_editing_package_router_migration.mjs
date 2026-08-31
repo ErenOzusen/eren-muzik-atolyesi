@@ -201,6 +201,23 @@ mustFind(
   "usage marker with real provider/model"
 );
 
+// 11. Production-AI-consolidation audit (web search): this workflow's
+// evidence-checking task has never needed live web verification (it works
+// entirely from already-approved, already-fact-checked upstream Issues —
+// QC already did the web-verification pass on the underlying script), so
+// it must never request web search from the router just because the
+// router now supports it. web_search=0 above proves the REPORTED count;
+// this proves the router call itself never even asks for the capability,
+// so a future change can't silently start spending on it.
+assert.ok(
+  !aiStep.includes("--web-search-max-uses"),
+  "editing-package-agent.yml must never request web search from the router — its task never needed live web verification"
+);
+assert.ok(
+  !aiStep.includes("--web-sources-file"),
+  "editing-package-agent.yml must never request a web-sources file from the router"
+);
+
 // 10. No forbidden capability in the new validate step, the request-prep
 // step, or the AI-calling step.
 const stepAfterValidateIdx = workflow.indexOf("\n      - name:", validateIdx + 1);
