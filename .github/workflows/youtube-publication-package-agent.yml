@@ -129,6 +129,22 @@ jobs:
             exit 1
           fi
 
+          # Nihai Senaryo Issue'sunun gövdesi hâlâ üç senaryoyu birden içerir
+          # (seçim kapısı yalnız etiket değiştirir, gövdeyi kısaltmaz).
+          # Thumbnail paketi hangi SENARYO'nun üretime seçildiğini taşır; bunu
+          # kaybetmeden buradan okuyup build_youtube_package.py'ye aktarmak
+          # gerekir, aksi halde yayın paketi hep SENARYO 1'in metnini
+          # kullanır.
+          SELECTED_SCENARIO=$(sed -nE \
+            's#^- \*\*Seçilen senaryo:\*\* ([123])$#\1#p' \
+            /tmp/thumbnail.md \
+            | head -n 1)
+
+          if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+            echo "Thumbnail paketinde seçilen senaryo numarası bulunamadı."
+            exit 1
+          fi
+
           gh issue view "$FINAL_NUMBER" \
             --json title,body,url,labels > /tmp/final.json
 
@@ -188,6 +204,7 @@ jobs:
             echo "THUMBNAIL_URL=$THUMBNAIL_URL"
             echo "FINAL_NUMBER=$FINAL_NUMBER"
             echo "FINAL_URL=$FINAL_URL"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
             echo "SOURCE_SHA=$SOURCE_SHA"
             echo "YOUTUBE_TITLE=$YOUTUBE_TITLE"
             echo "EXISTING_NUMBER=$EXISTING_NUMBER"
@@ -207,6 +224,7 @@ jobs:
             --final-url "$FINAL_URL" \
             --thumbnail-url "$THUMBNAIL_URL" \
             --thumbnail-choice "$THUMBNAIL_CHOICE" \
+            --scenario "$SELECTED_SCENARIO" \
             --profile .github/config/business-profile.json \
             --test-mode "$TEST_MODE"
 

@@ -20,7 +20,12 @@ SECOND_PROFILE = ROOT / ".github/scripts/fixtures/second-business-profile.json"
 def scenario_text() -> str:
     main_sentence = "KORUNACAK-KONUŞMA-METNİ genel açıklamayı hiçbir ek iddia katmadan aktarır. "
     shorts_sentence = "KISA-KORUNACAK-METİN yalnız kaynakta bulunan bilgiyi aktarır. "
-    return f"""**[KANCA]**
+    # Wrapped in a real "## SENARYO 1: ..." heading, matching the real Nihai
+    # Senaryolar Issue body shape build_subtitle_package.py's --scenario
+    # argument now scopes its extraction to (see select_scenario_block).
+    return f"""## SENARYO 1: Test Senaryosu
+
+**[KANCA]**
 {main_sentence * 5}
 
 ---
@@ -72,6 +77,8 @@ def build(profile_path: Path, directory: Path) -> str:
             "https://example.test/final",
             "--editing-url",
             "https://example.test/editing",
+            "--scenario",
+            "1",
             "--profile",
             str(profile_path),
             "--test-mode",

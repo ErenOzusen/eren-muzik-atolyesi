@@ -110,6 +110,22 @@ jobs:
             exit 1
           fi
 
+          # Nihai Senaryo Issue'sunun gövdesi hâlâ üç senaryoyu birden içerir
+          # (seçim kapısı yalnız etiket değiştirir, gövdeyi kısaltmaz).
+          # Altyazı paketi hangi SENARYO'nun üretime seçildiğini taşır; bunu
+          # kaybetmeden buradan okuyup build_thumbnail_package.py'ye
+          # aktarmak gerekir, aksi halde kapak yazısı hep SENARYO 1'in
+          # metnini kullanır.
+          SELECTED_SCENARIO=$(sed -nE \
+            's#^- \*\*Seçilen senaryo:\*\* ([123])$#\1#p' \
+            /tmp/subtitle.md \
+            | head -n 1)
+
+          if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+            echo "Altyazı paketinde seçilen senaryo numarası bulunamadı."
+            exit 1
+          fi
+
           gh issue view "$FINAL_NUMBER" \
             --json title,body,url,labels > /tmp/final.json
 
@@ -163,6 +179,7 @@ jobs:
             echo "SUBTITLE_URL=$SUBTITLE_URL"
             echo "FINAL_NUMBER=$FINAL_NUMBER"
             echo "FINAL_URL=$FINAL_URL"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
             echo "SOURCE_SHA=$SOURCE_SHA"
             echo "THUMBNAIL_TITLE=$THUMBNAIL_TITLE"
             echo "EXISTING_NUMBER=$EXISTING_NUMBER"
@@ -181,6 +198,7 @@ jobs:
             --output /tmp/thumbnail-package.md \
             --final-url "$FINAL_URL" \
             --subtitle-url "$SUBTITLE_URL" \
+            --scenario "$SELECTED_SCENARIO" \
             --profile .github/config/business-profile.json \
             --test-mode "$TEST_MODE"
 

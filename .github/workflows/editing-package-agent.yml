@@ -213,6 +213,21 @@ jobs:
             exit 1
           fi
 
+          # Nihai Senaryolar Issue'sunun gövdesi hâlâ üç senaryoyu birden
+          # içerir (seçim kapısı yalnız etiket değiştirir, gövdeyi
+          # kısaltmaz). Çekim paketi hangi SENARYO'nun üretime seçildiğini
+          # scenario=N işaretiyle taşır; bunu kaybetmeden buradan okuyup
+          # kendi paketimize de aktarıyoruz.
+          SELECTED_SCENARIO=$(grep -oE 'scenario=[123]\b' /tmp/package-full.md \
+            | head -n 1 \
+            | cut -d= -f2 \
+            || true)
+
+          if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+            echo "Çekim paketinde seçilen senaryo numarası (scenario=N) bulunamadı."
+            exit 1
+          fi
+
           gh issue view "$FINAL_NUMBER" \
             --json title,body,url,labels > /tmp/final.json
 
@@ -236,6 +251,7 @@ jobs:
             echo "PACKAGE_URL=$PACKAGE_URL"
             echo "FINAL_NUMBER=$FINAL_NUMBER"
             echo "FINAL_URL=$FINAL_URL"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
           } >> "$GITHUB_ENV"
 
       - name: Yalnızca kurgu için gerekli kaynakları ayıkla
@@ -565,6 +581,7 @@ jobs:
             echo "**Kaynak teslim kaydı:** $INTAKE_URL"
             echo "**Kaynak çekim paketi:** $PACKAGE_URL"
             echo "**Kaynak onaylı senaryo:** $FINAL_URL"
+            echo "**Seçilen senaryo:** $SELECTED_SCENARIO"
             echo
             cat /tmp/editing-package.md
           } > /tmp/editing-issue-body.md
