@@ -37,7 +37,7 @@ jobs:
       SCENARIO: ${{ inputs.test_scenario || '2' }}
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Adapter yerel testlerini çalıştır
         shell: bash

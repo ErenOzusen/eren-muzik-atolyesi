@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Router ve yapılandırmayı yerel doğrula
         shell: bash
