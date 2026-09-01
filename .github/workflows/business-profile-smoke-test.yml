@@ -119,7 +119,7 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Isletme profili fixture'larini sifir-token dogrula
         shell: bash

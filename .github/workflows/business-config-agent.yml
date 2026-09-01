@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Yetkili GitHub kullanıcısını doğrula
         shell: bash
