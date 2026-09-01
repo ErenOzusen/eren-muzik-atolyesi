@@ -8,6 +8,11 @@ on:
         required: true
         default: true
         type: boolean
+      real_ai_budget_cap:
+        description: "Gerçek AI bütçe ön kontrolünü zorla: $0.50 zincir bütçesi, yalnızca Anthropic, sıfır web araması"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      REAL_AI_BUDGET_CAP: ${{ inputs.real_ai_budget_cap || 'false' }}
 
     steps:
       - name: Kaynak kodu al
@@ -270,6 +276,29 @@ jobs:
           print('Cost guard preflight: config gecerli.')
           "
 
+          # Real-AI-budget-cap mode: web search must be exactly 0 (overrides
+          # this stage's normal QC_MAX_WEB_SEARCHES allowance), fail closed
+          # BEFORE the provider call if the worst-case cost of this exact
+          # prompt would exceed this stage's slice of the chain's $0.50 hard
+          # cap, and force single-provider (Anthropic-only) routing so no
+          # retry/fallback can spend on an unpriced provider outside this
+          # guard's visibility.
+          ROUTER_EXTRA_ARGS=()
+          if [[ "$REAL_AI_BUDGET_CAP" == "true" ]]; then
+            QC_MAX_WEB_SEARCHES=0
+            python3 .github/scripts/preflight_budget_guard.py \
+              --stage quality_control \
+              --provider anthropic \
+              --model "$DEFAULT_MODEL" \
+              --web-search-max-uses "$QC_MAX_WEB_SEARCHES" \
+              --prompt-file qc-prompt.txt \
+              --system-file system-prompt.txt \
+              --profile .github/config/business-profile.json \
+              --budget-config .github/config/real-ai-budget.json \
+              --price-config .github/config/cost-guard.json
+            ROUTER_EXTRA_ARGS+=(--provider-order anthropic)
+          fi
+
           python3 .github/scripts/ai_router.py \
             --config .github/config/ai-router.json \
             --prompt-file qc-prompt.txt \
@@ -279,7 +308,8 @@ jobs:
             --max-tokens "$QC_MAX_MODEL_OUTPUT" \
             --primary-model "$DEFAULT_MODEL" \
             --web-search-max-uses "$QC_MAX_WEB_SEARCHES" \
-            --web-sources-file web-sources.json
+            --web-sources-file web-sources.json \
+            "${ROUTER_EXTRA_ARGS[@]}"
 
           QC_AI_PROVIDER=$(jq -r '.provider // ""' router-meta.json)
           QC_AI_MODEL=$(jq -r '.model // ""' router-meta.json)

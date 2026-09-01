@@ -8,6 +8,11 @@ on:
         required: true
         default: true
         type: boolean
+      real_ai_budget_cap:
+        description: "Gerçek AI bütçe ön kontrolünü zorla: $0.50 zincir bütçesi, yalnızca Anthropic, sıfır web araması"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   script-writer:
@@ -31,6 +36,7 @@ jobs:
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      REAL_AI_BUDGET_CAP: ${{ inputs.real_ai_budget_cap || 'false' }}
 
     steps:
       - name: Kaynak kodu al
@@ -380,6 +386,25 @@ jobs:
 
           printf '%s\n\nİLK ÜÇ İÇERİK FİKRİ:\n\n%s' "$PROMPT" "$IDEAS" > /tmp/weekly-script-prompt.txt
 
+          # Real-AI-budget-cap mode: fail closed BEFORE the provider call if
+          # the worst-case cost of this exact prompt would exceed this
+          # stage's slice of the chain's $0.50 hard cap, and force
+          # single-provider (Anthropic-only) routing so no retry/fallback can
+          # spend on an unpriced provider outside this guard's visibility.
+          ROUTER_EXTRA_ARGS=()
+          if [[ "$REAL_AI_BUDGET_CAP" == "true" ]]; then
+            python3 .github/scripts/preflight_budget_guard.py \
+              --stage script \
+              --provider anthropic \
+              --model "$DEFAULT_MODEL" \
+              --web-search-max-uses 0 \
+              --prompt-file /tmp/weekly-script-prompt.txt \
+              --profile .github/config/business-profile.json \
+              --budget-config .github/config/real-ai-budget.json \
+              --price-config .github/config/cost-guard.json
+            ROUTER_EXTRA_ARGS+=(--provider-order anthropic)
+          fi
+
           # Orijinal çağrıda ayrı bir sistem promptu yoktu (tek user-role
           # mesajı, fikir listesi promptun sonuna eklenmiş) — --system-file
           # bu yüzden verilmiyor; router icat etmiyor.
@@ -389,7 +414,8 @@ jobs:
             --output-file /tmp/scripts-raw.txt \
             --meta-file /tmp/weekly-script-meta.json \
             --max-tokens "$SCRIPT_MAX_MODEL_OUTPUT" \
-            --primary-model "$DEFAULT_MODEL"
+            --primary-model "$DEFAULT_MODEL" \
+            "${ROUTER_EXTRA_ARGS[@]}"
 
           SCRIPT_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/weekly-script-meta.json)
           SCRIPT_AI_MODEL=$(jq -r '.model // ""' /tmp/weekly-script-meta.json)

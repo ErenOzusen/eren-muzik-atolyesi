@@ -50,6 +50,9 @@ on:
       - ".github/scripts/cost_guard.py"
       - ".github/scripts/test_cost_guard.py"
       - ".github/config/cost-guard.json"
+      - ".github/scripts/preflight_budget_guard.py"
+      - ".github/scripts/test_preflight_budget_guard.py"
+      - ".github/config/real-ai-budget.json"
       - ".github/scripts/persist_editing_package_labels.sh"
       - ".github/scripts/test_editing_package_hardening.mjs"
       - ".github/scripts/persist_subtitle_package_labels.sh"
@@ -155,6 +158,7 @@ jobs:
           node .github/scripts/test_script_correction_portability.mjs
           node .github/scripts/test_second_business_portability.mjs
           python3 .github/scripts/test_cost_guard.py
+          python3 .github/scripts/test_preflight_budget_guard.py
           node .github/scripts/test_editing_package_hardening.mjs
           node .github/scripts/test_subtitle_package_hardening.mjs
           node .github/scripts/test_thumbnail_package_hardening.mjs
