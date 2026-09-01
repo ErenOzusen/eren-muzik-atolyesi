@@ -379,13 +379,17 @@ jobs:
           - Birincil platform: $PRIMARY_PLATFORM
           - İkincil biçimler: $SECONDARY_FORMATS_TEXT
           - Ana çağrı: $PRIMARY_CTA
-          - Rezervasyon: $RESERVATION_URL
+          - Rezervasyon: rezervasyon bağlantısı mevcut
 
           Yalnız bu profile uygun fikirler üret. Mevcut olmayan hizmet veya ekipman önerme.
 
           Kaynaklar gerçek URL yerine [S01], [S02] biçiminde kısa kimliklerle gösterilir.
           İlgili iddianın sonunda yalnız verilen kaynak kimliğini aynen kullan. URL yazma,
           kaynak kimliği uydurma veya kimliğin biçimini değiştirme.
+
+          ÇIKTIDA HİÇBİR HAM URL YAZMA: "http://" veya "https://" ile başlayan hiçbir metin
+          üretme — rezervasyon veya başka bir bağlantıdan bahsederken bile yalnız düz metinle
+          ("rezervasyon bağlantısından ulaşılabilir" gibi) anlat, gerçek adresi asla yazma.
 
           Doğruluk ve seçim kuralları:
           - Kaydı olmayan rakip için açıkça "son $LOOKBACK_DAYS günde kayıt bulunamadı" yaz.
