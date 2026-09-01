@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Zero-token portability tests for the four manual package agents' authorization model.
+ * Zero-token portability tests for the five manual package/gate agents' authorization model.
  *
  * Verifies that editing-package-agent.yml, subtitle-package-agent.yml,
- * thumbnail-package-agent.yml and youtube-publication-package-agent.yml all authorize
- * their run actor against business.github_owner (read from the central business
- * profile) instead of github.repository_owner, using the identical case-insensitive
- * contract, and that the check runs before any Issue read, AI/API call, or Issue/label
- * write.
+ * thumbnail-package-agent.yml, youtube-publication-package-agent.yml and
+ * youtube-review-readiness-gate.yml all authorize their run actor against
+ * business.github_owner (read from the central business profile) instead of
+ * github.repository_owner, using the identical case-insensitive contract, and that the
+ * check runs before any Issue read, AI/API call, or Issue/label write.
  */
 
 import assert from "node:assert/strict";
@@ -16,13 +16,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
+// Normalized so the byte-for-byte contract comparison below is not sensitive to a
+// local Windows checkout's CRLF line endings (git core.autocrlf) vs. the LF the
+// files are actually committed with and CI runs against.
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8").replace(/\r\n/g, "\n");
 
 const WORKFLOW_PATHS = [
   ".github/workflows/editing-package-agent.yml",
   ".github/workflows/subtitle-package-agent.yml",
   ".github/workflows/thumbnail-package-agent.yml",
   ".github/workflows/youtube-publication-package-agent.yml",
+  ".github/workflows/youtube-review-readiness-gate.yml",
 ];
 
 const currentProfile = JSON.parse(read(".github/config/business-profile.json"));

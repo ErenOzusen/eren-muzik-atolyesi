@@ -55,8 +55,21 @@ jobs:
             fi
           done
 
-          if [[ "$HAD_PUBLICATION_APPROVAL" != "true" ]]; then
-            echo "Bu pakette geçersizleştirilecek önceki yayın onayı yok."
+          # A stale "youtube-review-ready" label is not itself a security
+          # gap — youtube-publication-approval-gate.yml independently
+          # re-verifies the readiness comment's body_sha256 against the
+          # CURRENT body on every approval attempt, so a stale label alone
+          # can never authorize approval. It IS still cleared here so the
+          # visible label state never contradicts reality (a "ready" label
+          # sitting on a package whose content changed since readiness was
+          # attested would read as ready when it no longer is).
+          HAD_READINESS=false
+          if grep -qx 'youtube-review-ready' /tmp/publication-labels.txt; then
+            HAD_READINESS=true
+          fi
+
+          if [[ "$HAD_PUBLICATION_APPROVAL" != "true" && "$HAD_READINESS" != "true" ]]; then
+            echo "Bu pakette geçersizleştirilecek önceki yayın onayı veya readiness kaydı yok."
             exit 0
           fi
 
@@ -93,7 +106,7 @@ jobs:
           # ---- PHASE 3: FAIL-SAFE STATE TRANSITION (pending doğrulandıktan sonra onaylıyı kaldır) ----
 
           REMOVE_ARGS=()
-          for LABEL in eren-yayin-onayli publication-approved yayina-hazir; do
+          for LABEL in eren-yayin-onayli publication-approved yayina-hazir youtube-review-ready; do
             if grep -qx "$LABEL" /tmp/publication-labels.txt; then
               REMOVE_ARGS+=(--remove-label "$LABEL")
             fi
@@ -111,7 +124,7 @@ jobs:
               exit 1
             fi
           done
-          for REQUIRED_ABSENT in eren-yayin-onayli publication-approved yayina-hazir; do
+          for REQUIRED_ABSENT in eren-yayin-onayli publication-approved yayina-hazir youtube-review-ready; do
             if grep -qx "$REQUIRED_ABSENT" /tmp/publication-labels-final.txt; then
               echo "Beklenen nihai durum sağlanamadı; kaldırılması gereken etiket hâlâ mevcut: $REQUIRED_ABSENT"
               exit 1
