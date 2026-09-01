@@ -8,6 +8,11 @@ on:
         required: true
         default: true
         type: boolean
+      real_ai_budget_cap:
+        description: "Gerçek AI bütçe ön kontrolünü zorla: $0.50 zincir bütçesi, yalnızca Anthropic, sıfır web araması"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -35,6 +40,7 @@ jobs:
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      REAL_AI_BUDGET_CAP: ${{ inputs.real_ai_budget_cap || 'false' }}
 
     steps:
       - name: Kaynak kodu al
@@ -346,6 +352,27 @@ jobs:
           # ANTHROPIC_API_KEY'in varlığını arayan eski sabit ön kontrol
           # kaldırıldı; asıl fail-closed garanti aşağıdaki
           # provider/model/çıktı kontrolüdür.
+
+          # Real-AI-budget-cap mode: fail closed BEFORE the provider call if
+          # the worst-case cost of this exact prompt would exceed this
+          # stage's slice of the chain's $0.50 hard cap, and force
+          # single-provider (Anthropic-only) routing so no retry/fallback can
+          # spend on an unpriced provider outside this guard's visibility.
+          ROUTER_EXTRA_ARGS=()
+          if [[ "$REAL_AI_BUDGET_CAP" == "true" ]]; then
+            python3 .github/scripts/preflight_budget_guard.py \
+              --stage final_technical_control \
+              --provider anthropic \
+              --model "$DEFAULT_MODEL" \
+              --web-search-max-uses 0 \
+              --prompt-file /tmp/final-technical-check-prompt.txt \
+              --system-file /tmp/system-prompt.txt \
+              --profile .github/config/business-profile.json \
+              --budget-config .github/config/real-ai-budget.json \
+              --price-config .github/config/cost-guard.json
+            ROUTER_EXTRA_ARGS+=(--provider-order anthropic)
+          fi
+
           python3 .github/scripts/ai_router.py \
             --config .github/config/ai-router.json \
             --system-file /tmp/system-prompt.txt \
@@ -353,7 +380,8 @@ jobs:
             --output-file /tmp/final-check.md \
             --meta-file /tmp/final-technical-check-meta.json \
             --max-tokens "$FTC_MAX_MODEL_OUTPUT" \
-            --primary-model "$DEFAULT_MODEL"
+            --primary-model "$DEFAULT_MODEL" \
+            "${ROUTER_EXTRA_ARGS[@]}"
 
           FTC_AI_PROVIDER=$(jq -r '.provider // ""' /tmp/final-technical-check-meta.json)
           FTC_AI_MODEL=$(jq -r '.model // ""' /tmp/final-technical-check-meta.json)

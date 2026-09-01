@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "_comment": "Hard dollar cap for the FIRST real (non-zero-token) AI E2E run across the Research -> Script -> QC -> Correction -> Final Technical Check chain. Enforced by .github/scripts/preflight_budget_guard.py BEFORE each real provider call — never post-hoc. Pricing itself is never guessed here: the guard reads it from .github/config/cost-guard.json's monetary.price_registry, which must have an explicit entry for the exact provider:model pair below.",
+
+  "total_chain_budget_usd": 0.50,
+  "allowed_provider": "anthropic",
+  "allowed_model": "claude-sonnet-4-6",
+
+  "input_estimation": {
+    "_comment": "No live tokenizer call is made before the real provider call — that would itself be a network call this preflight step must not make. Input tokens are instead estimated conservatively from the REAL prompt/system file about to be sent: chars / chars_per_token, then inflated by safety_margin. Deliberately biased to OVER-estimate (a false-positive fail-closed is safe; a false-negative that lets an over-budget call through is not).",
+    "chars_per_token": 3.0,
+    "safety_margin": 1.15
+  },
+
+  "stages": {
+    "research": {
+      "_comment": "Input ceiling: scraped/aggregated source text has no other stage's max_model_output to bound it, so this is a deliberately generous standalone planning ceiling (~18000 chars / ~6000 true tokens) plus normal system/instruction overhead. Allocation covers (assumed_max_input_tokens * safety_margin) priced at max_model_output output — i.e. the guard's actual worst-case ESTIMATE, not the raw assumed token count.",
+      "profile_content_key": "research",
+      "assumed_max_input_tokens": 6000,
+      "allocated_budget_usd": 0.07
+    },
+    "script": {
+      "_comment": "Input is the research issue's extracted top-3-ideas section only (not the full research body) — small by construction.",
+      "profile_content_key": "script",
+      "assumed_max_input_tokens": 2500,
+      "allocated_budget_usd": 0.09
+    },
+    "quality_control": {
+      "_comment": "Input is bounded by the script stage's own max_model_output (4800) plus overhead.",
+      "profile_content_key": "quality_control",
+      "assumed_max_input_tokens": 6000,
+      "allocated_budget_usd": 0.10
+    },
+    "correction": {
+      "_comment": "Input is bounded by script's max_model_output (4800) + QC's max_model_output (4500) plus overhead.",
+      "profile_content_key": "correction",
+      "assumed_max_input_tokens": 10500,
+      "allocated_budget_usd": 0.11
+    },
+    "final_technical_control": {
+      "_comment": "Input is bounded by correction's max_model_output (4500) + QC's max_model_output (4500) plus overhead.",
+      "profile_content_key": "final_technical_control",
+      "assumed_max_input_tokens": 10000,
+      "allocated_budget_usd": 0.07
+    }
+  }
+}

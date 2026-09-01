@@ -9,6 +9,12 @@
   "monetary": {
     "enabled": false,
     "max_estimated_cost_usd": null,
-    "price_registry": {}
+    "price_registry": {
+      "anthropic:claude-sonnet-4-6": {
+        "_comment": "From Anthropic's published per-model rate card: $3.00 / MTok input, $15.00 / MTok output.",
+        "input_per_1k_usd": 0.003,
+        "output_per_1k_usd": 0.015
+      }
+    }
   }
 }

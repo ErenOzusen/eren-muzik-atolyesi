@@ -111,8 +111,35 @@ class MonetaryEstimationTests(unittest.TestCase):
 class RealConfigTests(unittest.TestCase):
     def test_real_cost_guard_config_defaults_monetary_enforcement_to_disabled(self) -> None:
         config = json.loads(REAL_CONFIG_PATH.read_text(encoding="utf-8"))
+        # Monetary ENFORCEMENT staying off by default (for every workflow that
+        # invokes cost_guard.py post-hoc) is the actual safety invariant here —
+        # a populated price_registry is just data, inert until some caller
+        # explicitly opts monetary.enabled on for itself. The real-AI-budget-cap
+        # chain (preflight_budget_guard.py) reads this registry directly rather
+        # than flipping this flag, so this stays False.
         self.assertEqual(config["monetary"]["enabled"], False)
-        self.assertEqual(config["monetary"]["price_registry"], {})
+
+    def test_real_cost_guard_config_price_registry_entries_are_explicit_and_real(self) -> None:
+        # Every entry must be a deliberately-configured, real published rate —
+        # never a guessed/placeholder price (mirrors
+        # test_never_hard_codes_a_guessed_price_for_a_model_missing_from_the_registry
+        # above, applied to the actual committed registry instead of a fixture).
+        config = json.loads(REAL_CONFIG_PATH.read_text(encoding="utf-8"))
+        registry = config["monetary"]["price_registry"]
+        for key, pricing in registry.items():
+            self.assertRegex(key, r"^[a-z0-9_-]+:[a-z0-9.-]+$", f"malformed provider:model key: {key}")
+            self.assertIsInstance(pricing["input_per_1k_usd"], (int, float))
+            self.assertIsInstance(pricing["output_per_1k_usd"], (int, float))
+            self.assertGreater(pricing["input_per_1k_usd"], 0)
+            self.assertGreater(pricing["output_per_1k_usd"], 0)
+
+        # The specific entry the real-AI-budget-cap chain (research -> script ->
+        # QC -> correction -> final technical check) depends on — Anthropic's
+        # published claude-sonnet-4-6 rate: $3.00 / MTok input, $15.00 / MTok
+        # output, i.e. $0.003 / $0.015 per 1K tokens.
+        sonnet_pricing = registry["anthropic:claude-sonnet-4-6"]
+        self.assertEqual(sonnet_pricing["input_per_1k_usd"], 0.003)
+        self.assertEqual(sonnet_pricing["output_per_1k_usd"], 0.015)
 
     def test_real_cost_guard_config_has_positive_integer_token_and_attempt_limits(self) -> None:
         config = json.loads(REAL_CONFIG_PATH.read_text(encoding="utf-8"))
