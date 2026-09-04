@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Persistent real-AI spend ledger for budget-capped GitHub Actions runs.
+"""Persistent preflight reservation ledger for the real-AI hard budget.
 
-The committed ``realized_spend_floor_usd`` is the historical seed that
-covers paid calls made before this ledger existed. Future paid router calls
-are appended to one machine-managed GitHub Issue. Preflight reads the same
-Issue, so separately dispatched workflows cannot silently reset cumulative
-spend to zero.
+Historical spend is seeded by ``realized_spend_floor_usd`` in the committed
+budget config. Every future budget-capped provider call reserves its
+conservative worst-case cost in one machine-managed GitHub Issue *before*
+the provider is invoked. A failed/truncated call therefore still consumes
+budget, and a process crash cannot make paid usage disappear from the next
+workflow's preflight calculation.
 
-This module never stores prompts, responses, credentials, or user content.
-Ledger entries contain only run identity, stage, provider/model, token counts,
-actual priced cost, and success/failure status.
+Reservations are stored as append-only Issue comments. The Issue body only
+contains the seed marker. This avoids lost-update races from repeatedly
+rewriting one shared Issue body. Prompts, model outputs and secrets are never
+stored.
 """
 
 from __future__ import annotations
@@ -20,48 +22,37 @@ import re
 import subprocess
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
 from typing import Any
 
-import cost_guard
-
 LEDGER_TITLE = "SYSTEM Real AI Budget Ledger"
-CONTEXT_PATH = Path("/tmp/real-ai-budget-context.json")
 MONEY_QUANT = Decimal("0.000001")
-SEED_RE = re.compile(r"<!-- REAL_AI_BUDGET_LEDGER_V1 seed_usd=([0-9]+(?:\.[0-9]+)?) -->")
-ENTRY_RE = re.compile(
-    r"<!-- REAL_AI_SPEND_V1 "
+SEED_RE = re.compile(r"<!-- REAL_AI_BUDGET_LEDGER_V2 seed_usd=([0-9]+(?:\.[0-9]+)?) -->")
+RESERVATION_RE = re.compile(
+    r"<!-- REAL_AI_RESERVATION_V1 "
     r"key=([^ ]+) stage=([^ ]+) run_id=([^ ]+) run_attempt=([^ ]+) job=([^ ]+) "
-    r"provider=([^ ]+) model=([^ ]+) input=([0-9]+) output=([0-9]+) "
-    r"cost_usd=([0-9]+(?:\.[0-9]+)?) status=(success|failed) -->"
+    r"reserved_usd=([0-9]+(?:\.[0-9]+)?) -->"
 )
 
 
 @dataclass(frozen=True)
-class LedgerEntry:
+class Reservation:
     key: str
     stage: str
     run_id: str
     run_attempt: str
     job: str
-    provider: str
-    model: str
-    input_tokens: int
-    output_tokens: int
-    cost_usd: Decimal
-    status: str
+    reserved_usd: Decimal
 
     def marker(self) -> str:
         return (
-            "<!-- REAL_AI_SPEND_V1 "
+            "<!-- REAL_AI_RESERVATION_V1 "
             f"key={self.key} stage={self.stage} run_id={self.run_id} "
-            f"run_attempt={self.run_attempt} job={self.job} provider={self.provider} "
-            f"model={self.model} input={self.input_tokens} output={self.output_tokens} "
-            f"cost_usd={self.cost_usd:.6f} status={self.status} -->"
+            f"run_attempt={self.run_attempt} job={self.job} "
+            f"reserved_usd={self.reserved_usd:.6f} -->"
         )
 
 
-def _money(value: float | int | str | Decimal) -> Decimal:
+def money(value: float | int | str | Decimal) -> Decimal:
     try:
         amount = Decimal(str(value)).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
     except Exception as exc:  # pragma: no cover - defensive conversion guard
@@ -77,85 +68,79 @@ def live_budget_mode() -> bool:
     ).lower() == "true"
 
 
-def parse_ledger_body(body: str, *, expected_seed_usd: float | int | str | Decimal) -> tuple[Decimal, dict[str, LedgerEntry]]:
-    seed_matches = SEED_RE.findall(body)
-    if len(seed_matches) != 1:
-        raise RuntimeError("budget ledger must contain exactly one REAL_AI_BUDGET_LEDGER_V1 seed marker")
-    seed = _money(seed_matches[0])
-    expected_seed = _money(expected_seed_usd)
-    if seed != expected_seed:
-        raise RuntimeError(
-            f"budget ledger seed mismatch: issue={seed:.6f} config={expected_seed:.6f}"
-        )
-
-    entries: dict[str, LedgerEntry] = {}
-    for match in ENTRY_RE.finditer(body):
-        entry = LedgerEntry(
-            key=match.group(1),
-            stage=match.group(2),
-            run_id=match.group(3),
-            run_attempt=match.group(4),
-            job=match.group(5),
-            provider=match.group(6),
-            model=match.group(7),
-            input_tokens=int(match.group(8)),
-            output_tokens=int(match.group(9)),
-            cost_usd=_money(match.group(10)),
-            status=match.group(11),
-        )
-        existing = entries.get(entry.key)
-        if existing is not None and existing != entry:
-            raise RuntimeError(f"conflicting duplicate budget ledger key: {entry.key}")
-        entries[entry.key] = entry
-
-    marker_count = body.count("<!-- REAL_AI_SPEND_V1 ")
-    if marker_count != len(entries):
-        raise RuntimeError("budget ledger contains malformed or duplicate spend markers")
-    return seed, entries
+def initial_body(seed_usd: float | int | str | Decimal) -> str:
+    seed = money(seed_usd)
+    return (
+        f"<!-- REAL_AI_BUDGET_LEDGER_V2 seed_usd={seed:.6f} -->\n"
+        "# Real AI Budget Ledger\n\n"
+        "Machine-managed conservative reservation ledger.\n"
+        "Each budget-capped provider call reserves worst-case cost before the call.\n"
+        "Prompts, outputs and secrets are never stored here.\n"
+    )
 
 
-def ledger_total(seed: Decimal, entries: dict[str, LedgerEntry]) -> Decimal:
-    return (seed + sum((entry.cost_usd for entry in entries.values()), Decimal("0"))).quantize(
+def parse_seed(body: str, *, expected_seed_usd: float | int | str | Decimal) -> Decimal:
+    matches = SEED_RE.findall(body)
+    if len(matches) != 1:
+        raise RuntimeError("budget ledger must contain exactly one REAL_AI_BUDGET_LEDGER_V2 seed marker")
+    seed = money(matches[0])
+    expected = money(expected_seed_usd)
+    if seed != expected:
+        raise RuntimeError(f"budget ledger seed mismatch: issue={seed:.6f} config={expected:.6f}")
+    return seed
+
+
+def parse_reservations(comments: list[str]) -> dict[str, Reservation]:
+    reservations: dict[str, Reservation] = {}
+    marker_count = 0
+    for body in comments:
+        marker_count += body.count("<!-- REAL_AI_RESERVATION_V1 ")
+        for match in RESERVATION_RE.finditer(body):
+            reservation = Reservation(
+                key=match.group(1),
+                stage=match.group(2),
+                run_id=match.group(3),
+                run_attempt=match.group(4),
+                job=match.group(5),
+                reserved_usd=money(match.group(6)),
+            )
+            existing = reservations.get(reservation.key)
+            if existing is not None and existing != reservation:
+                raise RuntimeError(f"conflicting duplicate budget reservation key: {reservation.key}")
+            reservations[reservation.key] = reservation
+    if marker_count != len(reservations):
+        raise RuntimeError("budget ledger contains malformed or duplicate reservation markers")
+    return reservations
+
+
+def ledger_total(seed: Decimal, reservations: dict[str, Reservation]) -> Decimal:
+    return (seed + sum((row.reserved_usd for row in reservations.values()), Decimal("0"))).quantize(
         MONEY_QUANT, rounding=ROUND_HALF_UP
     )
 
 
-def initial_body(seed_usd: float | int | str | Decimal) -> str:
-    seed = _money(seed_usd)
-    return (
-        f"<!-- REAL_AI_BUDGET_LEDGER_V1 seed_usd={seed:.6f} -->\n"
-        "# Real AI Budget Ledger\n\n"
-        "Machine-managed audit ledger. Do not edit spend markers manually.\n"
-        "Only priced token usage is stored; prompts, outputs and secrets are never stored.\n"
+def build_reservation(*, stage: str, reserved_usd: float | int | str | Decimal) -> Reservation:
+    run_id = os.getenv("GITHUB_RUN_ID", "")
+    run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "")
+    job = os.getenv("GITHUB_JOB", "")
+    if not run_id or not run_attempt or not job:
+        raise RuntimeError("GitHub run identity is incomplete; provider call blocked")
+    return Reservation(
+        key=f"{run_id}:{run_attempt}:{job}:{stage}",
+        stage=stage,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        job=job,
+        reserved_usd=money(reserved_usd),
     )
 
 
-def append_entry_to_body(
-    body: str, entry: LedgerEntry, *, expected_seed_usd: float | int | str | Decimal
-) -> tuple[str, Decimal, bool]:
-    seed, entries = parse_ledger_body(body, expected_seed_usd=expected_seed_usd)
-    existing = entries.get(entry.key)
-    if existing is not None:
-        if existing != entry:
-            raise RuntimeError(f"conflicting duplicate budget ledger key: {entry.key}")
-        return body, ledger_total(seed, entries), False
-
-    new_body = body.rstrip() + "\n\n" + entry.marker() + "\n"
-    entries[entry.key] = entry
-    return new_body, ledger_total(seed, entries), True
-
-
 def _run_gh(args: list[str]) -> str:
-    env = os.environ.copy()
-    if not env.get("GH_TOKEN"):
+    if not os.getenv("GH_TOKEN"):
         raise RuntimeError("GH_TOKEN is required for persistent real-AI budget ledger access")
     try:
         completed = subprocess.run(
-            ["gh", *args],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
+            ["gh", *args], check=True, capture_output=True, text=True, env=os.environ.copy()
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         stderr = getattr(exc, "stderr", "") or ""
@@ -163,24 +148,17 @@ def _run_gh(args: list[str]) -> str:
     return completed.stdout.strip()
 
 
-def _find_remote_issue(repo: str) -> tuple[int, str] | None:
-    raw = _run_gh(
-        [
-            "issue",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "all",
-            "--search",
-            f'"{LEDGER_TITLE}" in:title',
-            "--limit",
-            "20",
-            "--json",
-            "number,title",
-        ]
+def _find_issue(repo: str) -> tuple[int, str] | None:
+    rows = json.loads(
+        _run_gh(
+            [
+                "issue", "list", "--repo", repo, "--state", "all",
+                "--search", f'"{LEDGER_TITLE}" in:title', "--limit", "20",
+                "--json", "number,title",
+            ]
+        )
+        or "[]"
     )
-    rows = json.loads(raw or "[]")
     exact = [row for row in rows if row.get("title") == LEDGER_TITLE]
     if len(exact) > 1:
         raise RuntimeError("multiple exact real-AI budget ledger Issues found; failing closed")
@@ -188,101 +166,114 @@ def _find_remote_issue(repo: str) -> tuple[int, str] | None:
         return None
     number = int(exact[0]["number"])
     detail = json.loads(
-        _run_gh(["issue", "view", str(number), "--repo", repo, "--json", "body,url"])
+        _run_gh(["issue", "view", str(number), "--repo", repo, "--json", "body"])
     )
     return number, str(detail.get("body") or "")
 
 
-def read_remote_total(repo: str, *, expected_seed_usd: float | int | str | Decimal) -> Decimal:
-    found = _find_remote_issue(repo)
+def _comment_bodies(repo: str, issue_number: int) -> list[str]:
+    rows = json.loads(
+        _run_gh(
+            [
+                "api", "--paginate",
+                f"repos/{repo}/issues/{issue_number}/comments?per_page=100",
+                "--jq", ".[].body",
+            ]
+        )
+        or "[]"
+    ) if False else None
+    # `gh api --jq .[].body` emits one JSON/string value per line rather than
+    # one JSON array. Use the issue view API instead, which returns comments
+    # as a JSON array and is simpler to validate deterministically.
+    raw = _run_gh(["issue", "view", str(issue_number), "--repo", repo, "--json", "comments"])
+    data = json.loads(raw or "{}")
+    comments = data.get("comments") if isinstance(data, dict) else None
+    if not isinstance(comments, list):
+        raise RuntimeError("budget ledger comments could not be read")
+    bodies: list[str] = []
+    for item in comments:
+        if not isinstance(item, dict) or not isinstance(item.get("body"), str):
+            raise RuntimeError("budget ledger returned a malformed comment")
+        bodies.append(item["body"])
+    return bodies
+
+
+def read_remote_state(
+    repo: str, *, expected_seed_usd: float | int | str | Decimal
+) -> tuple[int | None, Decimal, dict[str, Reservation]]:
+    found = _find_issue(repo)
     if found is None:
-        return _money(expected_seed_usd)
-    _, body = found
-    seed, entries = parse_ledger_body(body, expected_seed_usd=expected_seed_usd)
-    return ledger_total(seed, entries)
-
-
-def build_entry_from_meta(meta: dict[str, Any], *, stage: str) -> LedgerEntry | None:
-    attempts = meta.get("attempts") if isinstance(meta.get("attempts"), list) else []
-    paid_attempts = [
-        item
-        for item in attempts
-        if isinstance(item, dict)
-        and item.get("status") != "skipped"
-        and (int(item.get("input_tokens") or 0) > 0 or int(item.get("output_tokens") or 0) > 0)
-    ]
-    if not paid_attempts:
-        return None
-    if len(paid_attempts) != 1:
-        raise RuntimeError("budget-capped router run must contain exactly one paid provider attempt")
-
-    price_config_path = os.environ.get("REAL_AI_PRICE_CONFIG_PATH", ".github/config/cost-guard.json")
-    price_config = json.loads(Path(price_config_path).read_text(encoding="utf-8"))
-    registry = price_config.get("monetary", {}).get("price_registry")
-    registry = registry if isinstance(registry, dict) else {}
-    cost = cost_guard.estimate_monetary_cost(meta, registry)
-    if cost is None:
-        raise RuntimeError("actual provider/model has no explicit price registry entry; failing closed")
-
-    attempt = paid_attempts[0]
-    run_id = os.getenv("GITHUB_RUN_ID", "")
-    run_attempt = os.getenv("GITHUB_RUN_ATTEMPT", "")
-    job = os.getenv("GITHUB_JOB", "")
-    if not run_id or not run_attempt or not job:
-        raise RuntimeError("GitHub run identity is incomplete; refusing to persist ambiguous spend")
-    key = f"{run_id}:{run_attempt}:{job}:{stage}"
-    status = "success" if attempt.get("status") == "success" else "failed"
-    return LedgerEntry(
-        key=key,
-        stage=stage,
-        run_id=run_id,
-        run_attempt=run_attempt,
-        job=job,
-        provider=str(attempt.get("provider") or ""),
-        model=str(attempt.get("model") or ""),
-        input_tokens=int(attempt.get("input_tokens") or 0),
-        output_tokens=int(attempt.get("output_tokens") or 0),
-        cost_usd=_money(cost),
-        status=status,
-    )
-
-
-def persist_router_meta(meta: dict[str, Any], *, context: dict[str, Any]) -> Decimal:
-    entry = build_entry_from_meta(meta, stage=str(context["stage"]))
-    seed = _money(context["realized_spend_seed_usd"])
-    repo = str(context["repo"])
-    if entry is None:
-        return read_remote_total(repo, expected_seed_usd=seed)
-
-    found = _find_remote_issue(repo)
-    if found is None:
-        body = initial_body(seed)
-        new_body, total, _ = append_entry_to_body(body, entry, expected_seed_usd=seed)
-        _run_gh(["issue", "create", "--repo", repo, "--title", LEDGER_TITLE, "--body", new_body])
-        return total
-
+        seed = money(expected_seed_usd)
+        return None, seed, {}
     number, body = found
-    new_body, total, changed = append_entry_to_body(body, entry, expected_seed_usd=seed)
-    if changed:
-        _run_gh(["issue", "edit", str(number), "--repo", repo, "--body", new_body])
-    return total
+    seed = parse_seed(body, expected_seed_usd=expected_seed_usd)
+    reservations = parse_reservations(_comment_bodies(repo, number))
+    return number, seed, reservations
 
 
-def write_context(context: dict[str, Any]) -> None:
-    CONTEXT_PATH.write_text(json.dumps(context, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def reserve_before_call(
+    *,
+    repo: str,
+    stage: str,
+    reserved_usd: float | int | str | Decimal,
+    expected_seed_usd: float | int | str | Decimal,
+    total_chain_budget_usd: float | int | str | Decimal,
+) -> tuple[Decimal, bool]:
+    """Persist one idempotent worst-case reservation before provider spend.
 
+    Returns ``(reserved_total, added)``. Any remote read/write ambiguity fails
+    closed by raising RuntimeError; callers must not proceed to the provider.
+    """
+    reservation = build_reservation(stage=stage, reserved_usd=reserved_usd)
+    issue_number, seed, reservations = read_remote_state(
+        repo, expected_seed_usd=expected_seed_usd
+    )
+    existing = reservations.get(reservation.key)
+    if existing is not None:
+        if existing != reservation:
+            raise RuntimeError(f"conflicting duplicate budget reservation key: {reservation.key}")
+        return ledger_total(seed, reservations), False
 
-def load_context_if_live() -> dict[str, Any] | None:
-    if not live_budget_mode():
-        return None
-    if not CONTEXT_PATH.exists():
-        raise RuntimeError("real-AI budget context missing; provider call blocked")
-    context = json.loads(CONTEXT_PATH.read_text(encoding="utf-8"))
-    for key in ("stage", "repo", "run_id", "run_attempt", "realized_spend_seed_usd"):
-        if key not in context:
-            raise RuntimeError(f"real-AI budget context missing field: {key}")
-    if str(context["run_id"]) != os.getenv("GITHUB_RUN_ID", "") or str(
-        context["run_attempt"]
-    ) != os.getenv("GITHUB_RUN_ATTEMPT", ""):
-        raise RuntimeError("stale real-AI budget context does not match this workflow run")
-    return context
+    projected = ledger_total(seed, reservations) + reservation.reserved_usd
+    cap = money(total_chain_budget_usd)
+    if projected > cap:
+        raise RuntimeError(
+            f"reservation projected_chain_total_usd={projected:.6f} exceeds total_chain_budget_usd={cap:.6f}"
+        )
+
+    if issue_number is None:
+        body = initial_body(seed)
+        _run_gh(["issue", "create", "--repo", repo, "--title", LEDGER_TITLE, "--body", body])
+        found = _find_issue(repo)
+        if found is None:
+            raise RuntimeError("budget ledger Issue creation could not be verified")
+        issue_number, verified_body = found
+        parse_seed(verified_body, expected_seed_usd=seed)
+
+    # Re-read immediately before append so a concurrent preflight cannot be
+    # overwritten or ignored. Comment append is atomic; if a competing run
+    # used budget since the first read, fail closed instead of oversubscribing.
+    _, seed, reservations = read_remote_state(repo, expected_seed_usd=seed)
+    existing = reservations.get(reservation.key)
+    if existing is not None:
+        if existing != reservation:
+            raise RuntimeError(f"conflicting duplicate budget reservation key: {reservation.key}")
+        return ledger_total(seed, reservations), False
+    projected = ledger_total(seed, reservations) + reservation.reserved_usd
+    if projected > cap:
+        raise RuntimeError(
+            f"reservation projected_chain_total_usd={projected:.6f} exceeds total_chain_budget_usd={cap:.6f}"
+        )
+
+    _run_gh(
+        [
+            "issue", "comment", str(issue_number), "--repo", repo,
+            "--body", reservation.marker(),
+        ]
+    )
+    # Verify persistence before allowing the paid provider call.
+    _, seed, reservations = read_remote_state(repo, expected_seed_usd=seed)
+    stored = reservations.get(reservation.key)
+    if stored != reservation:
+        raise RuntimeError("budget reservation write could not be verified; provider call blocked")
+    return ledger_total(seed, reservations), True
