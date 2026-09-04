@@ -37,14 +37,10 @@ const productionStep = (name) => {
   return workflow.slice(start, next === -1 ? workflow.length : next);
 };
 
-// Production prompt contains no sector-specific output requirement.
 for (const hardCoded of ["akor", "tab", "nota", "riff", "bas gitar", "armoni"])
   assert.ok(!includesTerm(normalizedWorkflow, hardCoded), `Workflowta sektör hard-code'u kaldı: ${hardCoded}`);
-assert.ok(
-  workflow.includes("gerekiyorsa profile ve kaynak metne uygun somut alan bilgisi bulunsun."),
-);
+assert.ok(workflow.includes("gerekiyorsa profile ve kaynak metne uygun somut alan bilgisi bulunsun."));
 
-// All business context and correction rules remain profile-owned.
 for (const binding of [
   ".business.brand_name",
   ".business.category",
@@ -58,19 +54,12 @@ for (const binding of [
   assert.ok(workflow.includes(binding), binding);
 assert.ok(workflow.includes("$CORRECTION_DOMAIN_RULES_TEXT"));
 
-// Eren's music checks remain in its profile, while the second business has none.
 const currentRules = currentProfile.content.correction.domain_rules;
 const secondRules = secondProfile.content.correction.domain_rules;
 for (const musicTerm of ["akor", "nota", "tab", "bas gitar", "armoni"])
-  assert.ok(
-    currentRules.some((rule) => rule.toLocaleLowerCase("tr-TR").includes(musicTerm)),
-    `Eren correction.domain_rules müzik doğrulamasını taşımıyor: ${musicTerm}`,
-  );
+  assert.ok(currentRules.some((rule) => rule.toLocaleLowerCase("tr-TR").includes(musicTerm)), musicTerm);
 for (const musicTerm of ["akor", "tab", "nota", "riff", "bas gitar", "armoni"])
-  assert.ok(
-    !secondRules.some((rule) => rule.toLocaleLowerCase("tr-TR").includes(musicTerm)),
-    `İkinci işletmeye müzik kuralı sızdı: ${musicTerm}`,
-  );
+  assert.ok(!secondRules.some((rule) => rule.toLocaleLowerCase("tr-TR").includes(musicTerm)), musicTerm);
 
 const currentContext = buildCorrectionContext(currentProfile);
 const secondContext = buildCorrectionContext(secondProfile);
@@ -82,10 +71,9 @@ assert.ok(secondRules.every((rule) => secondContext.includes(rule)));
 for (const musicTerm of ["akor", "tab", "nota", "riff", "bas gitar", "armoni"])
   assert.ok(!secondContext.toLocaleLowerCase("tr-TR").includes(musicTerm), musicTerm);
 
-// Model and input limits remain profile-owned. The production profile intentionally
-// raises correction output from 4500 to 5500 after a real max_tokens truncation;
-// the second-business fixture keeps its independent 4500 ceiling to prove the
-// workflow reads the value from each profile instead of hard-coding one globally.
+// Limits remain profile-owned. Production intentionally uses a smaller 2200-token
+// ceiling because the router now rewrites only QC-blocked scenarios; the unrelated
+// second-business fixture retains its independent 4500 value.
 for (const binding of [
   ".content.correction.max_base_chars",
   ".content.correction.max_qc_chars",
@@ -102,14 +90,10 @@ for (const profile of [currentProfile, secondProfile]) {
   assert.equal(correction.max_total_input_chars, 48000);
   assert.ok(Number.isInteger(correction.max_model_output) && correction.max_model_output > 0);
 }
-assert.equal(currentProfile.content.correction.max_model_output, 5500);
+assert.equal(currentProfile.content.correction.max_model_output, 2200);
 assert.equal(secondProfile.content.correction.max_model_output, 4500);
-// Correction now calls the shared AI Router instead of building a raw
-// Anthropic request.json inline — max_model_output still flows through,
-// just as a --max-tokens CLI flag to ai_router.py instead of a JSON field.
 assert.ok(workflow.includes('--max-tokens "$CORRECTION_MAX_MODEL_OUTPUT"'));
 
-// TEST_MODE continues to gate every production read, AI, and Issue-write step.
 for (const stepName of [
   "Kaynak senaryoları ve kalite raporunu bul",
   "Kaynakları deterministik olarak küçült ve doğrula",
@@ -122,7 +106,6 @@ assert.ok(productionStep("Düzeltme ajanı profil bağlantısını sıfır-token
   "if: ${{ env.TEST_MODE == 'true' }}",
 ));
 
-// No automatic chaining or profile-stored secrets were introduced.
 assert.ok(!workflow.includes("repository_dispatch:"));
 assert.ok(!workflow.includes("workflow_run:"));
 assert.ok(workflow.includes("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}"));
@@ -136,6 +119,4 @@ assert.ok(smokeTest.includes(".github/scripts/test_script_correction_portability
 assert.ok(smokeTest.includes(".github/workflows/weekly-script-correction.yml"));
 assert.ok(smokeTest.includes("node .github/scripts/test_script_correction_portability.mjs"));
 
-console.log(
-  "script_correction_portability_ok ai_calls=0 api_calls=0 web_search=0 issue_writes=0 dispatches=0 video_calls=0 publications=0",
-);
+console.log("script_correction_portability_ok ai_calls=0 api_calls=0 web_search=0 issue_writes=0 dispatches=0 video_calls=0 publications=0");
