@@ -46,6 +46,11 @@ def _extract_base_scenarios(base: str) -> dict[int, str]:
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(base)
         block = base[match.start():end].strip()
+        # The original multi-scenario document uses `---` only as a document
+        # separator between scenario blocks. It is not part of the scenario
+        # itself, so remove exactly one trailing separator before carrying an
+        # approved source block into the newly assembled final document.
+        block = re.sub(r"\n\s*---\s*$", "", block).rstrip()
         result[int(match.group(1))] = block
     return result
 
