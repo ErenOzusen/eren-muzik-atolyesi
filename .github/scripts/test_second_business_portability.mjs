@@ -236,18 +236,22 @@ for (const [agent, getRules] of Object.entries(domainRuleSlices)) {
   assert.equal(overlap.length, 0, `${agent}: Eren ve Nova Coffee domain_rules çakışmamalı`);
 }
 
-// --- G) Numeric budgets/limits are identical across both profiles — only
-// business-specific TEXT (brand, category, rules) should vary, never the
-// cost/size contracts. -----------------------------------------------------
+// --- G) Shared numeric contracts stay aligned where portability requires it.
+// Correction output is intentionally allowed to differ per profile: production
+// Eren is 5500 after a real truncation; Nova remains 4500, proving the agent
+// reads a profile-owned ceiling instead of hard-coding one global number. ---
 
 for (const profile of [currentProfile, novaProfile]) {
   assert.equal(profile.content.quality_control.max_script_chars, 40000);
   assert.equal(profile.content.quality_control.max_web_searches, 1);
-  assert.equal(profile.content.correction.max_model_output, 4500);
   assert.equal(profile.content.final_technical_control.max_final_chars, 24000);
   assert.equal(profile.content.script.target_min_words, 400);
   assert.equal(profile.content.research.idea_count, 5);
+  assert.ok(Number.isInteger(profile.content.correction.max_model_output));
+  assert.ok(profile.content.correction.max_model_output > 0);
 }
+assert.equal(currentProfile.content.correction.max_model_output, 5500);
+assert.equal(novaProfile.content.correction.max_model_output, 4500);
 
 // --- H) No secret material in the Nova Coffee fixture ---------------------
 
