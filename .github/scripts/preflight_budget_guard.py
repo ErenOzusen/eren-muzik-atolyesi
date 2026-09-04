@@ -39,6 +39,12 @@ Design choices, and why:
   unsafe in the under-estimate direction (an over-budget call gets
   through) — so this only ever errs the safe way.
 
+- REALIZED SPEND FLOOR: real-ai-budget.json may contain
+  realized_spend_floor_usd for money already spent by earlier calls in the
+  same guarded E2E attempt, including a failed provider call. The CLI uses
+  the greater of that floor and --prior-chain-spend-usd, so a later retry
+  cannot silently reset known prior spend back to zero.
+
 - WEB SEARCH: --web-search-max-uses must be exactly 0 for the real-AI-
   budget-cap chain (video generation and YouTube upload/publish never
   enter this script's scope at all — they have no code path here to begin
@@ -254,6 +260,15 @@ def main() -> None:
     prompt_text = read_optional_text(args.prompt_file)
     system_text = read_optional_text(args.system_file)
 
+    configured_floor = budget_config.get("realized_spend_floor_usd", 0.0)
+    if not isinstance(configured_floor, (int, float)) or configured_floor < 0:
+        print("realized_spend_floor_usd must be a non-negative number; failing closed.", file=sys.stderr)
+        raise SystemExit(1)
+    if args.prior_chain_spend_usd < 0:
+        print("--prior-chain-spend-usd must be non-negative; failing closed.", file=sys.stderr)
+        raise SystemExit(1)
+    effective_prior_spend = max(float(configured_floor), args.prior_chain_spend_usd)
+
     result = check_preflight_budget(
         stage=args.stage,
         provider=args.provider,
@@ -264,7 +279,7 @@ def main() -> None:
         profile=profile,
         budget_config=budget_config,
         price_config=price_config,
-        prior_chain_spend_usd=args.prior_chain_spend_usd,
+        prior_chain_spend_usd=effective_prior_spend,
     )
 
     print(format_report(result))
