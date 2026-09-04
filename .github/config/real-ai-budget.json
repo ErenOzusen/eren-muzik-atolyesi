@@ -3,6 +3,8 @@
   "_comment": "Hard dollar cap for the FIRST real (non-zero-token) AI E2E run across the Research -> Script -> QC -> Correction -> Final Technical Check chain. Enforced by .github/scripts/preflight_budget_guard.py BEFORE each real provider call — never post-hoc. Pricing itself is never guessed here: the guard reads it from .github/config/cost-guard.json's monetary.price_registry, which must have an explicit entry for the exact provider:model pair below.",
 
   "total_chain_budget_usd": 0.50,
+  "realized_spend_floor_usd": 0.260373,
+  "realized_spend_floor_note": "Observed real usage through the failed 2026-09-04 correction attempt: research $0.036876 + script $0.075060 + quality_control $0.056715 + failed correction $0.091722. This floor is applied automatically by the CLI guard so the next live retry cannot pretend prior chain spend was $0.",
   "allowed_provider": "anthropic",
   "allowed_model": "claude-sonnet-4-6",
 
@@ -32,13 +34,13 @@
       "allocated_budget_usd": 0.10
     },
     "correction": {
-      "_comment": "Input is bounded by script's max_model_output (4800) + QC's max_model_output (4500) plus overhead.",
+      "_comment": "Input is bounded by script's max_model_output (4800) + QC's max_model_output (4500) plus overhead. Output ceiling is 5500 so the three-scenario final can finish without the observed 4500-token truncation; the $0.12 allocation covers the conservative worst-case estimate.",
       "profile_content_key": "correction",
       "assumed_max_input_tokens": 10500,
-      "allocated_budget_usd": 0.11
+      "allocated_budget_usd": 0.12
     },
     "final_technical_control": {
-      "_comment": "Input is bounded by correction's max_model_output (4500) + QC's max_model_output (4500) plus overhead.",
+      "_comment": "Input is bounded by correction's max_model_output (5500) + QC's max_model_output (4500) plus overhead.",
       "profile_content_key": "final_technical_control",
       "assumed_max_input_tokens": 10000,
       "allocated_budget_usd": 0.07

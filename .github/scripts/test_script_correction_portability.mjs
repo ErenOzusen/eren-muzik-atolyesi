@@ -82,7 +82,10 @@ assert.ok(secondRules.every((rule) => secondContext.includes(rule)));
 for (const musicTerm of ["akor", "tab", "nota", "riff", "bas gitar", "armoni"])
   assert.ok(!secondContext.toLocaleLowerCase("tr-TR").includes(musicTerm), musicTerm);
 
-// Model and input limits remain profile-owned and unchanged for both fixtures.
+// Model and input limits remain profile-owned. The production profile intentionally
+// raises correction output from 4500 to 5500 after a real max_tokens truncation;
+// the second-business fixture keeps its independent 4500 ceiling to prove the
+// workflow reads the value from each profile instead of hard-coding one globally.
 for (const binding of [
   ".content.correction.max_base_chars",
   ".content.correction.max_qc_chars",
@@ -97,8 +100,10 @@ for (const profile of [currentProfile, secondProfile]) {
   assert.equal(correction.max_qc_chars, 18000);
   assert.equal(correction.max_final_check_chars, 12000);
   assert.equal(correction.max_total_input_chars, 48000);
-  assert.equal(correction.max_model_output, 4500);
+  assert.ok(Number.isInteger(correction.max_model_output) && correction.max_model_output > 0);
 }
+assert.equal(currentProfile.content.correction.max_model_output, 5500);
+assert.equal(secondProfile.content.correction.max_model_output, 4500);
 // Correction now calls the shared AI Router instead of building a raw
 // Anthropic request.json inline — max_model_output still flows through,
 // just as a --max-tokens CLI flag to ai_router.py instead of a JSON field.
