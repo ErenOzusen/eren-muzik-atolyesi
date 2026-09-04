@@ -111,7 +111,7 @@
       "max_qc_chars": 18000,
       "max_final_check_chars": 12000,
       "max_total_input_chars": 48000,
-      "max_model_output": 4500,
+      "max_model_output": 5500,
       "domain_rules": [
         "Orijinal ton, ilk duyulan akor, tüm akorlar, capo şekilleri, gerçek transpozisyon, sadeleştirilmiş düzenleme ve yeniden armonizasyonu birbirinden ayır.",
         "Akor, nota, perde, ritim, ölçü ve TAB gösterimlerinin birbiriyle uyumunu koru.",
