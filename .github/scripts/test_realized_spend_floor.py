@@ -41,11 +41,12 @@ class RealizedSpendFloorTests(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
+                env={"PATH": __import__("os").environ.get("PATH", "")},
             )
 
     def test_committed_floor_matches_observed_spend(self) -> None:
         budget = json.loads(BUDGET.read_text(encoding="utf-8"))
-        self.assertAlmostEqual(budget["realized_spend_floor_usd"], 0.260373, places=6)
+        self.assertAlmostEqual(budget["realized_spend_floor_usd"], 0.367095, places=6)
 
     def test_floor_is_applied_before_provider_call(self) -> None:
         budget = json.loads(BUDGET.read_text(encoding="utf-8"))
