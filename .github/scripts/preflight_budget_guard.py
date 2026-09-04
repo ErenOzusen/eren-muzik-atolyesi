@@ -1,59 +1,14 @@
 #!/usr/bin/env python3
-"""Preflight hard-dollar-budget guard for the real (non-zero-token) AI chain:
+"""Preflight hard-dollar-budget guard for the real AI chain.
+
 Research -> Script -> QC -> Correction -> Final Technical Check.
 
-Unlike cost_guard.py (which checks a *completed* provider call's actual
-usage against token/attempt limits, after the money has already been
-spent), this script runs strictly BEFORE any real provider call and
-computes a WORST-CASE cost estimate for the call that is about to be made.
-If that estimate — combined with this stage's already-realized chain spend,
-when known — would exceed the stage's allocated share of the chain's
-total $0.50 hard cap, it fails closed (non-zero exit, no provider call
-happens) before ai_router.py is ever invoked.
-
-Design choices, and why:
-
-- ANTHROPIC ONLY, ONE MODEL: --provider/--model must exactly match
-  real-ai-budget.json's allowed_provider/allowed_model (anthropic /
-  claude-sonnet-4-6). Anything else fails closed immediately — this script
-  refuses to price a call it was not explicitly configured to price.
-
-- NEVER GUESS A PRICE: the $/token rate comes only from
-  cost-guard.json's monetary.price_registry, keyed "provider:model". If
-  that exact key is missing, this fails closed rather than falling back to
-  an assumed/guessed rate (same invariant cost_guard.py's own
-  estimate_monetary_cost() already enforces — reused here, not
-  reimplemented).
-
-- OUTPUT tokens use the stage's real, configured max_model_output exactly
-  (business-profile.json) — the API can never exceed it, so this is an
-  exact ceiling, not an estimate.
-
-- INPUT tokens are estimated from the REAL prompt/system file about to be
-  sent (never a hard-coded assumption): characters / chars_per_token, then
-  inflated by safety_margin. This is deliberately conservative (biased to
-  OVER-estimate cost) because a live tokenizer call before the real
-  provider call would itself be an extra network call this preflight step
-  must not make. Getting the true count wrong is safe in the
-  over-estimate direction (a call that would have fit gets rejected) and
-  unsafe in the under-estimate direction (an over-budget call gets
-  through) — so this only ever errs the safe way.
-
-- REALIZED SPEND FLOOR: real-ai-budget.json may contain
-  realized_spend_floor_usd for money already spent by earlier calls in the
-  same guarded E2E attempt, including a failed provider call. The CLI uses
-  the greater of that floor and --prior-chain-spend-usd, so a later retry
-  cannot silently reset known prior spend back to zero.
-
-- WEB SEARCH: --web-search-max-uses must be exactly 0 for the real-AI-
-  budget-cap chain (video generation and YouTube upload/publish never
-  enter this script's scope at all — they have no code path here to begin
-  with).
-
-- FAIL-CLOSED SURFACE: any of a provider/model mismatch, a missing price
-  registry entry, a non-zero web-search budget, or a projected cost above
-  the stage's allocation (or the chain's total cap) exits non-zero with a
-  clear reason and writes nothing that looks like a pass.
+This script runs before any real provider call. It conservatively estimates
+the worst-case cost of the exact prompt/system request, enforces the stage
+allocation and total-chain cap, and in real GitHub Actions budget mode writes
+an append-only persistent reservation to the budget ledger before returning
+success. Reservations remain even if the later provider call fails or is
+truncated, so separately dispatched workflows cannot reset cumulative spend.
 """
 
 from __future__ import annotations
@@ -70,7 +25,8 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import cost_guard  # noqa: E402  (reuses estimate_monetary_cost's price-lookup shape)
+import cost_guard  # noqa: E402
+import real_ai_budget_ledger as budget_ledger  # noqa: E402
 
 
 def load_json(path: str) -> dict[str, Any]:
@@ -84,10 +40,7 @@ def read_optional_text(path: str | None) -> str:
 
 
 def estimate_input_tokens(text: str, chars_per_token: float, safety_margin: float) -> int:
-    """Conservative, offline, zero-network estimate of how many input tokens
-    `text` will cost — never an exact count (only the real API knows that),
-    always biased upward. `chars_per_token` and `safety_margin` come from
-    real-ai-budget.json, not hard-coded here."""
+    """Conservative offline input-token estimate; deliberately rounds up."""
     if chars_per_token <= 0:
         raise ValueError("chars_per_token must be positive")
     raw_estimate = len(text) / chars_per_token
@@ -97,15 +50,7 @@ def estimate_input_tokens(text: str, chars_per_token: float, safety_margin: floa
 def worst_case_cost_usd(
     price_config: dict[str, Any], provider: str, model: str, input_tokens: int, output_tokens: int
 ) -> float | None:
-    """Genuinely reuses cost_guard.py's own pricing function rather than
-    reimplementing it: builds a synthetic single-attempt meta shaped exactly
-    like what ai_router.py's real --meta-file output looks like, using our
-    worst-case token counts, and prices it through
-    cost_guard.estimate_monetary_cost — the same code path that later
-    prices the REAL, realized usage post-hoc. This guarantees the preflight
-    estimate and the post-hoc check can never disagree about what a given
-    token count costs, and inherits cost_guard's own
-    never-guess-a-missing-price behavior (returns None) for free."""
+    """Price a synthetic worst-case attempt through cost_guard's registry."""
     registry = price_config.get("monetary", {}).get("price_registry")
     registry = registry if isinstance(registry, dict) else {}
     synthetic_meta = {
@@ -135,9 +80,7 @@ def check_preflight_budget(
     price_config: dict[str, Any],
     prior_chain_spend_usd: float = 0.0,
 ) -> dict[str, Any]:
-    """Pure function, zero I/O beyond what's already been read into the
-    arguments — fully unit-testable without touching the filesystem or
-    network. Returns {"ok": bool, "violations": [...], "report": {...}}."""
+    """Pure zero-network budget check used by tests and the CLI."""
     violations: list[str] = []
 
     allowed_provider = budget_config.get("allowed_provider")
@@ -148,7 +91,9 @@ def check_preflight_budget(
         )
 
     if web_search_max_uses != 0:
-        violations.append(f"web_search_max_uses must be 0 for the real-AI-budget-cap chain, got {web_search_max_uses}")
+        violations.append(
+            f"web_search_max_uses must be 0 for the real-AI-budget-cap chain, got {web_search_max_uses}"
+        )
 
     stages = budget_config.get("stages", {})
     stage_config = stages.get(stage)
@@ -160,18 +105,20 @@ def check_preflight_budget(
     try:
         max_output_tokens = int(profile["content"][content_key]["max_model_output"])
     except (KeyError, TypeError, ValueError) as error:
-        violations.append(f"could not read content.{content_key}.max_model_output from business-profile.json: {error}")
+        violations.append(
+            f"could not read content.{content_key}.max_model_output from business-profile.json: {error}"
+        )
         return {"ok": False, "violations": violations, "report": {"stage": stage}}
 
     estimation = budget_config.get("input_estimation", {})
     chars_per_token = float(estimation.get("chars_per_token", 3.0))
     safety_margin = float(estimation.get("safety_margin", 1.15))
-
-    estimated_input_tokens = estimate_input_tokens(prompt_text + system_text, chars_per_token, safety_margin)
+    estimated_input_tokens = estimate_input_tokens(
+        prompt_text + system_text, chars_per_token, safety_margin
+    )
 
     stage_allocation = stage_config.get("allocated_budget_usd")
     total_chain_budget = budget_config.get("total_chain_budget_usd")
-
     report: dict[str, Any] = {
         "stage": stage,
         "provider": provider,
@@ -183,18 +130,17 @@ def check_preflight_budget(
         "prior_chain_spend_usd": prior_chain_spend_usd,
     }
 
-    worst_case_cost = worst_case_cost_usd(price_config, provider, model, estimated_input_tokens, max_output_tokens)
-
+    worst_case_cost = worst_case_cost_usd(
+        price_config, provider, model, estimated_input_tokens, max_output_tokens
+    )
     if worst_case_cost is None:
         violations.append(
-            f"no explicit price_registry entry for '{provider}:{model}' in cost-guard.json — "
-            "refusing to guess a price"
+            f"no explicit price_registry entry for '{provider}:{model}' in cost-guard.json — refusing to guess a price"
         )
         report["worst_case_cost_usd"] = None
         return {"ok": False, "violations": violations, "report": report}
 
     projected_total = prior_chain_spend_usd + worst_case_cost
-
     report["worst_case_cost_usd"] = round(worst_case_cost, 6)
     report["projected_chain_total_usd"] = round(projected_total, 6)
     if isinstance(stage_allocation, (int, float)):
@@ -225,13 +171,14 @@ def format_report(result: dict[str, Any]) -> str:
         f"[preflight_budget_guard] stage={report.get('stage')} provider={report.get('provider')} model={report.get('model')}",
         f"  estimated_input_tokens={report.get('estimated_input_tokens')} max_output_tokens={report.get('max_output_tokens')}",
         f"  worst_case_cost_usd={report.get('worst_case_cost_usd')}",
-        f"  stage_allocated_budget_usd={report.get('stage_allocated_budget_usd')} "
-        f"stage_remaining_after_call_usd={report.get('stage_remaining_after_call_usd')}",
-        f"  prior_chain_spend_usd={report.get('prior_chain_spend_usd')} "
-        f"projected_chain_total_usd={report.get('projected_chain_total_usd')}",
-        f"  total_chain_budget_usd={report.get('total_chain_budget_usd')} "
-        f"chain_remaining_after_call_usd={report.get('chain_remaining_after_call_usd')}",
+        f"  stage_allocated_budget_usd={report.get('stage_allocated_budget_usd')} stage_remaining_after_call_usd={report.get('stage_remaining_after_call_usd')}",
+        f"  prior_chain_spend_usd={report.get('prior_chain_spend_usd')} projected_chain_total_usd={report.get('projected_chain_total_usd')}",
+        f"  total_chain_budget_usd={report.get('total_chain_budget_usd')} chain_remaining_after_call_usd={report.get('chain_remaining_after_call_usd')}",
     ]
+    if report.get("ledger_reserved_total_usd") is not None:
+        lines.append(
+            f"  ledger_reserved_total_usd={report.get('ledger_reserved_total_usd')} ledger_reservation_added={report.get('ledger_reservation_added')}"
+        )
     if result["violations"]:
         lines.append("  FAIL CLOSED — provider call blocked:")
         lines.extend(f"    - {v}" for v in result["violations"])
@@ -242,7 +189,11 @@ def format_report(result: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", required=True, choices=["research", "script", "quality_control", "correction", "final_technical_control"])
+    parser.add_argument(
+        "--stage",
+        required=True,
+        choices=["research", "script", "quality_control", "correction", "final_technical_control"],
+    )
     parser.add_argument("--provider", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--web-search-max-uses", required=True, type=int)
@@ -262,12 +213,32 @@ def main() -> None:
 
     configured_floor = budget_config.get("realized_spend_floor_usd", 0.0)
     if not isinstance(configured_floor, (int, float)) or configured_floor < 0:
-        print("realized_spend_floor_usd must be a non-negative number; failing closed.", file=sys.stderr)
+        print(
+            "realized_spend_floor_usd must be a non-negative number; failing closed.",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
     if args.prior_chain_spend_usd < 0:
         print("--prior-chain-spend-usd must be non-negative; failing closed.", file=sys.stderr)
         raise SystemExit(1)
+
     effective_prior_spend = max(float(configured_floor), args.prior_chain_spend_usd)
+    live_ledger = budget_ledger.live_budget_mode()
+    repo = os.getenv("GH_REPO") or os.getenv("GITHUB_REPOSITORY") or ""
+    if live_ledger:
+        if not repo:
+            print("GitHub repository identity missing; provider call blocked.", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            _, seed, reservations = budget_ledger.read_remote_state(
+                repo, expected_seed_usd=configured_floor
+            )
+            effective_prior_spend = max(
+                effective_prior_spend, float(budget_ledger.ledger_total(seed, reservations))
+            )
+        except RuntimeError as exc:
+            print(f"Persistent budget ledger read failed; provider call blocked: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
 
     result = check_preflight_budget(
         stage=args.stage,
@@ -281,6 +252,21 @@ def main() -> None:
         price_config=price_config,
         prior_chain_spend_usd=effective_prior_spend,
     )
+
+    if result["ok"] and live_ledger:
+        try:
+            reserved_total, added = budget_ledger.reserve_before_call(
+                repo=repo,
+                stage=args.stage,
+                reserved_usd=result["report"]["worst_case_cost_usd"],
+                expected_seed_usd=configured_floor,
+                total_chain_budget_usd=budget_config["total_chain_budget_usd"],
+            )
+            result["report"]["ledger_reserved_total_usd"] = float(reserved_total)
+            result["report"]["ledger_reservation_added"] = added
+        except RuntimeError as exc:
+            result["ok"] = False
+            result["violations"].append(f"persistent budget reservation failed: {exc}")
 
     print(format_report(result))
 
