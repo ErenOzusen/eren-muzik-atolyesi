@@ -20,6 +20,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
@@ -171,6 +172,27 @@ def _find_issue(repo: str) -> tuple[int, str] | None:
     return number, str(detail.get("body") or "")
 
 
+def _find_created_issue_with_retry(
+    repo: str, *, attempts: int = 5, delay_seconds: float = 1.0
+) -> tuple[int, str] | None:
+    """Allow GitHub's issue-search index a short window to observe a new ledger.
+
+    ``gh issue create`` can succeed before ``gh issue list --search`` exposes the
+    just-created Issue. We still require the normal exact-title search so duplicate
+    ledgers remain fail-closed; we only retry that verification instead of treating
+    the first transient miss as a failed creation.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+    for attempt in range(attempts):
+        found = _find_issue(repo)
+        if found is not None:
+            return found
+        if attempt + 1 < attempts:
+            time.sleep(delay_seconds)
+    return None
+
+
 def _comment_bodies(repo: str, issue_number: int) -> list[str]:
     rows = json.loads(
         _run_gh(
@@ -244,7 +266,7 @@ def reserve_before_call(
     if issue_number is None:
         body = initial_body(seed)
         _run_gh(["issue", "create", "--repo", repo, "--title", LEDGER_TITLE, "--body", body])
-        found = _find_issue(repo)
+        found = _find_created_issue_with_retry(repo)
         if found is None:
             raise RuntimeError("budget ledger Issue creation could not be verified")
         issue_number, verified_body = found
