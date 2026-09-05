@@ -295,8 +295,8 @@ def validate(profile: dict[str, Any]) -> list[str]:
     )
     require(
         isinstance(correction.get("max_model_output"), int)
-        and 2_500 <= correction["max_model_output"] <= 6_000,
-        "Düzeltme çıktı token bütçesi 2.500–6.000 olmalı.",
+        and 2_000 <= correction["max_model_output"] <= 6_000,
+        "Düzeltme çıktı token bütçesi 2.000–6.000 olmalı.",
         errors,
     )
     require(
