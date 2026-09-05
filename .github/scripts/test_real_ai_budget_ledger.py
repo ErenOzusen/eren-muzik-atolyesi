@@ -55,6 +55,31 @@ class BudgetLedgerTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "REAL_AI_BUDGET_CAP": "false"}, clear=True):
             self.assertFalse(ledger.live_budget_mode())
 
+    def test_created_issue_verification_retries_transient_search_miss(self) -> None:
+        created = (64, ledger.initial_body("0.367095"))
+        with (
+            patch.object(ledger, "_find_issue", side_effect=[None, created]) as find_issue,
+            patch.object(ledger.time, "sleep") as sleep,
+        ):
+            found = ledger._find_created_issue_with_retry(
+                "ErenOzusen/eren-muzik-atolyesi", attempts=3, delay_seconds=0.25
+            )
+        self.assertEqual(found, created)
+        self.assertEqual(find_issue.call_count, 2)
+        sleep.assert_called_once_with(0.25)
+
+    def test_created_issue_verification_still_fails_closed_after_retry_window(self) -> None:
+        with (
+            patch.object(ledger, "_find_issue", return_value=None) as find_issue,
+            patch.object(ledger.time, "sleep") as sleep,
+        ):
+            found = ledger._find_created_issue_with_retry(
+                "ErenOzusen/eren-muzik-atolyesi", attempts=3, delay_seconds=0.25
+            )
+        self.assertIsNone(found)
+        self.assertEqual(find_issue.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
