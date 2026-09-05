@@ -11,6 +11,9 @@
     "retry_http_statuses": [408, 409, 429, 500, 502, 503, 504],
     "quality_contracts_by_output": {
       "filming-package.md": ".github/config/contracts/filming-package.json"
+    },
+    "transformers_by_output": {
+      "final-scripts.md": ".github/scripts/targeted_correction_transform.py"
     }
   },
   "providers": {

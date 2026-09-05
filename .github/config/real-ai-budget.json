@@ -1,46 +1,46 @@
 {
   "schema_version": 1,
-  "_comment": "Hard dollar cap for the FIRST real (non-zero-token) AI E2E run across the Research -> Script -> QC -> Correction -> Final Technical Check chain. Enforced by .github/scripts/preflight_budget_guard.py BEFORE each real provider call — never post-hoc. Pricing itself is never guessed here: the guard reads it from .github/config/cost-guard.json's monetary.price_registry, which must have an explicit entry for the exact provider:model pair below.",
+  "_comment": "Hard dollar cap for the FIRST real (non-zero-token) AI E2E run across the Research -> Script -> QC -> Correction -> Final Technical Check chain. Enforced by .github/scripts/preflight_budget_guard.py BEFORE each real provider call. Historical paid usage is seeded below; new calls are conservatively reserved in the persistent GitHub Issue ledger before provider spend. Pricing is never guessed: the guard reads .github/config/cost-guard.json monetary.price_registry.",
 
   "total_chain_budget_usd": 0.50,
-  "realized_spend_floor_usd": 0.260373,
-  "realized_spend_floor_note": "Observed real usage through the failed 2026-09-04 correction attempt: research $0.036876 + script $0.075060 + quality_control $0.056715 + failed correction $0.091722. This floor is applied automatically by the CLI guard so the next live retry cannot pretend prior chain spend was $0.",
+  "realized_spend_floor_usd": 0.367095,
+  "realized_spend_floor_note": "Observed paid usage before the persistent reservation ledger: research $0.036876 + script $0.075060 + quality_control $0.056715 + failed correction(4500 output) $0.091722 + failed correction(5500 output) $0.106722 = $0.367095.",
   "allowed_provider": "anthropic",
   "allowed_model": "claude-sonnet-4-6",
 
   "input_estimation": {
-    "_comment": "No live tokenizer call is made before the real provider call — that would itself be a network call this preflight step must not make. Input tokens are instead estimated conservatively from the REAL prompt/system file about to be sent: chars / chars_per_token, then inflated by safety_margin. Deliberately biased to OVER-estimate (a false-positive fail-closed is safe; a false-negative that lets an over-budget call through is not).",
+    "_comment": "Offline conservative estimate from the real prompt/system characters. The 1.40 margin replaces 1.15 after a Turkish correction run estimated 6777 input tokens but the provider reported 8074; over-estimation is intentionally safer than under-estimation.",
     "chars_per_token": 3.0,
-    "safety_margin": 1.15
+    "safety_margin": 1.40
   },
 
   "stages": {
     "research": {
-      "_comment": "Input ceiling: scraped/aggregated source text has no other stage's max_model_output to bound it, so this is a deliberately generous standalone planning ceiling (~18000 chars / ~6000 true tokens) plus normal system/instruction overhead. Allocation covers (assumed_max_input_tokens * safety_margin) priced at max_model_output output — i.e. the guard's actual worst-case ESTIMATE, not the raw assumed token count.",
+      "_comment": "Planning ceiling around 6000 pre-margin input tokens; allocation covers the 1.40 safety margin plus the profile output ceiling.",
       "profile_content_key": "research",
       "assumed_max_input_tokens": 6000,
       "allocated_budget_usd": 0.07
     },
     "script": {
-      "_comment": "Input is the research issue's extracted top-3-ideas section only (not the full research body) — small by construction.",
+      "_comment": "Input is the research issue's extracted top-3-ideas section only.",
       "profile_content_key": "script",
       "assumed_max_input_tokens": 2500,
       "allocated_budget_usd": 0.09
     },
     "quality_control": {
-      "_comment": "Input is bounded by the script stage's own max_model_output (4800) plus overhead.",
+      "_comment": "Input is bounded by the script output plus overhead.",
       "profile_content_key": "quality_control",
       "assumed_max_input_tokens": 6000,
       "allocated_budget_usd": 0.10
     },
     "correction": {
-      "_comment": "Input is bounded by script's max_model_output (4800) + QC's max_model_output (4500) plus overhead. Output ceiling is 5500 so the three-scenario final can finish without the observed 4500-token truncation; the $0.12 allocation covers the conservative worst-case estimate.",
+      "_comment": "Targeted correction sends only QC-blocked scenario blocks to the provider and deterministically preserves approved scenarios. The workflow-level preflight still prices the original full request conservatively; 2200 output tokens and a 7500 pre-margin input planning ceiling fit the $0.07 slice.",
       "profile_content_key": "correction",
-      "assumed_max_input_tokens": 10500,
-      "allocated_budget_usd": 0.12
+      "assumed_max_input_tokens": 7500,
+      "allocated_budget_usd": 0.07
     },
     "final_technical_control": {
-      "_comment": "Input is bounded by correction's max_model_output (5500) + QC's max_model_output (4500) plus overhead.",
+      "_comment": "Input is the assembled final document plus QC context; 10000 pre-margin input tokens with the 1.40 safety margin and 1800 output tokens remain within $0.07.",
       "profile_content_key": "final_technical_control",
       "assumed_max_input_tokens": 10000,
       "allocated_budget_usd": 0.07

@@ -10,6 +10,7 @@ that fail an optional deterministic quality contract.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from output_contract import load_contract, validate_text
@@ -64,6 +66,32 @@ def resolve_quality_contract(
     return candidate.strip() if isinstance(candidate, str) else ""
 
 
+def resolve_transformer_path(output_file: str, routing: dict[str, Any]) -> str:
+    mappings = routing.get("transformers_by_output")
+    if not isinstance(mappings, dict):
+        return ""
+    candidate = mappings.get(Path(output_file).name)
+    return candidate.strip() if isinstance(candidate, str) else ""
+
+
+def load_transformer(path: str) -> ModuleType:
+    transformer_path = Path(path).resolve()
+    if not transformer_path.is_file():
+        raise RuntimeError(f"transformer file not found: {path}")
+    spec = importlib.util.spec_from_file_location(
+        f"ai_router_transformer_{transformer_path.stem}", transformer_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"transformer could not be loaded: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not callable(getattr(module, "prepare_request", None)) or not callable(
+        getattr(module, "finalize_output", None)
+    ):
+        raise RuntimeError("transformer must expose prepare_request() and finalize_output()")
+    return module
+
+
 def request_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any]]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -83,14 +111,7 @@ def request_json(url: str, headers: dict[str, str], payload: dict[str, Any], tim
 
 
 def extract_web_sources(data: Any) -> list[dict[str, str]]:
-    """Recursively walks a raw Anthropic response for any object shaped like
-    a web_search_result / web_search_result_location item — mirroring the
-    `jq '.. | objects | select((.type? == "web_search_result_location" or
-    .type? == "web_search_result") and (.url? != null)) | {title: (.title
-    // .url), url}'` walk the pre-router workflow implementation used to do
-    itself directly on the raw API response. Returns deduplicated
-    {title, url} entries in first-seen order — never raw token/secret data,
-    since only these two fields are ever read off a matching node."""
+    """Recursively walks a raw Anthropic response for web-search sources."""
     found: list[dict[str, str]] = []
     seen_urls: set[str] = set()
 
@@ -220,13 +241,6 @@ def call_openai_chat(
         "stop_reason": finish_reason,
         "input_tokens": int(usage.get("prompt_tokens") or 0),
         "output_tokens": int(usage.get("completion_tokens") or 0),
-        # None of the openai_chat-style providers currently configured
-        # (openai/deepseek/qwen) support web search in this router — see
-        # the provider-capability skip in main() below, which never lets
-        # this function be called at all when web search was requested of
-        # a provider lacking it. These zero/empty defaults just keep the
-        # result shape uniform for any caller reading web_searches/
-        # web_sources regardless of which provider style answered.
         "web_searches": 0,
         "web_sources": [],
         "raw_error": data.get("error"),
@@ -269,15 +283,6 @@ def usage_totals(attempts: list[dict[str, Any]]) -> tuple[int, int]:
 
 
 def resolve_retry_statuses(routing: dict[str, Any]) -> set[int]:
-    """Which HTTP statuses config considers transient/retryable.
-
-    Used only to label each failed attempt (attempt["retryable"]) for
-    observability/cost-guard purposes — it intentionally never stops the
-    provider fallback chain, retryable status or not. A single provider's
-    non-retryable failure (e.g. 401 invalid/expired key, 400 bad request)
-    must not prevent trying the next configured, healthy provider; that
-    per-provider fallback resilience is this router's whole purpose.
-    """
     configured = routing.get("retry_http_statuses")
     return set(configured or [408, 429, 500, 502, 503, 504])
 
@@ -330,12 +335,38 @@ def main() -> None:
     retry_statuses = resolve_retry_statuses(routing)
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
     system_prompt = Path(args.system_file).read_text(encoding="utf-8") if args.system_file else ""
+    original_prompt_chars = len(prompt)
+    original_system_chars = len(system_prompt)
     contract_path = resolve_quality_contract(args.quality_contract, args.output_file, routing)
+    transformer_path = resolve_transformer_path(args.output_file, routing)
+    transformer: ModuleType | None = None
+    transformer_context: dict[str, Any] | None = None
 
     try:
         contract = load_contract(contract_path) if contract_path else None
     except Exception as exc:
         raise SystemExit(f"Kalite sözleşmesi yüklenemedi: {exc}") from exc
+
+    if transformer_path:
+        try:
+            transformer = load_transformer(transformer_path)
+            prepared = transformer.prepare_request(prompt=prompt, system_prompt=system_prompt)
+            if not isinstance(prepared, dict):
+                raise RuntimeError("prepare_request() must return a dict")
+            transformed_prompt = prepared.get("prompt")
+            transformed_system = prepared.get("system_prompt")
+            transformed_context = prepared.get("context")
+            if not isinstance(transformed_prompt, str) or not transformed_prompt.strip():
+                raise RuntimeError("transformer produced an empty/non-string prompt")
+            if not isinstance(transformed_system, str):
+                raise RuntimeError("transformer produced a non-string system prompt")
+            if not isinstance(transformed_context, dict):
+                raise RuntimeError("transformer produced a non-dict context")
+            prompt = transformed_prompt
+            system_prompt = transformed_system
+            transformer_context = transformed_context
+        except Exception as exc:
+            raise SystemExit(f"İstek dönüştürücü hazırlanamadı: {exc}") from exc
 
     attempts: list[dict[str, Any]] = []
 
@@ -346,11 +377,6 @@ def main() -> None:
             continue
 
         if web_search_requested and not provider.get("supports_web_search"):
-            # Never silently fall back to a tool-less model when the caller
-            # explicitly asked for web-search capability — that would let a
-            # quality/verification pass that specifically needs web
-            # confirmation quietly run without it. Skipped before any
-            # credential/model/endpoint check and before any network call.
             attempts.append({"provider": provider_name, "status": "skipped", "reason": "web_search_unsupported"})
             continue
 
@@ -389,6 +415,8 @@ def main() -> None:
                 "stop_reason": None,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "web_searches": 0,
+                "web_sources": [],
                 "raw_error": {"message": str(exc)},
             }
 
@@ -405,7 +433,21 @@ def main() -> None:
         }
 
         if usable(result):
-            errors = quality_errors(result["text"], contract)
+            candidate_text = str(result["text"])
+            if transformer is not None:
+                try:
+                    candidate_text = transformer.finalize_output(
+                        text=candidate_text,
+                        context=transformer_context or {},
+                    )
+                except Exception as exc:
+                    attempt["status"] = "rejected_quality"
+                    attempt["reason"] = "output_transform_failed"
+                    attempt["quality_errors"] = [str(exc)[:500]]
+                    attempts.append(attempt)
+                    continue
+
+            errors = quality_errors(candidate_text, contract)
             if errors:
                 attempt["status"] = "rejected_quality"
                 attempt["reason"] = "quality_contract_failed"
@@ -416,7 +458,7 @@ def main() -> None:
             attempt["status"] = "success"
             attempt["quality_contract"] = "passed" if contract is not None else "not_requested"
             attempts.append(attempt)
-            Path(args.output_file).write_text(result["text"].strip() + "\n", encoding="utf-8")
+            Path(args.output_file).write_text(candidate_text.strip() + "\n", encoding="utf-8")
             total_input_tokens, total_output_tokens = usage_totals(attempts)
             web_sources = result.get("web_sources") or []
             meta = {
@@ -431,6 +473,9 @@ def main() -> None:
                 "quality_passed": True if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
+                "original_system_chars": original_system_chars,
+                "original_prompt_chars": original_prompt_chars,
+                "request_transformer": transformer_path or None,
                 "web_searches": result.get("web_searches", 0),
                 "web_source_count": len(web_sources),
                 "attempts": attempts,
@@ -446,15 +491,6 @@ def main() -> None:
         attempt["status"] = "failed"
         attempt["reason"] = error_message(result)
         status = int(result.get("http_status") or 0)
-        # retry_http_statuses (config: routing.retry_http_statuses) marks
-        # which HTTP statuses are considered transient/retryable (default:
-        # 408/429/500/502/503/504) purely for observability in the attempts
-        # log. It deliberately does NOT stop the provider fallback chain for
-        # a non-retryable status (e.g. 401 invalid/expired key, 400 bad
-        # request): a config problem or auth failure on one provider must
-        # not prevent trying the next configured, healthy provider — that
-        # per-provider fallback resilience is the entire point of this
-        # router and always continues below, retryable or not.
         attempt["retryable"] = status in retry_statuses
         attempts.append(attempt)
 
@@ -468,6 +504,9 @@ def main() -> None:
                 "quality_passed": False if contract is not None else None,
                 "system_chars": len(system_prompt),
                 "prompt_chars": len(prompt),
+                "original_system_chars": original_system_chars,
+                "original_prompt_chars": original_prompt_chars,
+                "request_transformer": transformer_path or None,
                 "attempts": attempts,
             },
             ensure_ascii=False,
