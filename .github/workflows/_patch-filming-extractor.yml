@@ -18,7 +18,7 @@ jobs:
         with:
           ref: fix/filming-scenario-extractor
           fetch-depth: 0
-      - name: Apply tested extractor patch
+      - name: Build verified patched copy
         shell: bash
         run: |
           set -euo pipefail
@@ -26,8 +26,10 @@ jobs:
           python3 -m py_compile .github/scripts/extract_filming_scenario.py
           python3 .github/scripts/test_extract_filming_scenario.py
           git diff --check
+          cp .github/workflows/filming-package-agent-v4-router.yml .github/scripts/filming-package-agent-v4-router.patched.yml
+          git checkout -- .github/workflows/filming-package-agent-v4-router.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/filming-package-agent-v4-router.yml
-          git commit -m 'fix: use robust filming scenario extractor'
+          git add .github/scripts/filming-package-agent-v4-router.patched.yml
+          git commit -m 'chore: stage verified filming workflow patch'
           git push origin HEAD:fix/filming-scenario-extractor
