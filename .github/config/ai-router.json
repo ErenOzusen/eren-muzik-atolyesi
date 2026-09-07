@@ -13,7 +13,8 @@
       "filming-package.md": ".github/config/contracts/filming-package.json"
     },
     "transformers_by_output": {
-      "final-scripts.md": ".github/scripts/targeted_correction_transform.py"
+      "final-scripts.md": ".github/scripts/targeted_correction_transform.py",
+      "final-check.md": ".github/scripts/final_technical_freshness_transform.py"
     }
   },
   "providers": {
