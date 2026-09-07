@@ -1,19 +1,16 @@
 {
   "schema_version": 1,
-  "_comment": "Hard dollar cap for the FIRST real (non-zero-token) AI E2E run across the Research -> Script -> QC -> Correction -> Final Technical Check chain. Enforced by .github/scripts/preflight_budget_guard.py BEFORE each real provider call. Historical paid usage is seeded below; new calls are conservatively reserved in the persistent GitHub Issue ledger before provider spend. Pricing is never guessed: the guard reads .github/config/cost-guard.json monetary.price_registry.",
-
-  "total_chain_budget_usd": 0.50,
+  "_comment": "Hard dollar cap for the first real AI E2E content/production run. The original Research -> Script -> QC -> Correction -> Final Technical stages remain under stages; controlled production calls are under production_stages. All stages share the same persistent GitHub Issue ledger and total_chain_budget_usd.",
+  "total_chain_budget_usd": 0.5,
   "realized_spend_floor_usd": 0.367095,
   "realized_spend_floor_note": "Observed paid usage before the persistent reservation ledger: research $0.036876 + script $0.075060 + quality_control $0.056715 + failed correction(4500 output) $0.091722 + failed correction(5500 output) $0.106722 = $0.367095.",
   "allowed_provider": "anthropic",
   "allowed_model": "claude-sonnet-4-6",
-
   "input_estimation": {
     "_comment": "Offline conservative estimate from the real prompt/system characters. The 1.40 margin replaces 1.15 after a Turkish correction run estimated 6777 input tokens but the provider reported 8074; over-estimation is intentionally safer than under-estimation.",
     "chars_per_token": 3.0,
-    "safety_margin": 1.40
+    "safety_margin": 1.4
   },
-
   "stages": {
     "research": {
       "_comment": "Planning ceiling around 6000 pre-margin input tokens; allocation covers the 1.40 safety margin plus the profile output ceiling.",
@@ -31,7 +28,7 @@
       "_comment": "Input is bounded by the script output plus overhead.",
       "profile_content_key": "quality_control",
       "assumed_max_input_tokens": 6000,
-      "allocated_budget_usd": 0.10
+      "allocated_budget_usd": 0.1
     },
     "correction": {
       "_comment": "Targeted correction sends only QC-blocked scenario blocks to the provider and deterministically preserves approved scenarios. The workflow-level preflight still prices the original full request conservatively; 2200 output tokens and a 7500 pre-margin input planning ceiling fit the $0.07 slice.",
@@ -44,6 +41,16 @@
       "profile_content_key": "final_technical_control",
       "assumed_max_input_tokens": 10000,
       "allocated_budget_usd": 0.07
+    }
+  },
+  "unreserved_realized_spend_usd": 0.054003,
+  "unreserved_realized_spend_note": "Observed Anthropic spend from filming-package run #6 (run_id 34152857778) before filming was wired to the persistent ledger: 3001 input + 3000 output tokens at the committed Sonnet 4.6 rates = $0.054003. This amount is always added to the remote ledger total during live preflight.",
+  "production_stages": {
+    "filming_package": {
+      "_comment": "Compact filming plan. The router hard-caps this output at 1800 tokens and the prompt targets 550-700 words.",
+      "max_output_tokens": 1800,
+      "assumed_max_input_tokens": 4000,
+      "allocated_budget_usd": 0.05
     }
   }
 }

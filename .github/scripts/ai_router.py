@@ -74,6 +74,32 @@ def resolve_transformer_path(output_file: str, routing: dict[str, Any]) -> str:
     return candidate.strip() if isinstance(candidate, str) else ""
 
 
+def resolve_output_max_tokens(requested: int, output_file: str, routing: dict[str, Any]) -> int:
+    if requested <= 0:
+        raise RuntimeError("requested max tokens must be positive")
+    mappings = routing.get("max_tokens_by_output")
+    if not isinstance(mappings, dict):
+        return requested
+    candidate = mappings.get(Path(output_file).name)
+    if candidate is None:
+        return requested
+    if not isinstance(candidate, int) or candidate <= 0:
+        raise RuntimeError(f"invalid max_tokens_by_output value for {Path(output_file).name}")
+    return min(requested, candidate)
+
+
+def resolve_output_provider_order(output_file: str, routing: dict[str, Any]) -> list[str]:
+    mappings = routing.get("provider_order_by_output")
+    if not isinstance(mappings, dict):
+        return []
+    candidate = mappings.get(Path(output_file).name)
+    if candidate is None:
+        return []
+    if not isinstance(candidate, list) or not candidate or not all(isinstance(item, str) and item.strip() for item in candidate):
+        raise RuntimeError(f"invalid provider_order_by_output value for {Path(output_file).name}")
+    return [item.strip() for item in candidate]
+
+
 def load_transformer(path: str) -> ModuleType:
     transformer_path = Path(path).resolve()
     if not transformer_path.is_file():
@@ -331,6 +357,10 @@ def main() -> None:
     providers = config.get("providers") if isinstance(config.get("providers"), dict) else {}
     configured_order = routing.get("default_order") if isinstance(routing.get("default_order"), list) else []
     order = [item.strip() for item in args.provider_order.split(",") if item.strip()] or configured_order
+    output_order = resolve_output_provider_order(args.output_file, routing)
+    if output_order:
+        order = output_order
+    args.max_tokens = resolve_output_max_tokens(args.max_tokens, args.output_file, routing)
     timeout = int(routing.get("timeout_seconds") or 120)
     retry_statuses = resolve_retry_statuses(routing)
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
@@ -476,6 +506,8 @@ def main() -> None:
                 "original_system_chars": original_system_chars,
                 "original_prompt_chars": original_prompt_chars,
                 "request_transformer": transformer_path or None,
+                "effective_max_tokens": args.max_tokens,
+                "provider_order": order,
                 "web_searches": result.get("web_searches", 0),
                 "web_source_count": len(web_sources),
                 "attempts": attempts,
@@ -507,6 +539,8 @@ def main() -> None:
                 "original_system_chars": original_system_chars,
                 "original_prompt_chars": original_prompt_chars,
                 "request_transformer": transformer_path or None,
+                "effective_max_tokens": args.max_tokens,
+                "provider_order": order,
                 "attempts": attempts,
             },
             ensure_ascii=False,
