@@ -24,7 +24,6 @@ def load_module(name: str, path: Path):
 router = load_module("ai_router_filming_test", ROOT / ".github/scripts/ai_router.py")
 guard = load_module("preflight_budget_guard_filming_test", ROOT / ".github/scripts/preflight_budget_guard.py")
 transformer = load_module("filming_budget_guard_transform_test", ROOT / ".github/scripts/filming_budget_guard_transform.py")
-ledger = load_module("real_ai_budget_ledger_filming_test", ROOT / ".github/scripts/real_ai_budget_ledger.py")
 
 
 class FilmingBudgetOutputGuardTests(unittest.TestCase):
@@ -47,7 +46,8 @@ class FilmingBudgetOutputGuardTests(unittest.TestCase):
         self.assertNotIn("production_stages", self.content_budget)
         self.assertNotIn("unreserved_realized_spend_usd", self.content_budget)
         self.assertEqual(self.production_budget["total_chain_budget_usd"], 0.10)
-        self.assertNotEqual(self.production_budget["ledger_title"], ledger.LEDGER_TITLE)
+        self.assertEqual(self.production_budget["ledger_title"], "SYSTEM MVP Production Budget Ledger")
+        self.assertNotEqual(self.production_budget["ledger_title"], "SYSTEM Real AI Budget Ledger")
 
     def test_run_six_is_seed_of_production_budget_only(self) -> None:
         self.assertAlmostEqual(self.production_budget["realized_spend_floor_usd"], 0.054003, places=6)
