@@ -1,0 +1,28 @@
+name: OPS Run Filming Package Scenario 3 V2
+
+"on":
+  push:
+    branches:
+      - ops/run-filming-package-3-v2
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch filming package on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh workflow run filming-package-agent-v4-router.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f test_mode=false \
+            -f source_issue_number=66 \
+            -f source_scenario=3 \
+            -f live_label_validation=false
+          echo "filming-package dispatch requested for issue #66 scenario 3 on main"
