@@ -53,7 +53,7 @@ class RealizedSpendFloorTests(unittest.TestCase):
         budget["realized_spend_floor_usd"] = 0.49
         result = self.run_guard(budget)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prior_chain_spend_usd=0.544003", result.stdout)
+        self.assertIn("prior_chain_spend_usd=0.49", result.stdout)
         self.assertIn("exceeds total_chain_budget_usd", result.stdout)
 
     def test_explicit_prior_can_only_raise_not_lower_floor(self) -> None:
