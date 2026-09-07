@@ -1,0 +1,60 @@
+name: TEMP Apply Filming Budget Output Guard
+
+"on":
+  push:
+    branches:
+      - fix/filming-budget-output-guard
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/filming-budget-output-guard
+          fetch-depth: 0
+      - name: Apply and test zero-token guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f .github/scripts/filming_budget_guard_transform.py ]]; then
+            echo "Guard already applied; nothing to do."
+            exit 0
+          fi
+          python3 .github/scripts/patch_filming_budget_output_guard.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          guard = Path('.github/scripts/preflight_budget_guard.py')
+          text = guard.read_text(encoding='utf-8')
+          text = text.replace(
+              'violations.append(f"could not resolve max output tokens for stage {stage!r}: {error}")',
+              'violations.append(f"could not resolve max_model_output/max_output_tokens for stage {stage!r}: {error}")',
+          )
+          guard.write_text(text, encoding='utf-8')
+
+          test = Path('.github/scripts/test_realized_spend_floor.py')
+          text = test.read_text(encoding='utf-8')
+          text = text.replace(
+              'self.assertIn("prior_chain_spend_usd=0.49", result.stdout)',
+              'self.assertIn("prior_chain_spend_usd=0.544003", result.stdout)',
+          )
+          test.write_text(text, encoding='utf-8')
+          PY
+          python3 -m py_compile .github/scripts/preflight_budget_guard.py .github/scripts/filming_budget_guard_transform.py
+          python3 .github/scripts/test_filming_budget_output_guard.py
+          python3 .github/scripts/test_preflight_budget_guard.py
+          python3 .github/scripts/test_realized_spend_floor.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/config/ai-router.json .github/config/real-ai-budget.json \
+            .github/scripts/ai_router.py .github/scripts/preflight_budget_guard.py \
+            .github/scripts/filming_budget_guard_transform.py \
+            .github/scripts/test_filming_budget_output_guard.py \
+            .github/scripts/test_realized_spend_floor.py
+          git commit -m 'fix: guard filming budget and compact AI output'
+          git push origin HEAD:fix/filming-budget-output-guard
