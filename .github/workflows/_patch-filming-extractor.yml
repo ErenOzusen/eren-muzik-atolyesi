@@ -6,6 +6,11 @@ on:
       - fix/filming-scenario-extractor
     paths:
       - .github/workflows/_patch-filming-extractor.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/_patch-filming-extractor.yml
 
 permissions:
   contents: write
