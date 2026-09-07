@@ -1,0 +1,70 @@
+name: TEMP Patch Filming Extractor
+
+on:
+  push:
+    branches:
+      - fix/filming-scenario-extractor
+    paths:
+      - .github/workflows/_patch-filming-extractor.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/filming-scenario-extractor
+          fetch-depth: 0
+      - name: Replace inline extractor with tested script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/filming-package-agent-v4-router.yml')
+          text = path.read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n          from pathlib import Path\n          import json, os, re\n"
+          end_marker = "          PY\n\n          SELECTED_TITLE=$(jq -r '.title' /tmp/selected-script.json)"
+
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit('inline extractor start marker not found')
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('inline extractor end marker not found')
+
+          replacement = """          MINIMUM_BYTES=1200
+          if [[ \"$TEST_MODE\" == \"true\" ]]; then
+            MINIMUM_BYTES=40
+          fi
+          python3 .github/scripts/extract_filming_scenario.py \\
+            --input /tmp/final-scripts.md \\
+            --scenario \"$SELECTED_SCENARIO\" \\
+            --output /tmp/selected-script.md \\
+            --meta /tmp/selected-script.json \\
+            --minimum-bytes \"$MINIMUM_BYTES\" \\
+            --maximum-bytes 16000
+
+"""
+          text = text[:start] + replacement + text[end + len("          PY\n\n"):]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          python3 -m py_compile .github/scripts/extract_filming_scenario.py
+          python3 .github/scripts/test_extract_filming_scenario.py
+          git diff --check
+
+          if git diff --quiet; then
+            echo 'No patch produced.'
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/filming-package-agent-v4-router.yml
+          git commit -m 'fix: use robust filming scenario extractor'
+          git push origin HEAD:fix/filming-scenario-extractor
