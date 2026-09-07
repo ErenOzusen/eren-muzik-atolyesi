@@ -1,0 +1,516 @@
+name: Çekim Paketi Ajanı — AI Router
+
+"on":
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "AI çağrısı ve gerçek üretim kaydı oluşturmadan seçim/ayıklama hattını test et"
+        required: true
+        default: true
+        type: boolean
+      test_issue_number:
+        description: "Test modunda kullanılacak sistem-testi Nihai Senaryolar Issue numarası"
+        required: false
+        type: string
+      test_scenario:
+        description: "Test modunda ayıklanacak senaryo: 1, 2 veya 3"
+        required: false
+        default: "2"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+      source_issue_number:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin Nihai Senaryolar Issue numarası"
+        required: false
+        type: string
+      source_scenario:
+        description: "Gerçek üretimde Handoff Kapısından gelen kesin senaryo numarası"
+        required: false
+        type: string
+      live_label_validation:
+        description: "Yalnız test_mode=true ile: AI/provider çağrısı yapmadan gerçek etiket kalıcılık uygulamasını açık bir sistem-testi fixture'ı üzerinde doğrula"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: filming-package-agent-router
+  cancel-in-progress: false
+
+jobs:
+  create-filming-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+      QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
+      PACKAGE_VERSION: "8"
+      TEST_MODE: ${{ inputs.test_mode || 'false' }}
+      TEST_ISSUE_NUMBER: ${{ inputs.test_issue_number || '' }}
+      TEST_SCENARIO: ${{ inputs.test_scenario || '2' }}
+      SOURCE_ISSUE_NUMBER: ${{ inputs.source_issue_number || '' }}
+      SOURCE_SCENARIO: ${{ inputs.source_scenario || '' }}
+      LIVE_LABEL_VALIDATION: ${{ inputs.live_label_validation || 'false' }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Router ve yapılandırmayı yerel doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/ai_router.py
+          python3 -m json.tool .github/config/ai-router.json > /dev/null
+
+      - name: Seçilmiş nihai senaryoyu güvenli biçimde bul ve ayıkla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$TEST_MODE" != "true" && "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+            echo "live_label_validation yalnızca test_mode=true ile birlikte kullanılabilir."
+            exit 1
+          fi
+
+          EXPECTED_SCENARIO=""
+          if [[ "$TEST_MODE" == "true" ]]; then
+            FINAL_NUMBER="$TEST_ISSUE_NUMBER"
+            if [[ "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                echo "Canlı etiket doğrulaması yalnızca açıkça belirtilen bir test_issue_number ile çalışabilir; otomatik arama yapılmaz."
+                exit 1
+              fi
+            else
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                FINAL_NUMBER=$(gh issue list \
+                  --state all \
+                  --label "sistem-testi" \
+                  --search '"Nihai Senaryolar" in:title sort:updated-desc' \
+                  --limit 20 \
+                  --json number,title,updatedAt \
+                  --jq '[.[] | select(.title | startswith("Nihai Senaryolar"))] | sort_by(.updatedAt) | reverse | .[0].number // empty')
+              fi
+              if [[ -z "$FINAL_NUMBER" ]]; then
+                echo "Test için sistem-testi etiketli Nihai Senaryolar Issue'su bulunamadı."
+                exit 1
+              fi
+            fi
+            SELECTED_SCENARIO="$TEST_SCENARIO"
+            if [[ ! "$SELECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Test senaryosu yalnız 1, 2 veya 3 olabilir."
+              exit 1
+            fi
+          else
+            FINAL_NUMBER="$SOURCE_ISSUE_NUMBER"
+            EXPECTED_SCENARIO="$SOURCE_SCENARIO"
+            if [[ ! "$FINAL_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "Gerçek üretimde kesin source_issue_number zorunludur."
+              exit 1
+            fi
+            if [[ ! "$EXPECTED_SCENARIO" =~ ^[123]$ ]]; then
+              echo "Gerçek üretimde source_scenario yalnız 1, 2 veya 3 olabilir."
+              exit 1
+            fi
+          fi
+
+          gh issue view "$FINAL_NUMBER" --json title,body,url,labels,state > /tmp/final.json
+          jq -r '.body // ""' /tmp/final.json > /tmp/final-scripts.md
+          jq -r '.labels[].name' /tmp/final.json > /tmp/final-labels.txt
+
+          FINAL_TITLE=$(jq -r '.title // ""' /tmp/final.json)
+          FINAL_URL=$(jq -r '.url // ""' /tmp/final.json)
+          FINAL_STATE=$(jq -r '.state // ""' /tmp/final.json)
+
+          if [[ "$FINAL_TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Issue Nihai Senaryolar değil: $FINAL_TITLE"
+            exit 1
+          fi
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Test modu yalnız sistem-testi etiketli Issue üzerinde çalışabilir."
+              exit 1
+            fi
+            if [[ "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+              if [[ "$FINAL_STATE" != "OPEN" ]]; then
+                echo "Canlı etiket doğrulaması yalnız açık bir Issue üzerinde çalışabilir: state=$FINAL_STATE"
+                exit 1
+              fi
+              if ! grep -Fq '<!-- LIVE_FILMING_PACKAGE_LABEL_VALIDATION_FIXTURE v1 -->' /tmp/final-scripts.md; then
+                echo "Canlı etiket doğrulaması yalnız açık doğrulama işaretini taşıyan bir fixture üzerinde çalışabilir."
+                exit 1
+              fi
+            fi
+          else
+            if [[ "$FINAL_STATE" != "OPEN" ]]; then
+              echo "Gerçek çekim paketi yalnız açık Nihai Senaryolar Issue'sundan üretilebilir: state=$FINAL_STATE"
+              exit 1
+            fi
+            if grep -qx 'sistem-testi' /tmp/final-labels.txt; then
+              echo "Sistem testi gerçek üretim kaynağı olamaz."
+              exit 1
+            fi
+            for REQUIRED in eren-onayli cekime-hazir uretime-secildi; do
+              if [[ "$REQUIRED" == "eren-onayli" ]]; then
+                if ! grep -qxE 'eren-onayli|owner-approved' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
+                  exit 1
+                fi
+              elif [[ "$REQUIRED" == "cekime-hazir" ]]; then
+                if ! grep -qxE 'cekime-hazir|production-ready' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için üretime hazır durumu eksik: cekime-hazir/production-ready"
+                  exit 1
+                fi
+              elif [[ "$REQUIRED" == "uretime-secildi" ]]; then
+                if ! grep -qxE 'uretime-secildi|production-selected' /tmp/final-labels.txt; then
+                  echo "Gerçek üretim için üretim seçimi etiketi eksik: uretime-secildi/production-selected"
+                  exit 1
+                fi
+              elif ! grep -qx "$REQUIRED" /tmp/final-labels.txt; then
+                echo "Gerçek üretim için zorunlu etiket eksik: $REQUIRED"
+                exit 1
+              fi
+            done
+            if grep -qx 'duzeltme-gerekiyor' /tmp/final-labels.txt; then
+              echo "Düzeltme gereken içerikten çekim paketi oluşturulamaz."
+              exit 1
+            fi
+
+            mapfile -t LEGACY_SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/final-labels.txt || true)
+            mapfile -t GENERIC_SELECTION_LABELS < <(grep -E '^production-scenario-[123]$' /tmp/final-labels.txt || true)
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -gt 1 || "${#GENERIC_SELECTION_LABELS[@]}" -gt 1 ]]; then
+              echo "Birden fazla üretim senaryosu etiketi bulundu: legacy=${#LEGACY_SELECTION_LABELS[@]} generic=${#GENERIC_SELECTION_LABELS[@]}"
+              exit 1
+            fi
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -eq 0 && "${#GENERIC_SELECTION_LABELS[@]}" -eq 0 ]]; then
+              echo "Üretim senaryosu etiketi bulunamadı."
+              exit 1
+            fi
+
+            LEGACY_SCENARIO=""
+            GENERIC_SCENARIO=""
+            if [[ "${#LEGACY_SELECTION_LABELS[@]}" -eq 1 ]]; then
+              LEGACY_SCENARIO="${LEGACY_SELECTION_LABELS[0]##*-}"
+            fi
+            if [[ "${#GENERIC_SELECTION_LABELS[@]}" -eq 1 ]]; then
+              GENERIC_SCENARIO="${GENERIC_SELECTION_LABELS[0]##*-}"
+            fi
+            if [[ -n "$LEGACY_SCENARIO" && -n "$GENERIC_SCENARIO" && "$LEGACY_SCENARIO" != "$GENERIC_SCENARIO" ]]; then
+              echo "Legacy/generic üretim senaryosu etiketleri uyuşmuyor: legacy=$LEGACY_SCENARIO generic=$GENERIC_SCENARIO"
+              exit 1
+            fi
+
+            SELECTED_SCENARIO="${LEGACY_SCENARIO:-$GENERIC_SCENARIO}"
+            if [[ "$SELECTED_SCENARIO" != "$EXPECTED_SCENARIO" ]]; then
+              echo "Handoff uyuşmazlığı: input=$EXPECTED_SCENARIO etiket=$SELECTED_SCENARIO"
+              exit 1
+            fi
+
+            # Same body-content binding as filming-handoff-gate.yml (this
+            # workflow's own caller): re-validates independently here too,
+            # since this step is the actual last line of defense before any
+            # real AI call / package Issue gets created. A stale
+            # FILMING_HANDOFF_V1 marker posted before a later content edit
+            # must never be treated as current authorization.
+            SOURCE_SHA=$(sha256sum /tmp/final-scripts.md | awk '{print $1}')
+            gh issue view "$FINAL_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/final-comments.txt
+            HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$FINAL_NUMBER scenario=$EXPECTED_SCENARIO body_sha256=$SOURCE_SHA -->"
+            if ! grep -Fqx "$HANDOFF_MARKER" /tmp/final-comments.txt; then
+              echo "Geçerli (güncel içerik revizyonuna bağlı) Seçim Kapısı handoff işareti bulunamadı; içerik SEÇ $EXPECTED_SCENARIO sonrasında değişmiş olabilir."
+              exit 1
+            fi
+          fi
+
+          SOURCE_SHA="${SOURCE_SHA:-$(sha256sum /tmp/final-scripts.md | awk '{print $1}')}"
+          PACKAGE_TITLE="Çekim Paketi - Nihai Senaryolar #$FINAL_NUMBER"
+          export SELECTED_SCENARIO
+
+          MINIMUM_BYTES=1200
+          if [[ "$TEST_MODE" == "true" ]]; then
+            MINIMUM_BYTES=40
+          fi
+          python3 .github/scripts/extract_filming_scenario.py \
+            --input /tmp/final-scripts.md \
+            --scenario "$SELECTED_SCENARIO" \
+            --output /tmp/selected-script.md \
+            --meta /tmp/selected-script.json \
+            --minimum-bytes "$MINIMUM_BYTES" \
+            --maximum-bytes 16000
+
+          SELECTED_TITLE=$(jq -r '.title' /tmp/selected-script.json)
+          SELECTED_CHARS=$(jq -r '.chars' /tmp/selected-script.json)
+
+          EXISTING_NUMBER=""
+          SKIP_PACKAGE=false
+          if [[ "$TEST_MODE" != "true" || "$LIVE_LABEL_VALIDATION" == "true" ]]; then
+            EXISTING_NUMBER=$(gh issue list --state all --search "\"$PACKAGE_TITLE\" in:title" --limit 20 --json number,title \
+              --jq ".[] | select(.title == \"$PACKAGE_TITLE\") | .number" | head -n 1)
+            if [[ -n "$EXISTING_NUMBER" ]]; then
+              gh issue view "$EXISTING_NUMBER" --json body > /tmp/existing-package.json
+              EXISTING_BODY=$(jq -r '.body // ""' /tmp/existing-package.json)
+              if grep -Fq "source-body-sha256: $SOURCE_SHA" <<< "$EXISTING_BODY" \
+                && grep -Fq "package-version: $PACKAGE_VERSION" <<< "$EXISTING_BODY" \
+                && grep -Fq "scenario=$SELECTED_SCENARIO" <<< "$EXISTING_BODY"; then
+                SKIP_PACKAGE=true
+              fi
+            fi
+          fi
+
+          {
+            echo "FINAL_NUMBER=$FINAL_NUMBER"
+            echo "FINAL_URL=$FINAL_URL"
+            echo "SOURCE_SHA=$SOURCE_SHA"
+            echo "PACKAGE_TITLE=$PACKAGE_TITLE"
+            echo "EXISTING_NUMBER=$EXISTING_NUMBER"
+            echo "SKIP_PACKAGE=$SKIP_PACKAGE"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
+            echo "SELECTED_TITLE=$SELECTED_TITLE"
+            echo "SELECTED_CHARS=$SELECTED_CHARS"
+          } >> "$GITHUB_ENV"
+
+          if [[ "$TEST_MODE" == "true" && "$LIVE_LABEL_VALIDATION" != "true" ]]; then
+            {
+              echo "### Router'lı Çekim Paketi handoff testi başarılı"
+              echo "- Kaynak test Issue: $FINAL_URL"
+              echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+              echo "- Ayıklanan veri: $SELECTED_CHARS bayt"
+              echo "- AI kullanımı: 0 token"
+              echo "- Router canlı çağrısı: yapılmadı"
+              echo "- Issue/etiket değişikliği: yapılmadı"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Tek senaryoluk çekim promptlarını hazırla
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node .github/scripts/build_filming_package_prompt.mjs \
+            --profile .github/config/business-profile.json \
+            --system-output /tmp/system-prompt.txt \
+            --metadata-output /tmp/filming-profile-metadata.json
+
+          REQUEST_INTRO=$(jq -r '.request_intro' /tmp/filming-profile-metadata.json)
+
+          {
+            echo "$REQUEST_INTRO"
+            echo "Kaynak: $FINAL_URL"
+            echo "Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo
+            cat /tmp/selected-script.md
+          } > /tmp/user-prompt.txt
+
+      - name: Cost guard ön kontrolü (preflight)
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Fail before spending any real provider tokens if the cost-guard
+          # config itself is broken/unreadable — a config problem must never
+          # be discovered only after a paid AI call already happened.
+          python3 -c "
+          import json
+          config = json.load(open('.github/config/cost-guard.json', encoding='utf-8'))
+          limits = config['limits']
+          for key in ('max_provider_attempts', 'max_input_tokens', 'max_output_tokens', 'max_total_tokens'):
+              assert isinstance(limits[key], int) and limits[key] > 0, f'invalid limit: {key}'
+          assert isinstance(config['monetary']['enabled'], bool)
+          print('Cost guard preflight: config gecerli.')
+          "
+
+      - name: AI Router ile çekim paketini oluştur
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/ai_router.py \
+            --config .github/config/ai-router.json \
+            --system-file /tmp/system-prompt.txt \
+            --prompt-file /tmp/user-prompt.txt \
+            --output-file /tmp/filming-package.md \
+            --meta-file /tmp/filming-router-meta.json \
+            --max-tokens 3000 \
+            --primary-model claude-sonnet-4-6
+
+          PROVIDER=$(jq -r '.provider // ""' /tmp/filming-router-meta.json)
+          MODEL=$(jq -r '.model // ""' /tmp/filming-router-meta.json)
+          INPUT_TOKENS=$(jq -r '.total_input_tokens // .input_tokens // 0' /tmp/filming-router-meta.json)
+          OUTPUT_TOKENS=$(jq -r '.total_output_tokens // .output_tokens // 0' /tmp/filming-router-meta.json)
+          ATTEMPTS=$(jq -r '[.attempts[]? | select(.status != "skipped")] | length' /tmp/filming-router-meta.json)
+
+          if [[ -z "$PROVIDER" || -z "$MODEL" || ! -s /tmp/filming-package.md ]]; then
+            echo "Router geçerli provider/model/çıktı üretmedi."
+            exit 1
+          fi
+
+          {
+            echo "FILMING_PROVIDER=$PROVIDER"
+            echo "FILMING_MODEL=$MODEL"
+            echo "FILMING_INPUT_TOKENS=$INPUT_TOKENS"
+            echo "FILMING_OUTPUT_TOKENS=$OUTPUT_TOKENS"
+            echo "FILMING_AI_ATTEMPTS=$ATTEMPTS"
+          } >> "$GITHUB_ENV"
+
+      - name: Cost guard kullanım doğrulaması (postflight)
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Runs AFTER the AI call — this cannot undo money already spent on
+          # this one call, but it fails the workflow closed before any
+          # further side effect (package Issue creation, label writes)
+          # happens if this run's actual usage exceeded the configured
+          # token/attempt limits. Monetary enforcement stays disabled unless
+          # explicitly configured with a real price registry (see
+          # cost-guard.json / cost_guard.py) — never a guessed price.
+          python3 .github/scripts/cost_guard.py \
+            --meta-file /tmp/filming-router-meta.json \
+            --config .github/config/cost-guard.json
+
+      - name: Çekim paketi kalite sözleşmesini doğrula
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/output_contract.py \
+            --contract .github/config/contracts/filming-package.json \
+            --input-file /tmp/filming-package.md \
+            --report-file /tmp/filming-package-contract-report.json
+
+          PACKAGE_CHARS=$(python3 -c \
+            'from pathlib import Path; print(len(Path("/tmp/filming-package.md").read_text(encoding="utf-8")))')
+          echo "FILMING_PACKAGE_CHARS=$PACKAGE_CHARS" >> "$GITHUB_ENV"
+
+          {
+            echo "### AI Router kullanım özeti"
+            echo "- provider: $FILMING_PROVIDER"
+            echo "- model: $FILMING_MODEL"
+            echo "- provider_attempts: $FILMING_AI_ATTEMPTS"
+            echo "- selected_scenario: $SELECTED_SCENARIO"
+            echo "- script_chars: $SELECTED_CHARS"
+            echo "- total_input_tokens: $FILMING_INPUT_TOKENS"
+            echo "- total_output_tokens: $FILMING_OUTPUT_TOKENS"
+            echo "- web_searches: 0"
+            echo "- kalite_sözleşmesi: geçti"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gerçek çekim paketi içeriğini hazırla
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EQUIPMENT_SUMMARY=$(jq -r '.equipment_summary' /tmp/filming-profile-metadata.json)
+          PRIMARY_DEVICE=$(jq -r '.primary_device' /tmp/filming-profile-metadata.json)
+
+          {
+            echo "<!-- source-body-sha256: $SOURCE_SHA -->"
+            echo "<!-- package-version: $PACKAGE_VERSION -->"
+            echo "<!-- FILMING_AI_ROUTER_V1 scenario=$SELECTED_SCENARIO provider=$FILMING_PROVIDER model=$FILMING_MODEL attempts=$FILMING_AI_ATTEMPTS input=$FILMING_INPUT_TOKENS output=$FILMING_OUTPUT_TOKENS web_search=0 package_chars=$FILMING_PACKAGE_CHARS -->"
+            echo "**Kaynak onaylı senaryo:** $FINAL_URL"
+            echo "**Seçilen içerik:** Senaryo $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "**AI sağlayıcısı:** $FILMING_PROVIDER / $FILMING_MODEL"
+            echo "**Ana kayıt cihazı:** $PRIMARY_DEVICE"
+            echo "**Mevcut ekipmanlar:** $EQUIPMENT_SUMMARY"
+            echo "**Plan türü:** Ek ekipman satın almadan mevcut kayıt cihazıyla çekim"
+            echo
+            cat /tmp/filming-package.md
+          } > /tmp/package-body.md
+
+      - name: Canlı doğrulama için deterministik paket içeriği oluştur
+        if: env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "<!-- source-body-sha256: $SOURCE_SHA -->"
+            echo "<!-- package-version: $PACKAGE_VERSION -->"
+            echo "<!-- LIVE_FILMING_PACKAGE_LABEL_VALIDATION_PACKAGE_V1 scenario=$SELECTED_SCENARIO -->"
+            echo "## 🧪 LIVE VALIDATION FIXTURE"
+            echo
+            echo "**NOT REAL CONTENT — NO AI — NO VIDEO — NO PUBLICATION**"
+            echo
+            echo "Bu Issue, paylaşılan çekim paketi etiket kalıcılık uygulamasını AI/provider"
+            echo "çağrısı yapılmadan doğrulamak için oluşturulmuştur."
+            echo
+            echo "**Kaynak fixture:** $FINAL_URL"
+            echo "**Seçilen senaryo:** $SELECTED_SCENARIO — $SELECTED_TITLE"
+          } > /tmp/package-body.md
+
+      - name: Çekim paketi etiketlerini kalıcı hale getir
+        if: (env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true') || env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        env:
+          PACKAGE_BODY_FILE: /tmp/package-body.md
+        run: bash .github/scripts/persist_filming_package_labels.sh
+
+      - name: Gerçek üretim onayı yorumunu ve özetini yaz
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue comment "$FINAL_NUMBER" --body "🎥 Çekim paketi hazırlandı: $PACKAGE_URL"
+
+          {
+            echo "### Çekim paketi hazırlandı"
+            echo "- Kaynak: #$FINAL_NUMBER"
+            echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "- Provider: $FILMING_PROVIDER / $FILMING_MODEL"
+            echo "- Paket: $PACKAGE_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Canlı doğrulama yorumunu ve özetini yaz
+        if: env.LIVE_LABEL_VALIDATION == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue comment "$FINAL_NUMBER" --body "🧪 Canlı etiket doğrulama testi başarılı: $PACKAGE_URL"
+
+          {
+            echo "### Canlı çekim paketi etiket doğrulaması başarılı"
+            echo "- Kaynak fixture: #$FINAL_NUMBER"
+            echo "- Paket Issue: $PACKAGE_URL"
+            echo "- AI kullanımı: 0 token"
+            echo "- Video/YouTube/provider çağrısı: yapılmadı"
+            echo "- Doğrulanan kimlik etiketleri: cekim-paketi, filming-package"
+            echo "- Doğrulanan hazır durumu etiketleri: cekim-paketi-hazir, filming-package-ready"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Güncel paket zaten varsa özeti yaz
+        if: env.TEST_MODE != 'true' && env.SKIP_PACKAGE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_URL=$(gh issue view "$EXISTING_NUMBER" --json url --jq '.url')
+          {
+            echo "### Güncel çekim paketi zaten mevcut"
+            echo "- Kaynak: #$FINAL_NUMBER"
+            echo "- Seçilen senaryo: $SELECTED_SCENARIO — $SELECTED_TITLE"
+            echo "- Paket: $PACKAGE_URL"
+            echo "- Yeni AI çağrısı: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
