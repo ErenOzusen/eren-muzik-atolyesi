@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "_comment": "Separate hard-dollar budget for the first real MVP production phase. This budget does not change or reuse the original $0.50 content-chain cap or its ledger.",
+  "ledger_title": "SYSTEM MVP Production Budget Ledger",
+  "total_chain_budget_usd": 0.10,
+  "realized_spend_floor_usd": 0.054003,
+  "realized_spend_floor_note": "Observed Anthropic spend from filming-package run #6 (run_id 34152857778): 3001 input + 3000 output tokens at the committed Sonnet 4.6 rates = $0.054003. This is the production-ledger seed, not part of the old content-chain ledger.",
+  "allowed_provider": "anthropic",
+  "allowed_model": "claude-sonnet-4-6",
+  "input_estimation": {
+    "chars_per_token": 3.0,
+    "safety_margin": 1.40
+  },
+  "stages": {
+    "filming_package": {
+      "_comment": "Compact filming plan. Router hard cap is 1800 output tokens; remaining production budget after run #6 is $0.045997.",
+      "max_output_tokens": 1800,
+      "assumed_max_input_tokens": 4000,
+      "allocated_budget_usd": 0.045997
+    }
+  }
+}

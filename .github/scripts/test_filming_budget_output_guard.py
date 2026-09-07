@@ -29,7 +29,8 @@ transformer = load_module("filming_budget_guard_transform_test", ROOT / ".github
 class FilmingBudgetOutputGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self.routing = json.loads((ROOT / ".github/config/ai-router.json").read_text(encoding="utf-8"))["routing"]
-        self.budget = json.loads((ROOT / ".github/config/real-ai-budget.json").read_text(encoding="utf-8"))
+        self.content_budget = json.loads((ROOT / ".github/config/real-ai-budget.json").read_text(encoding="utf-8"))
+        self.production_budget = json.loads((ROOT / ".github/config/mvp-production-budget.json").read_text(encoding="utf-8"))
         self.profile = json.loads((ROOT / ".github/config/business-profile.json").read_text(encoding="utf-8"))
         self.prices = json.loads((ROOT / ".github/config/cost-guard.json").read_text(encoding="utf-8"))
 
@@ -40,8 +41,26 @@ class FilmingBudgetOutputGuardTests(unittest.TestCase):
     def test_filming_router_is_anthropic_only(self) -> None:
         self.assertEqual(router.resolve_output_provider_order("/tmp/filming-package.md", self.routing), ["anthropic"])
 
-    def test_filming_stage_has_explicit_budgeted_output_ceiling(self) -> None:
-        stage = self.budget["production_stages"]["filming_package"]
+    def test_content_and_production_budgets_are_isolated(self) -> None:
+        self.assertEqual(self.content_budget["total_chain_budget_usd"], 0.5)
+        self.assertNotIn("production_stages", self.content_budget)
+        self.assertNotIn("unreserved_realized_spend_usd", self.content_budget)
+        self.assertEqual(self.production_budget["total_chain_budget_usd"], 0.10)
+        self.assertEqual(self.production_budget["ledger_title"], "SYSTEM MVP Production Budget Ledger")
+        self.assertNotEqual(self.production_budget["ledger_title"], "SYSTEM Real AI Budget Ledger")
+
+    def test_run_six_is_seed_of_production_budget_only(self) -> None:
+        self.assertAlmostEqual(self.production_budget["realized_spend_floor_usd"], 0.054003, places=6)
+        remaining = self.production_budget["total_chain_budget_usd"] - self.production_budget["realized_spend_floor_usd"]
+        self.assertAlmostEqual(remaining, 0.045997, places=6)
+        self.assertAlmostEqual(
+            self.production_budget["stages"]["filming_package"]["allocated_budget_usd"],
+            remaining,
+            places=6,
+        )
+
+    def test_filming_worst_case_planning_ceiling_fits_remaining_production_budget(self) -> None:
+        stage = self.production_budget["stages"]["filming_package"]
         self.assertEqual(stage["max_output_tokens"], 1800)
         result = guard.check_preflight_budget(
             stage="filming_package",
@@ -51,16 +70,15 @@ class FilmingBudgetOutputGuardTests(unittest.TestCase):
             prompt_text="a" * (stage["assumed_max_input_tokens"] * 3),
             system_text="",
             profile=self.profile,
-            budget_config=self.budget,
+            budget_config=self.production_budget,
             price_config=self.prices,
+            prior_chain_spend_usd=self.production_budget["realized_spend_floor_usd"],
         )
         self.assertTrue(result["ok"], result["violations"])
         self.assertLessEqual(result["report"]["worst_case_cost_usd"], stage["allocated_budget_usd"])
+        self.assertLessEqual(result["report"]["projected_chain_total_usd"], 0.10)
 
-    def test_failed_run_six_spend_is_not_lost(self) -> None:
-        self.assertAlmostEqual(self.budget["unreserved_realized_spend_usd"], 0.054003, places=6)
-
-    def test_compact_transformer_is_zero_network_offline(self) -> None:
+    def test_compact_transformer_is_zero_network_offline_and_uses_production_pool(self) -> None:
         old = {name: os.environ.get(name) for name in ("GITHUB_ACTIONS", "TEST_MODE", "SOURCE_ISSUE_NUMBER", "SOURCE_SCENARIO")}
         try:
             os.environ.pop("SOURCE_ISSUE_NUMBER", None)
@@ -73,36 +91,36 @@ class FilmingBudgetOutputGuardTests(unittest.TestCase):
                     os.environ[name] = value
         self.assertIn("550–700 kelime", prepared["system_prompt"])
         self.assertEqual(prepared["context"]["budget_preflight"], "offline")
+        self.assertEqual(prepared["context"]["budget_pool"], "mvp-production")
 
-    def test_unreserved_spend_is_applied_by_cli_before_provider(self) -> None:
-        budget = dict(self.budget)
-        budget["unreserved_realized_spend_usd"] = 0.20
+    def test_production_guard_cli_uses_its_seed_without_touching_github_offline(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            budget_path = tmp_path / "budget.json"
-            prompt_path = tmp_path / "prompt.txt"
-            budget_path.write_text(json.dumps(budget), encoding="utf-8")
+            prompt_path = Path(tmp) / "prompt.txt"
             prompt_path.write_text("short prompt", encoding="utf-8")
             env = os.environ.copy()
             env.pop("GITHUB_ACTIONS", None)
             env.pop("REAL_AI_BUDGET_CAP", None)
             result = subprocess.run(
                 [
-                    sys.executable, str(ROOT / ".github/scripts/preflight_budget_guard.py"),
-                    "--stage", "research",
+                    sys.executable,
+                    str(ROOT / ".github/scripts/mvp_production_budget_guard.py"),
+                    "--stage", "filming_package",
                     "--provider", "anthropic",
                     "--model", "claude-sonnet-4-6",
                     "--web-search-max-uses", "0",
                     "--prompt-file", str(prompt_path),
                     "--profile", str(ROOT / ".github/config/business-profile.json"),
-                    "--budget-config", str(budget_path),
+                    "--budget-config", str(ROOT / ".github/config/mvp-production-budget.json"),
                     "--price-config", str(ROOT / ".github/config/cost-guard.json"),
                 ],
-                cwd=ROOT, env=env, capture_output=True, text=True,
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
             )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prior_chain_spend_usd=0.567095", result.stdout)
-        self.assertIn("exceeds total_chain_budget_usd", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("prior_chain_spend_usd=0.054003", result.stdout)
+        self.assertIn("total_chain_budget_usd=0.1", result.stdout)
 
 
 if __name__ == "__main__":

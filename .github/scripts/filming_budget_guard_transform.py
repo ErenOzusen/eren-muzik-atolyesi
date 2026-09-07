@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-provider hard-budget and compact-output transformer for filming packages."""
+"""Pre-provider production-budget and compact-output transformer for filming packages."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def _run_persistent_preflight(prompt: str, system_prompt: str) -> str:
         completed = subprocess.run(
             [
                 sys.executable,
-                str(ROOT / ".github/scripts/preflight_budget_guard.py"),
+                str(ROOT / ".github/scripts/mvp_production_budget_guard.py"),
                 "--stage", "filming_package",
                 "--provider", "anthropic",
                 "--model", "claude-sonnet-4-6",
@@ -52,7 +52,7 @@ def _run_persistent_preflight(prompt: str, system_prompt: str) -> str:
                 "--prompt-file", str(prompt_path),
                 "--system-file", str(system_path),
                 "--profile", str(ROOT / ".github/config/business-profile.json"),
-                "--budget-config", str(ROOT / ".github/config/real-ai-budget.json"),
+                "--budget-config", str(ROOT / ".github/config/mvp-production-budget.json"),
                 "--price-config", str(ROOT / ".github/config/cost-guard.json"),
             ],
             cwd=ROOT,
@@ -62,13 +62,18 @@ def _run_persistent_preflight(prompt: str, system_prompt: str) -> str:
         )
         report = (completed.stdout + "\n" + completed.stderr).strip()
         if completed.returncode != 0:
-            raise RuntimeError("Filming persistent budget preflight provider çağrısını blokladı:\n" + report[-3000:])
+            raise RuntimeError("Filming MVP production budget preflight provider çağrısını blokladı:\n" + report[-3000:])
         return report[-3000:]
 
 
 def prepare_request(*, prompt: str, system_prompt: str) -> dict[str, Any]:
     compact_system = system_prompt.rstrip() + "\n\n" + COMPACT_RULES + "\n"
-    context: dict[str, Any] = {"compact_output": True, "target_words": "550-700", "budget_preflight": "offline"}
+    context: dict[str, Any] = {
+        "compact_output": True,
+        "target_words": "550-700",
+        "budget_preflight": "offline",
+        "budget_pool": "mvp-production",
+    }
     if _is_live_filming_run():
         context["budget_report"] = _run_persistent_preflight(prompt, compact_system)
         context["budget_preflight"] = "persistent-live"
