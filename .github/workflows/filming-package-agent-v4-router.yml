@@ -242,35 +242,17 @@ jobs:
           PACKAGE_TITLE="Çekim Paketi - Nihai Senaryolar #$FINAL_NUMBER"
           export SELECTED_SCENARIO
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import json, os, re
-
-          text = Path('/tmp/final-scripts.md').read_text(encoding='utf-8')
-          scenario = int(os.environ['SELECTED_SCENARIO'])
-          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123]):\s*(.+)$', text))
-          matches = [item for item in headings if int(item.group(1)) == scenario]
-          if len(matches) != 1:
-              raise SystemExit(f'Seçilen SENARYO {scenario} tam bir kez bulunmalı; bulunan: {len(matches)}')
-          heading = matches[0]
-          later = [item for item in headings if item.start() > heading.start()]
-          next_start = later[0].start() if later else len(text)
-          separator = re.search(r'(?m)^---\s*$', text[heading.start():next_start])
-          end = heading.start() + separator.start() if separator else next_start
-          selected = text[heading.start():end].strip()
-          selected = re.sub(r'<!--.*?-->', '', selected, flags=re.DOTALL)
-          selected = re.sub(r'\n{3,}', '\n\n', selected).strip() + '\n'
-          size = len(selected.encode('utf-8'))
-          minimum = 40 if os.environ.get('TEST_MODE') == 'true' else 1200
-          if size < minimum or size > 16000:
-              raise SystemExit(f'Seçilen senaryo güvenli sınır dışında: {size} bayt; minimum={minimum}')
-          title = heading.group(2).strip()
-          Path('/tmp/selected-script.md').write_text(selected, encoding='utf-8')
-          Path('/tmp/selected-script.json').write_text(
-              json.dumps({'scenario': scenario, 'title': title, 'chars': size}, ensure_ascii=False) + '\n',
-              encoding='utf-8')
-          print(f'Seçilen senaryo: {scenario}; {size} bayt; {title}')
-          PY
+          MINIMUM_BYTES=1200
+          if [[ "$TEST_MODE" == "true" ]]; then
+            MINIMUM_BYTES=40
+          fi
+          python3 .github/scripts/extract_filming_scenario.py \
+            --input /tmp/final-scripts.md \
+            --scenario "$SELECTED_SCENARIO" \
+            --output /tmp/selected-script.md \
+            --meta /tmp/selected-script.json \
+            --minimum-bytes "$MINIMUM_BYTES" \
+            --maximum-bytes 16000
 
           SELECTED_TITLE=$(jq -r '.title' /tmp/selected-script.json)
           SELECTED_CHARS=$(jq -r '.chars' /tmp/selected-script.json)
