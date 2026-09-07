@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_comment": "Hard dollar cap for the first real AI E2E content/production run. The original Research -> Script -> QC -> Correction -> Final Technical stages remain under stages; controlled production calls are under production_stages. All stages share the same persistent GitHub Issue ledger and total_chain_budget_usd.",
+  "_comment": "Hard dollar cap for the FIRST real AI content-chain run across Research -> Script -> QC -> Correction -> Final Technical Check. Production calls use the separate mvp-production-budget.json and do not change this historical $0.50 cap or ledger.",
   "total_chain_budget_usd": 0.5,
   "realized_spend_floor_usd": 0.367095,
   "realized_spend_floor_note": "Observed paid usage before the persistent reservation ledger: research $0.036876 + script $0.075060 + quality_control $0.056715 + failed correction(4500 output) $0.091722 + failed correction(5500 output) $0.106722 = $0.367095.",
@@ -41,16 +41,6 @@
       "profile_content_key": "final_technical_control",
       "assumed_max_input_tokens": 10000,
       "allocated_budget_usd": 0.07
-    }
-  },
-  "unreserved_realized_spend_usd": 0.054003,
-  "unreserved_realized_spend_note": "Observed Anthropic spend from filming-package run #6 (run_id 34152857778) before filming was wired to the persistent ledger: 3001 input + 3000 output tokens at the committed Sonnet 4.6 rates = $0.054003. This amount is always added to the remote ledger total during live preflight.",
-  "production_stages": {
-    "filming_package": {
-      "_comment": "Compact filming plan. The router hard-caps this output at 1800 tokens and the prompt targets 550-700 words.",
-      "max_output_tokens": 1800,
-      "assumed_max_input_tokens": 4000,
-      "allocated_budget_usd": 0.05
     }
   }
 }
