@@ -8,13 +8,30 @@
       "qwen"
     ],
     "timeout_seconds": 120,
-    "retry_http_statuses": [408, 409, 429, 500, 502, 503, 504],
+    "retry_http_statuses": [
+      408,
+      409,
+      429,
+      500,
+      502,
+      503,
+      504
+    ],
     "quality_contracts_by_output": {
       "filming-package.md": ".github/config/contracts/filming-package.json"
     },
     "transformers_by_output": {
       "final-scripts.md": ".github/scripts/targeted_correction_transform.py",
-      "final-check.md": ".github/scripts/final_technical_freshness_transform.py"
+      "final-check.md": ".github/scripts/final_technical_freshness_transform.py",
+      "filming-package.md": ".github/scripts/filming_budget_guard_transform.py"
+    },
+    "max_tokens_by_output": {
+      "filming-package.md": 1800
+    },
+    "provider_order_by_output": {
+      "filming-package.md": [
+        "anthropic"
+      ]
     }
   },
   "providers": {

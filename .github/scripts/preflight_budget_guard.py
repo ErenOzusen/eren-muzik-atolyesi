@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Preflight hard-dollar-budget guard for the real AI chain.
 
-Research -> Script -> QC -> Correction -> Final Technical Check.
+Research -> Script -> QC -> Correction -> Final Technical Check, plus explicitly configured controlled production stages.
 
 This script runs before any real provider call. It conservatively estimates
 the worst-case cost of the exact prompt/system request, enforces the stage
@@ -96,18 +96,26 @@ def check_preflight_budget(
         )
 
     stages = budget_config.get("stages", {})
-    stage_config = stages.get(stage)
+    production_stages = budget_config.get("production_stages", {})
+    stage_config = stages.get(stage) if isinstance(stages, dict) else None
+    if not isinstance(stage_config, dict) and isinstance(production_stages, dict):
+        stage_config = production_stages.get(stage)
     if not isinstance(stage_config, dict):
         violations.append(f"unknown stage '{stage}' — not present in real-ai-budget.json stages")
         return {"ok": False, "violations": violations, "report": {"stage": stage}}
 
-    content_key = stage_config["profile_content_key"]
     try:
-        max_output_tokens = int(profile["content"][content_key]["max_model_output"])
+        if "max_output_tokens" in stage_config:
+            max_output_tokens = int(stage_config["max_output_tokens"])
+            if max_output_tokens <= 0:
+                raise ValueError("max_output_tokens must be positive")
+        else:
+            content_key = stage_config["profile_content_key"]
+            max_output_tokens = int(profile["content"][content_key]["max_model_output"])
+            if max_output_tokens <= 0:
+                raise ValueError("max_model_output must be positive")
     except (KeyError, TypeError, ValueError) as error:
-        violations.append(
-            f"could not read content.{content_key}.max_model_output from business-profile.json: {error}"
-        )
+        violations.append(f"could not resolve max_model_output/max_output_tokens for stage {stage!r}: {error}")
         return {"ok": False, "violations": violations, "report": {"stage": stage}}
 
     estimation = budget_config.get("input_estimation", {})
@@ -192,7 +200,7 @@ def main() -> None:
     parser.add_argument(
         "--stage",
         required=True,
-        choices=["research", "script", "quality_control", "correction", "final_technical_control"],
+        choices=["research", "script", "quality_control", "correction", "final_technical_control", "filming_package"],
     )
     parser.add_argument("--provider", required=True)
     parser.add_argument("--model", required=True)
@@ -212,17 +220,22 @@ def main() -> None:
     system_text = read_optional_text(args.system_file)
 
     configured_floor = budget_config.get("realized_spend_floor_usd", 0.0)
+    unreserved_realized_spend = budget_config.get("unreserved_realized_spend_usd", 0.0)
     if not isinstance(configured_floor, (int, float)) or configured_floor < 0:
         print(
             "realized_spend_floor_usd must be a non-negative number; failing closed.",
             file=sys.stderr,
         )
         raise SystemExit(1)
+    if not isinstance(unreserved_realized_spend, (int, float)) or unreserved_realized_spend < 0:
+        print("unreserved_realized_spend_usd must be a non-negative number; failing closed.", file=sys.stderr)
+        raise SystemExit(1)
     if args.prior_chain_spend_usd < 0:
         print("--prior-chain-spend-usd must be non-negative; failing closed.", file=sys.stderr)
         raise SystemExit(1)
 
-    effective_prior_spend = max(float(configured_floor), args.prior_chain_spend_usd)
+    configured_known_spend = float(configured_floor) + float(unreserved_realized_spend)
+    effective_prior_spend = max(configured_known_spend, args.prior_chain_spend_usd)
     live_ledger = budget_ledger.live_budget_mode()
     repo = os.getenv("GH_REPO") or os.getenv("GITHUB_REPOSITORY") or ""
     if live_ledger:
@@ -234,7 +247,8 @@ def main() -> None:
                 repo, expected_seed_usd=configured_floor
             )
             effective_prior_spend = max(
-                effective_prior_spend, float(budget_ledger.ledger_total(seed, reservations))
+                effective_prior_spend,
+                float(budget_ledger.ledger_total(seed, reservations)) + float(unreserved_realized_spend),
             )
         except RuntimeError as exc:
             print(f"Persistent budget ledger read failed; provider call blocked: {exc}", file=sys.stderr)
