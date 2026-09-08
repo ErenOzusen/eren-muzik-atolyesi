@@ -1,35 +1,66 @@
 name: n8n YouTube Production Handoff
 
 "on":
-  workflow_call:
-    inputs:
-      publication_issue:
-        description: "Onaylanmış YouTube yayın paketi Issue numarası"
-        required: true
-        type: string
+  issue_comment:
+    types:
+      - created
 
 permissions:
   contents: read
   issues: read
 
 concurrency:
-  group: n8n-youtube-production-handoff-${{ inputs.publication_issue }}
+  group: n8n-youtube-production-handoff-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   handoff:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'YouTube Yayın Paketi - Thumbnail Paketi #')
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      PUBLICATION_ISSUE: ${{ inputs.publication_issue }}
+      PUBLICATION_ISSUE: ${{ github.event.issue.number }}
+      COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
       WEBHOOK_URL: ${{ secrets.YOUTUBE_PRODUCTION_WEBHOOK_URL }}
       WEBHOOK_KEY: ${{ secrets.YOUTUBE_PRODUCTION_WEBHOOK_KEY }}
 
     steps:
-      - name: Secret ve Issue girdilerini doğrula
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Yetkili production onay yorumunu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROFILE=.github/config/business-profile.json
+          EXPECTED_OWNER=$(jq -er '.business.github_owner | select(type == "string" and length > 0)' "$PROFILE")
+          PRODUCTION_COMMAND=$(jq -er '.approval.production_command | select(type == "string" and length > 0)' "$PROFILE")
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "Yorum yetkili işletme sahibinden gelmedi; handoff yapılmayacak."
+            exit 0
+          fi
+
+          RAW_COMMENT=$(jq -r '.comment.body' "$GITHUB_EVENT_PATH")
+          normalize_command() {
+            printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]'
+          }
+
+          if [[ "$(normalize_command "$RAW_COMMENT")" != "$(normalize_command "$PRODUCTION_COMMAND")" ]]; then
+            echo "Yorum production onay komutu değil; handoff yapılmayacak."
+            exit 0
+          fi
+
+          echo "AUTHORIZED_HANDOFF=true" >> "$GITHUB_ENV"
+
+      - name: Secret ve webhook hedefini doğrula
+        if: env.AUTHORIZED_HANDOFF == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -44,11 +75,6 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$PUBLICATION_ISSUE" =~ ^[1-9][0-9]*$ ]]; then
-            echo "Geçerli bir publication_issue gerekli."
-            exit 1
-          fi
-
           case "$WEBHOOK_URL" in
             https://*/webhook/youtube-production-ingest) ;;
             *)
@@ -57,13 +83,34 @@ jobs:
               ;;
           esac
 
-      - name: Yayın paketini yeniden doğrula
+      - name: Son yayın onay kapısının tamamlanmasını bekle ve paketi yeniden doğrula
+        if: env.AUTHORIZED_HANDOFF == 'true'
         shell: bash
         run: |
           set -euo pipefail
 
-          gh issue view "$PUBLICATION_ISSUE" \
-            --json title,body,url,state,labels > /tmp/publication.json
+          APPROVED=false
+          for attempt in $(seq 1 12); do
+            gh issue view "$PUBLICATION_ISSUE" \
+              --json title,body,url,state,labels > /tmp/publication.json
+
+            if jq -e '
+              (.labels | any(.name == "publication-approved" or .name == "eren-yayin-onayli")) and
+              (.labels | any(.name == "yayina-hazir")) and
+              (.labels | all(.name != "publication-approval-pending" and .name != "eren-yayin-onayi-bekliyor"))
+            ' /tmp/publication.json > /dev/null; then
+              APPROVED=true
+              break
+            fi
+
+            echo "Onay kapısı henüz tamamlanmadı; deneme $attempt/12."
+            sleep 5
+          done
+
+          if [[ "$APPROVED" != "true" ]]; then
+            echo "Son yayın onayı 60 saniye içinde doğrulanamadı; fail-closed."
+            exit 1
+          fi
 
           TITLE=$(jq -r '.title' /tmp/publication.json)
           URL=$(jq -r '.url' /tmp/publication.json)
@@ -92,24 +139,6 @@ jobs:
             exit 1
           fi
 
-          if ! jq -e '.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")' \
-            /tmp/publication.json > /dev/null; then
-            echo "Son yayın onayı etiketi eksik."
-            exit 1
-          fi
-
-          if ! jq -e '.labels | any(.name == "yayina-hazir")' \
-            /tmp/publication.json > /dev/null; then
-            echo "yayina-hazir etiketi eksik."
-            exit 1
-          fi
-
-          if jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor" or .name == "publication-approval-pending")' \
-            /tmp/publication.json > /dev/null; then
-            echo "Paket hâlâ yayın onayı bekliyor durumunda."
-            exit 1
-          fi
-
           if ! grep -Eq 'YOUTUBE_USAGE_V1 test=false .*uploads=0 publications=0' \
             /tmp/publication.md; then
             echo "Gerçek yayın paketinde güvenli pre-publication kullanım kanıtı bulunamadı."
@@ -135,6 +164,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Production handoff payload'unu oluştur
+        if: env.AUTHORIZED_HANDOFF == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -170,6 +200,7 @@ jobs:
           jq . /tmp/payload.json
 
       - name: n8n production webhook'una handoff gönder
+        if: env.AUTHORIZED_HANDOFF == 'true'
         shell: bash
         run: |
           set -euo pipefail
