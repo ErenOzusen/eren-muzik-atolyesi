@@ -1,0 +1,214 @@
+name: n8n YouTube Production Handoff
+
+"on":
+  workflow_call:
+    inputs:
+      publication_issue:
+        description: "Onaylanmış YouTube yayın paketi Issue numarası"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: n8n-youtube-production-handoff-${{ inputs.publication_issue }}
+  cancel-in-progress: false
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PUBLICATION_ISSUE: ${{ inputs.publication_issue }}
+      WEBHOOK_URL: ${{ secrets.YOUTUBE_PRODUCTION_WEBHOOK_URL }}
+      WEBHOOK_KEY: ${{ secrets.YOUTUBE_PRODUCTION_WEBHOOK_KEY }}
+
+    steps:
+      - name: Secret ve Issue girdilerini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "YOUTUBE_PRODUCTION_WEBHOOK_URL secret'i eksik."
+            exit 1
+          fi
+
+          if [[ -z "$WEBHOOK_KEY" ]]; then
+            echo "YOUTUBE_PRODUCTION_WEBHOOK_KEY secret'i eksik."
+            exit 1
+          fi
+
+          if [[ ! "$PUBLICATION_ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Geçerli bir publication_issue gerekli."
+            exit 1
+          fi
+
+          case "$WEBHOOK_URL" in
+            https://*/webhook/youtube-production-ingest) ;;
+            *)
+              echo "Webhook URL beklenen production path ile eşleşmiyor."
+              exit 1
+              ;;
+          esac
+
+      - name: Yayın paketini yeniden doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$PUBLICATION_ISSUE" \
+            --json title,body,url,state,labels > /tmp/publication.json
+
+          TITLE=$(jq -r '.title' /tmp/publication.json)
+          URL=$(jq -r '.url' /tmp/publication.json)
+          STATE=$(jq -r '.state' /tmp/publication.json)
+          jq -r '.body' /tmp/publication.json > /tmp/publication.md
+
+          if [[ "$STATE" != "OPEN" ]]; then
+            echo "Yayın paketi Issue'su açık değil."
+            exit 1
+          fi
+
+          if [[ "$TITLE" != "YouTube Yayın Paketi - Thumbnail Paketi #"* ]]; then
+            echo "Gerçek yayın paketi başlığı güvenlik kuralıyla eşleşmiyor."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "youtube-yayin-paketi")' \
+            /tmp/publication.json > /dev/null; then
+            echo "youtube-yayin-paketi etiketi eksik."
+            exit 1
+          fi
+
+          if jq -e '.labels | any(.name == "sistem-testi")' \
+            /tmp/publication.json > /dev/null; then
+            echo "Sistem testi paketi gerçek production handoff'a giremez."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "eren-yayin-onayli" or .name == "publication-approved")' \
+            /tmp/publication.json > /dev/null; then
+            echo "Son yayın onayı etiketi eksik."
+            exit 1
+          fi
+
+          if ! jq -e '.labels | any(.name == "yayina-hazir")' \
+            /tmp/publication.json > /dev/null; then
+            echo "yayina-hazir etiketi eksik."
+            exit 1
+          fi
+
+          if jq -e '.labels | any(.name == "eren-yayin-onayi-bekliyor" or .name == "publication-approval-pending")' \
+            /tmp/publication.json > /dev/null; then
+            echo "Paket hâlâ yayın onayı bekliyor durumunda."
+            exit 1
+          fi
+
+          if ! grep -Eq 'YOUTUBE_USAGE_V1 test=false .*uploads=0 publications=0' \
+            /tmp/publication.md; then
+            echo "Gerçek yayın paketinde güvenli pre-publication kullanım kanıtı bulunamadı."
+            exit 1
+          fi
+
+          BODY_SHA=$(sha256sum /tmp/publication.md | awk '{print $1}')
+          READY_MARKER="<!-- YOUTUBE_REVIEW_READY_V1 issue=$PUBLICATION_ISSUE test=false video=1 srt=1 thumbnail=1 public=0 body_sha256=$BODY_SHA -->"
+
+          gh issue view "$PUBLICATION_ISSUE" --comments --json comments \
+            --jq '.comments[] | select(.author.login == "github-actions[bot]") | .body' \
+            > /tmp/bot-comments.txt
+
+          if ! grep -Fqx "$READY_MARKER" /tmp/bot-comments.txt; then
+            echo "Güncel paket revizyonuna bağlı review-readiness kanıtı bulunamadı."
+            exit 1
+          fi
+
+          {
+            echo "PACKAGE_TITLE=$TITLE"
+            echo "PACKAGE_URL=$URL"
+            echo "PACKAGE_SHA=$BODY_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Production handoff payload'unu oluştur
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg event "youtube_production_handoff" \
+            --argjson schema_version 1 \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg sent_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg publication_issue "$PUBLICATION_ISSUE" \
+            --arg package_sha "$PACKAGE_SHA" \
+            --arg package_title "$PACKAGE_TITLE" \
+            --arg package_url "$PACKAGE_URL" \
+            '{
+              event: $event,
+              schema_version: $schema_version,
+              repository: $repository,
+              actor: $actor,
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              sent_at: $sent_at,
+              test_mode: false,
+              production_side_effects_allowed: true,
+              publication_issue: $publication_issue,
+              package_sha: $package_sha,
+              package_title: $package_title,
+              package_url: $package_url
+            }' > /tmp/payload.json
+
+          jq . /tmp/payload.json
+
+      - name: n8n production webhook'una handoff gönder
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RESPONSE_FILE=/tmp/n8n-response.txt
+          HTTP_CODE=$(
+            curl \
+              --silent \
+              --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --retry 2 \
+              --retry-all-errors \
+              --output "$RESPONSE_FILE" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header 'Content-Type: application/json' \
+              --header "X-YouTube-Production-Key: $WEBHOOK_KEY" \
+              --data-binary @/tmp/payload.json \
+              "$WEBHOOK_URL"
+          )
+
+          echo "n8n HTTP status: $HTTP_CODE"
+
+          if [[ ! "$HTTP_CODE" =~ ^2[0-9][0-9]$ ]]; then
+            echo "n8n production handoff başarısız oldu."
+            cat "$RESPONSE_FILE" || true
+            exit 1
+          fi
+
+          echo "n8n production handoff başarılı."
+          cat "$RESPONSE_FILE" || true
+
+          {
+            echo "### n8n YouTube production handoff"
+            echo "- Publication Issue: #$PUBLICATION_ISSUE"
+            echo "- Package SHA: $PACKAGE_SHA"
+            echo "- HTTP status: $HTTP_CODE"
+            echo "- test_mode: false"
+            echo "- production_side_effects_allowed: true"
+            echo "- Bu workflow doğrudan ElevenLabs/YouTube API çağırmaz"
+          } >> "$GITHUB_STEP_SUMMARY"
