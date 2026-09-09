@@ -1,0 +1,113 @@
+{
+  "name": "YouTube Production Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "youtube-production-ingest",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0,0],
+      "id": "d46d221f-b3f0-4e43-97e4-89fa6001da84",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map((item) => {\n  const input = item.json ?? {};\n  const body = input.body ?? input;\n\n  const event = body.event;\n  const schemaVersion = body.schema_version;\n  const repository = body.repository;\n  const runId = String(body.run_id ?? '');\n  const runAttempt = String(body.run_attempt ?? '');\n  const sentAt = body.sent_at;\n\n  const testMode = body.test_mode === true;\n  const sideEffectsAllowed =\n    body.production_side_effects_allowed === true;\n\n  if (schemaVersion !== 1) throw new Error('Invalid schema_version');\n  if (repository !== 'ErenOzusen/eren-muzik-atolyesi') throw new Error('Invalid repository');\n  if (!/^\\d+$/.test(runId)) throw new Error('Invalid GitHub run_id');\n  if (typeof sentAt !== 'string' || Number.isNaN(Date.parse(sentAt))) throw new Error('Invalid sent_at');\n\n  const isSmokeTest = event === 'youtube_production_smoke_test' && testMode === true && sideEffectsAllowed === false;\n  const isProduction = event === 'youtube_production_handoff' && testMode === false && sideEffectsAllowed === true;\n  if (!isSmokeTest && !isProduction) throw new Error('Handoff mode is not allowed');\n\n  let publicationIssue = '';\n  let packageSha = '';\n  if (isProduction) {\n    publicationIssue = String(body.publication_issue ?? '');\n    packageSha = String(body.package_sha ?? '');\n    if (!/^\\d+$/.test(publicationIssue)) throw new Error('Invalid publication_issue');\n    if (!/^[a-f0-9]{64}$/i.test(packageSha)) throw new Error('Invalid package_sha');\n    if (typeof body.package_title !== 'string' || !body.package_title.startsWith('YouTube Yayın Paketi - Thumbnail Paketi #')) throw new Error('Invalid package_title');\n    if (typeof body.package_url !== 'string' || !body.package_url.startsWith('https://github.com/ErenOzusen/eren-muzik-atolyesi/issues/')) throw new Error('Invalid package_url');\n  }\n\n  const idempotencyKey = isProduction\n    ? `production:${repository}:${publicationIssue}:${packageSha}`\n    : `smoke:${repository}:${runId}:${runAttempt}`;\n\n  return { json: { ...body, validated: true, smoke_test: isSmokeTest, production_allowed: isProduction, idempotency_key: idempotencyKey, github_run_id: runId, publication_issue: publicationIssue, package_sha: packageSha } };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224,0],
+      "id": "f154ac88-a93b-43ab-acb1-640a03e1c895",
+      "name": "Validate GitHub Handoff"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},
+          "conditions": [{"id":"f1baea33-d56a-4431-8911-f80e25d56443","leftValue":"={{$json.production_allowed}}","rightValue":"","operator":{"type":"boolean","operation":"true","singleValue":true}}],
+          "combinator":"and"
+        },
+        "options": {}
+      },
+      "type":"n8n-nodes-base.if",
+      "typeVersion":2.3,
+      "position":[448,0],
+      "id":"47d1488b-9b81-46fa-92c0-f144bff56a1b",
+      "name":"Production Allowed?"
+    },
+    {
+      "parameters": {
+        "operation":"rowNotExists",
+        "dataTableId":{"__rl":true,"value":"","mode":"list","cachedResultName":"youtube_production_runs"},
+        "matchType":"allConditions",
+        "filters":{"conditions":[{"keyName":"idempotency_key","keyValue":"={{$json.idempotency_key}}"}]}
+      },
+      "type":"n8n-nodes-base.dataTable",
+      "typeVersion":1.1,
+      "position":[672,-96],
+      "id":"8214eb3b-c2df-4f2e-97fd-4006f3a4d714",
+      "name":"New Production Run?"
+    },
+    {
+      "parameters": {
+        "dataTableId":{"__rl":true,"value":"","mode":"list","cachedResultName":"youtube_production_runs"},
+        "columns":{"mappingMode":"defineBelow","value":{"idempotency_key":"={{$json.idempotency_key}}","status":"reserved","event":"={{$json.event}}","repository":"={{$json.repository}}","publication_issue":"={{$json.publication_issue}}","package_sha":"={{$json.package_sha}}","github_run_id":"={{$json.github_run_id}}"},"matchingColumns":[],"schema":[],"attemptToConvertTypes":false,"convertFieldsToString":false},
+        "options":{}
+      },
+      "type":"n8n-nodes-base.dataTable",
+      "typeVersion":1.1,
+      "position":[896,-96],
+      "id":"1b9949c1-417a-45c3-959f-5b70e2510a1c",
+      "name":"Reserve Production Run"
+    },
+    {
+      "parameters": {
+        "url":"=https://api.github.com/repos/ErenOzusen/eren-muzik-atolyesi/issues/{{ $('Validate GitHub Handoff').item.json.publication_issue }}",
+        "sendHeaders":true,
+        "headerParameters":{"parameters":[{"name":"Accept","value":"application/vnd.github+json"},{"name":"X-GitHub-Api-Version","value":"2022-11-28"}]},
+        "options":{}
+      },
+      "type":"n8n-nodes-base.httpRequest",
+      "typeVersion":4.5,
+      "position":[1120,-96],
+      "id":"d033434c-0c3d-41c1-a0a4-29ca4c8b6e4d",
+      "name":"Load Publication Package"
+    },
+    {
+      "parameters":{"value":"={{ ($json.body ?? '') + '\\n' }}","dataPropertyName":"calculated_package_sha"},
+      "type":"n8n-nodes-base.crypto",
+      "typeVersion":2,
+      "position":[1344,-96],
+      "id":"0c3af0d3-2e23-4bca-b899-5cc31c67c0d5",
+      "name":"Compute Package SHA"
+    },
+    {
+      "parameters": {
+        "jsCode":"const issue = $json;\nconst handoff = $('Validate GitHub Handoff').item.json;\n\nconst expectedIssue = String(handoff.publication_issue ?? '');\nconst expectedSha = String(handoff.package_sha ?? '').toLowerCase();\nconst calculatedSha = String(issue.calculated_package_sha ?? '').toLowerCase();\nconst labels = Array.isArray(issue.labels) ? issue.labels.map(label => typeof label === 'string' ? label : label?.name).filter(Boolean) : [];\nconst hasLabel = (name) => labels.includes(name);\n\nif (String(issue.number ?? '') !== expectedIssue) throw new Error('Publication issue number mismatch');\nif (issue.pull_request) throw new Error('Publication package cannot be a pull request');\nif (issue.state !== 'open') throw new Error('Publication issue is not open');\nif (typeof issue.title !== 'string' || !issue.title.startsWith('YouTube Yayın Paketi - Thumbnail Paketi #')) throw new Error('Invalid publication package title');\nif (hasLabel('sistem-testi')) throw new Error('System-test package cannot enter production');\nif (!hasLabel('youtube-yayin-paketi')) throw new Error('youtube-yayin-paketi label is missing');\nconst publicationApproved = hasLabel('publication-approved') || hasLabel('eren-yayin-onayli');\nif (!publicationApproved) throw new Error('Publication approval label is missing');\nif (!hasLabel('yayina-hazir')) throw new Error('yayina-hazir label is missing');\nif (hasLabel('publication-approval-pending') || hasLabel('eren-yayin-onayi-bekliyor')) throw new Error('Publication approval is still pending');\nif (!expectedSha || !calculatedSha || expectedSha !== calculatedSha) throw new Error('Publication package SHA mismatch');\nconst body = String(issue.body ?? '');\nif (!/YOUTUBE_USAGE_V1 test=false .*uploads=0 publications=0/.test(body)) throw new Error('Safe pre-publication usage marker is missing');\nif (handoff.package_title && issue.title !== handoff.package_title) throw new Error('Publication package title changed after handoff');\nif (handoff.package_url && issue.html_url !== handoff.package_url) throw new Error('Publication package URL mismatch');\n\nreturn [{ json: { ...issue, publication_package_validated: true, publication_issue: expectedIssue, package_sha: calculatedSha, idempotency_key: handoff.idempotency_key, github_run_id: handoff.github_run_id, repository: handoff.repository, event: handoff.event } }];"
+      },
+      "type":"n8n-nodes-base.code",
+      "typeVersion":2,
+      "position":[1568,-96],
+      "id":"6037856f-0a4b-44ae-b3a4-c1009b563ecb",
+      "name":"Validate Publication Package"
+    }
+  ],
+  "pinData":{},
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate GitHub Handoff","type":"main","index":0}]]},
+    "Validate GitHub Handoff":{"main":[[{"node":"Production Allowed?","type":"main","index":0}]]},
+    "Production Allowed?":{"main":[[{"node":"New Production Run?","type":"main","index":0}]]},
+    "New Production Run?":{"main":[[{"node":"Reserve Production Run","type":"main","index":0}]]},
+    "Reserve Production Run":{"main":[[{"node":"Load Publication Package","type":"main","index":0}]]},
+    "Load Publication Package":{"main":[[{"node":"Compute Package SHA","type":"main","index":0}]]},
+    "Compute Package SHA":{"main":[[{"node":"Validate Publication Package","type":"main","index":0}]]}
+  },
+  "active":false,
+  "settings":{"executionOrder":"v1","binaryMode":"separate"},
+  "nodeGroups":[],
+  "tags":[]
+}
