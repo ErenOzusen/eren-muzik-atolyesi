@@ -1,0 +1,227 @@
+name: n8n Media Production Handoff
+
+"on":
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: n8n-media-handoff-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  send-media-handoff:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'Nihai Senaryolar') &&
+      (startsWith(github.event.comment.body, 'ÇEKİMİ BAŞLAT ') ||
+       startsWith(github.event.comment.body, 'TEST N8N MEDIA '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      N8N_MEDIA_WEBHOOK_URL: https://n8n-rmd8.onrender.com/webhook/youtube-media-production-ingest
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Komutu ve yetkili kullanıcıyı doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROFILE=.github/config/business-profile.json
+          EXPECTED_OWNER=$(jq -r '.business.github_owner' "$PROFILE")
+          COMMENT_AUTHOR=$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")
+          RAW_COMMENT=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+          NORMALIZED=$(printf '%s' "$RAW_COMMENT" | tr '[:lower:]' '[:upper:]' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g; s/[[:space:]]+/ /g')
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "n8n medya handoff komutu yalnız yetkili işletme sahibi tarafından verilebilir: $COMMENT_AUTHOR"
+            exit 1
+          fi
+
+          TEST_MODE=false
+          PRODUCTION_SIDE_EFFECTS_ALLOWED=true
+          EVENT_NAME="youtube_media_production_handoff"
+          SELECTED_SCENARIO=""
+
+          if [[ "$NORMALIZED" =~ ^ÇEKİMİ[[:space:]]+BAŞLAT[[:space:]]+([123])$ ]]; then
+            SELECTED_SCENARIO="${BASH_REMATCH[1]}"
+          elif [[ "$NORMALIZED" =~ ^TEST[[:space:]]+N8N[[:space:]]+MEDIA[[:space:]]+([123])$ ]]; then
+            SELECTED_SCENARIO="${BASH_REMATCH[1]}"
+            TEST_MODE=true
+            PRODUCTION_SIDE_EFFECTS_ALLOWED=false
+            EVENT_NAME="youtube_media_production_smoke_test"
+          else
+            echo "Yorum geçerli n8n medya handoff komutu değil."
+            exit 0
+          fi
+
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          {
+            echo "ISSUE_NUMBER=$ISSUE_NUMBER"
+            echo "SELECTED_SCENARIO=$SELECTED_SCENARIO"
+            echo "TEST_MODE=$TEST_MODE"
+            echo "PRODUCTION_SIDE_EFFECTS_ALLOWED=$PRODUCTION_SIDE_EFFECTS_ALLOWED"
+            echo "EVENT_NAME=$EVENT_NAME"
+          } >> "$GITHUB_ENV"
+
+      - name: Kaynak Issue ve güvenlik sözleşmesini doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels,state,url > /tmp/issue.json
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          STATE=$(jq -r '.state // ""' /tmp/issue.json)
+          ISSUE_URL=$(jq -r '.url // ""' /tmp/issue.json)
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+
+          if [[ "$TITLE" != Nihai\ Senaryolar* ]]; then
+            echo "Kaynak Issue Nihai Senaryolar değil: $TITLE"
+            exit 1
+          fi
+
+          if ! grep -Eiq "^##[[:space:]]+SENARYO[[:space:]]+$SELECTED_SCENARIO([^0-9]|$)" /tmp/body.md; then
+            echo "Seçilen SENARYO $SELECTED_SCENARIO kaynak Issue içinde bulunamadı."
+            exit 1
+          fi
+
+          SOURCE_BODY_SHA=$(sha256sum /tmp/body.md | awk '{print $1}')
+          echo "SOURCE_BODY_SHA=$SOURCE_BODY_SHA" >> "$GITHUB_ENV"
+          echo "ISSUE_URL=$ISSUE_URL" >> "$GITHUB_ENV"
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            if ! grep -qx 'sistem-testi' /tmp/labels.txt; then
+              echo "TEST N8N MEDIA yalnız sistem-testi etiketli Nihai Senaryolar Issue üzerinde çalışabilir."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [[ "$STATE" != "OPEN" ]]; then
+            echo "Gerçek n8n handoff yalnız açık Nihai Senaryolar Issue'sundan yapılabilir: state=$STATE"
+            exit 1
+          fi
+
+          if grep -qx 'sistem-testi' /tmp/labels.txt; then
+            echo "Sistem testi gerçek n8n üretim handoff'una giremez."
+            exit 1
+          fi
+
+          if ! grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt; then
+            echo "Gerçek n8n handoff için işletme sahibi onayı eksik."
+            exit 1
+          fi
+
+          if ! grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt; then
+            echo "Gerçek n8n handoff için production-ready durumu eksik."
+            exit 1
+          fi
+
+          if ! grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt; then
+            echo "Gerçek n8n handoff için production-selected durumu eksik."
+            exit 1
+          fi
+
+          if grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt; then
+            echo "Düzeltme gereken içerik n8n üretimine devredilemez."
+            exit 1
+          fi
+
+          mapfile -t LEGACY_SELECTION_LABELS < <(grep -E '^uretim-senaryo-[123]$' /tmp/labels.txt || true)
+          mapfile -t GENERIC_SELECTION_LABELS < <(grep -E '^production-scenario-[123]$' /tmp/labels.txt || true)
+
+          if [[ "${#LEGACY_SELECTION_LABELS[@]}" -gt 1 || "${#GENERIC_SELECTION_LABELS[@]}" -gt 1 ]]; then
+            echo "Birden fazla üretim senaryosu etiketi bulundu."
+            exit 1
+          fi
+
+          LEGACY_SCENARIO=""
+          GENERIC_SCENARIO=""
+          if [[ "${#LEGACY_SELECTION_LABELS[@]}" -eq 1 ]]; then
+            LEGACY_SCENARIO="${LEGACY_SELECTION_LABELS[0]##*-}"
+          fi
+          if [[ "${#GENERIC_SELECTION_LABELS[@]}" -eq 1 ]]; then
+            GENERIC_SCENARIO="${GENERIC_SELECTION_LABELS[0]##*-}"
+          fi
+
+          if [[ -n "$LEGACY_SCENARIO" && -n "$GENERIC_SCENARIO" && "$LEGACY_SCENARIO" != "$GENERIC_SCENARIO" ]]; then
+            echo "Legacy/generic üretim senaryosu etiketleri uyuşmuyor."
+            exit 1
+          fi
+
+          ACTUAL_SCENARIO="${LEGACY_SCENARIO:-$GENERIC_SCENARIO}"
+          if [[ -z "$ACTUAL_SCENARIO" || "$ACTUAL_SCENARIO" != "$SELECTED_SCENARIO" ]]; then
+            echo "Seçilen senaryo etiketi uyuşmuyor: komut=$SELECTED_SCENARIO etiket=$ACTUAL_SCENARIO"
+            exit 1
+          fi
+
+          gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
+          HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$SELECTED_SCENARIO body_sha256=$SOURCE_BODY_SHA -->"
+
+          if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
+            echo "Güncel içerik revizyonuna bağlı FILMING_HANDOFF_V1 işareti bulunamadı."
+            exit 1
+          fi
+
+      - name: n8n medya webhook'una güvenli handoff gönder
+        shell: bash
+        env:
+          N8N_MEDIA_WEBHOOK_TOKEN: ${{ secrets.N8N_MEDIA_WEBHOOK_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${N8N_MEDIA_WEBHOOK_TOKEN:-}" ]]; then
+            echo "N8N_MEDIA_WEBHOOK_TOKEN secret tanımlı değil."
+            exit 1
+          fi
+
+          SENT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          jq -n \
+            --arg event "$EVENT_NAME" \
+            --arg repository "$GH_REPO" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg source_issue "$ISSUE_NUMBER" \
+            --arg selected_scenario "$SELECTED_SCENARIO" \
+            --arg source_body_sha "$SOURCE_BODY_SHA" \
+            --arg sent_at "$SENT_AT" \
+            --argjson test_mode "$TEST_MODE" \
+            --argjson production_side_effects_allowed "$PRODUCTION_SIDE_EFFECTS_ALLOWED" \
+            '{event:$event,schema_version:1,repository:$repository,run_id:$run_id,run_attempt:$run_attempt,source_issue:$source_issue,selected_scenario:$selected_scenario,source_body_sha:$source_body_sha,sent_at:$sent_at,test_mode:$test_mode,production_side_effects_allowed:$production_side_effects_allowed}' \
+            > /tmp/n8n-media-handoff.json
+
+          RESPONSE=$(curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Media-Token: $N8N_MEDIA_WEBHOOK_TOKEN" \
+            --data-binary @/tmp/n8n-media-handoff.json \
+            "$N8N_MEDIA_WEBHOOK_URL")
+
+          echo "n8n response: $RESPONSE"
+
+          {
+            echo "### n8n Media Production handoff"
+            echo "- Kaynak Issue: $ISSUE_URL"
+            echo "- Senaryo: $SELECTED_SCENARIO"
+            echo "- Event: $EVENT_NAME"
+            echo "- Test modu: $TEST_MODE"
+            echo "- Production side effects allowed: $PRODUCTION_SIDE_EFFECTS_ALLOWED"
+            echo "- Source body SHA: $SOURCE_BODY_SHA"
+            echo "- n8n endpoint: production webhook"
+          } >> "$GITHUB_STEP_SUMMARY"
