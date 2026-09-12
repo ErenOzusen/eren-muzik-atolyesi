@@ -167,7 +167,7 @@ jobs:
             exit 1
           fi
 
-          gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
+          gh issue view "$ISSUE_NUMBER" --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
           HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$SELECTED_SCENARIO body_sha256=$SOURCE_BODY_SHA -->"
 
           if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
