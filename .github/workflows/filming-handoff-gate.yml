@@ -228,7 +228,7 @@ jobs:
             # filming handoff for content nobody actually re-selected with a
             # fresh SEÇ N after the edit.
             CURRENT_BODY_SHA=$(sha256sum /tmp/body.md | awk '{print $1}')
-            gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
+            gh issue view "$ISSUE_NUMBER" --json comments --jq '.comments[].body // ""' > /tmp/comments.txt
             HANDOFF_MARKER="<!-- FILMING_HANDOFF_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO body_sha256=$CURRENT_BODY_SHA -->"
             if ! grep -Fqx "$HANDOFF_MARKER" /tmp/comments.txt; then
               echo "Seçim Kapısının geçerli (güncel içerik revizyonuna bağlı) handoff işareti bulunamadı; içerik SEÇ $EXPECTED_SCENARIO sonrasında değişmiş olabilir."
@@ -327,7 +327,7 @@ jobs:
           set -euo pipefail
 
           MARKER="<!-- VIDEO_ORCHESTRATOR_V1 issue=$ISSUE_NUMBER scenario=$EXPECTED_SCENARIO -->"
-          gh issue view "$ISSUE_NUMBER" --comments --json comments --jq '.comments[].body // ""' > /tmp/route-comments.txt
+          gh issue view "$ISSUE_NUMBER" --json comments --jq '.comments[].body // ""' > /tmp/route-comments.txt
 
           for label in video-route-human video-route-hybrid video-route-faceless; do
             gh label create "$label" --color "5319E7" --description "Video Orchestrator üretim rotası" --force
