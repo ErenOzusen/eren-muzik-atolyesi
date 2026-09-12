@@ -1,0 +1,161 @@
+name: Faceless Production Approval Gate
+
+"on":
+  workflow_dispatch:
+    inputs:
+      source_issue:
+        description: "Nihai Senaryolar Issue numarası"
+        required: true
+        type: string
+      scenario:
+        description: "Senaryo"
+        required: true
+        type: choice
+        options: ["1", "2", "3"]
+      aspect:
+        description: "Video oranı"
+        required: true
+        default: "9:16"
+        type: choice
+        options: ["9:16", "16:9", "1:1"]
+      owner_generation_approved:
+        description: "Faceless üretim için açık işletme sahibi onayı"
+        required: true
+        default: false
+        type: boolean
+      test_mode:
+        description: "Güvenli test modu; hiçbir üretim çağrısı yapılamaz"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  prepare-faceless-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_ISSUE: ${{ inputs.source_issue }}
+      SCENARIO: ${{ inputs.scenario }}
+      ASPECT: ${{ inputs.aspect }}
+      OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
+      TEST_MODE: ${{ inputs.test_mode }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Yetkili kullanıcıyı doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_OWNER=$(jq -er '.business.github_owner' .github/config/business-profile.json)
+          if [[ "${{ github.actor }}" != "$EXPECTED_OWNER" ]]; then
+            echo "Bu kapıyı yalnız yetkili işletme sahibi çalıştırabilir."
+            exit 1
+          fi
+          [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SCENARIO" =~ ^[123]$ ]]
+
+      - name: Kaynak senaryoyu güvenli doğrula ve ayıkla
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue view "$SOURCE_ISSUE" --json title,body,labels,state > /tmp/issue.json
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          STATE=$(jq -r '.state // ""' /tmp/issue.json)
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+
+          [[ "$TITLE" == Nihai\ Senaryolar* ]]
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            grep -qx 'sistem-testi' /tmp/labels.txt
+          else
+            [[ "$STATE" == "OPEN" ]]
+            ! grep -qx 'sistem-testi' /tmp/labels.txt
+            grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
+            grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
+            grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+            ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
+
+            ACTUAL=$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
+              | sed -E 's/.*-([123])$/\1/' | sort -u)
+            [[ "$(printf '%s\n' "$ACTUAL" | sed '/^$/d' | wc -l)" -eq 1 ]]
+            [[ "$ACTUAL" == "$SCENARIO" ]]
+          fi
+
+          SOURCE_BODY_SHA=$(sha256sum /tmp/body.md | awk '{print $1}')
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          text = Path('/tmp/body.md').read_text(encoding='utf-8')
+          n = os.environ['SCENARIO']
+          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123]):.*$', text))
+          matches = [h for h in headings if h.group(1) == n]
+          if len(matches) != 1:
+              raise SystemExit(f'SENARYO {n} tam bir kez bulunmalı; bulunan={len(matches)}')
+          start = matches[0].start()
+          later = [h for h in headings if h.start() > start]
+          end = later[0].start() if later else len(text)
+          block = text[start:end]
+          separator = re.search(r'(?m)^---\s*$', block)
+          if separator:
+              block = block[:separator.start()]
+          block = re.sub(r'<!--.*?-->', '', block, flags=re.S).strip() + '\n'
+          if len(block) < 40:
+              raise SystemExit('Seçilen senaryo fazla kısa')
+          Path('/tmp/selected-script.md').write_text(block, encoding='utf-8')
+          PY
+
+          echo "SOURCE_BODY_SHA=$SOURCE_BODY_SHA" >> "$GITHUB_ENV"
+
+      - name: Faceless üretim manifestosunu oluştur
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISPATCH_ENABLED=$(jq -r '.generation_dispatch_enabled' .github/config/video-orchestrator.json)
+          python3 .github/scripts/faceless_production_manifest.py \
+            --script-file /tmp/selected-script.md \
+            --output-file /tmp/faceless-manifest.json \
+            --source-issue "$SOURCE_ISSUE" \
+            --scenario "$SCENARIO" \
+            --source-body-sha "$SOURCE_BODY_SHA" \
+            --aspect "$ASPECT" \
+            --generation-dispatch-enabled "$DISPATCH_ENABLED" \
+            --owner-generation-approved "$OWNER_GENERATION_APPROVED" \
+            --test-mode "$TEST_MODE"
+
+          jq -e '.production_mode == "faceless"' /tmp/faceless-manifest.json >/dev/null
+          jq -e '.requires_raw_video == false' /tmp/faceless-manifest.json >/dev/null
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            jq -e '.dispatch_allowed == false and .paid_generation_allowed == false' \
+              /tmp/faceless-manifest.json >/dev/null
+          fi
+
+      - name: Güvenli sonuç özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATE=$(jq -r '.state' /tmp/faceless-manifest.json)
+          DISPATCH=$(jq -r '.dispatch_allowed' /tmp/faceless-manifest.json)
+          {
+            echo "### Faceless Production Approval Gate"
+            echo "- Kaynak Issue: #$SOURCE_ISSUE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Aspect: $ASPECT"
+            echo "- Raw video gerekli: hayır"
+            echo "- Owner generation approval: $OWNER_GENERATION_APPROVED"
+            echo "- Generation dispatch enabled: $(jq -r '.generation_dispatch_enabled' /tmp/faceless-manifest.json)"
+            echo "- Durum: $STATE"
+            echo "- Dispatch allowed: $DISPATCH"
+            echo "- Bu workflow video motoru çağırmaz"
+            echo "- Network/API/AI/video generation calls: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
