@@ -175,8 +175,8 @@ jobs:
           <!-- MEDIA_GENERATION_APPROVAL_V1 mode=$APPROVAL_MODE scenario=$SCENARIO body_sha256=$BODY_SHA -->
           ## ✅ Medya üretim onayı kaydedildi
 
-          **Mod:** $APPROVAL_MODE  
-          **Senaryo:** $SCENARIO  
+          **Mod:** $APPROVAL_MODE
+          **Senaryo:** $SCENARIO
           **Kaynak SHA-256:** $BODY_SHA
 
           Bu kayıt yalnız üretim onayıdır. Bu workflow herhangi bir AI/video motoru çağırmaz ve ücretli üretim başlatmaz.
