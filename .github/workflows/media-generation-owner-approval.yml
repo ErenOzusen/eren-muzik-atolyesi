@@ -1,0 +1,196 @@
+name: Media Generation Owner Approval
+
+"on":
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: media-generation-owner-approval-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve-generation:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.issue.title, 'Nihai Senaryolar')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: İşletme sahibi ve komutu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXPECTED_OWNER=$(jq -er '.business.github_owner' .github/config/business-profile.json)
+          COMMENT_AUTHOR=$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")
+          RAW_COMMENT=$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")
+
+          normalize() {
+            python3 -c 'import sys; print(" ".join(sys.stdin.read().split()).casefold())'
+          }
+
+          COMMENT=$(printf '%s' "$RAW_COMMENT" | normalize)
+          FACELESS=$(printf '%s' 'FACELESS ÜRETİMİ ONAYLA' | normalize)
+          HYBRID=$(printf '%s' 'HYBRID ÜRETİMİNİ ONAYLA' | normalize)
+          TEST_FACELESS=$(printf '%s' 'TEST FACELESS ÜRETİM ONAYI' | normalize)
+          TEST_HYBRID=$(printf '%s' 'TEST HYBRID ÜRETİM ONAYI' | normalize)
+
+          MODE=''
+          TEST_MODE=false
+
+          if [[ "$COMMENT" == "$FACELESS" ]]; then
+            MODE=faceless
+          elif [[ "$COMMENT" == "$HYBRID" ]]; then
+            MODE=hybrid
+          elif [[ "$COMMENT" == "$TEST_FACELESS" ]]; then
+            MODE=faceless
+            TEST_MODE=true
+          elif [[ "$COMMENT" == "$TEST_HYBRID" ]]; then
+            MODE=hybrid
+            TEST_MODE=true
+          else
+            echo 'Yorum medya üretim onay komutu değil; işlem yapılmadı.'
+            exit 0
+          fi
+
+          if [[ "$COMMENT_AUTHOR" != "$EXPECTED_OWNER" ]]; then
+            echo "Medya üretim onayını yalnız yetkili işletme sahibi verebilir: $COMMENT_AUTHOR"
+            exit 1
+          fi
+
+          echo "EXPECTED_OWNER=$EXPECTED_OWNER" >> "$GITHUB_ENV"
+          echo "APPROVAL_MODE=$MODE" >> "$GITHUB_ENV"
+          echo "TEST_MODE=$TEST_MODE" >> "$GITHUB_ENV"
+
+      - name: Kaynak Issue ve senaryoyu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$ISSUE_NUMBER" --json title,body,labels,state,url > /tmp/issue.json
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          STATE=$(jq -r '.state // ""' /tmp/issue.json)
+          ISSUE_URL=$(jq -r '.url' /tmp/issue.json)
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+
+          [[ "$TITLE" == Nihai\ Senaryolar* ]]
+
+          if [[ "$TEST_MODE" == 'true' ]]; then
+            grep -qx 'sistem-testi' /tmp/labels.txt
+            SCENARIO=$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
+              | sed -E 's/.*-([123])$/\1/' | sort -u | head -n1 || true)
+            [[ -n "$SCENARIO" ]] || SCENARIO='2'
+          else
+            [[ "$STATE" == 'OPEN' ]]
+            ! grep -qx 'sistem-testi' /tmp/labels.txt
+            grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
+            grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
+            grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+            ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
+
+            SCENARIOS=$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
+              | sed -E 's/.*-([123])$/\1/' | sort -u)
+            COUNT=$(printf '%s\n' "$SCENARIOS" | sed '/^$/d' | wc -l)
+            [[ "$COUNT" -eq 1 ]]
+            SCENARIO=$(printf '%s\n' "$SCENARIOS" | sed '/^$/d')
+          fi
+
+          BODY_SHA=$(sha256sum /tmp/body.md | awk '{print $1}')
+          echo "SCENARIO=$SCENARIO" >> "$GITHUB_ENV"
+          echo "BODY_SHA=$BODY_SHA" >> "$GITHUB_ENV"
+          echo "ISSUE_URL=$ISSUE_URL" >> "$GITHUB_ENV"
+
+      - name: Güvenli test özeti
+        if: env.TEST_MODE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '### Media Generation Owner Approval — güvenli test'
+            echo "- Issue: $ISSUE_URL"
+            echo "- Yetkili kullanıcı: $EXPECTED_OWNER"
+            echo "- Mod: $APPROVAL_MODE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Issue body SHA-256: $BODY_SHA"
+            echo '- Issue/etiket değişikliği: yapılmadı'
+            echo '- AI/video generation calls: 0'
+            echo '- Paid generation: 0'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Üretim onayını kaydet
+        if: env.TEST_MODE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh label create 'generation-approved' \
+            --color '0E8A16' \
+            --description 'İşletme sahibi medya üretimini açıkça onayladı' \
+            --force
+
+          gh label create 'generation-approved-faceless' \
+            --color '0E8A16' \
+            --description 'Faceless medya üretimi işletme sahibi tarafından onaylandı' \
+            --force
+
+          gh label create 'generation-approved-hybrid' \
+            --color '0E8A16' \
+            --description 'Hybrid medya üretimi işletme sahibi tarafından onaylandı' \
+            --force
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label 'generation-approved-faceless' \
+            --remove-label 'generation-approved-hybrid' > /dev/null 2>&1 || true
+
+          gh issue edit "$ISSUE_NUMBER" --add-label 'generation-approved'
+          gh issue edit "$ISSUE_NUMBER" --add-label "generation-approved-$APPROVAL_MODE"
+
+          gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' > /tmp/labels-after.txt
+          grep -qx 'generation-approved' /tmp/labels-after.txt
+          grep -qx "generation-approved-$APPROVAL_MODE" /tmp/labels-after.txt
+
+          OTHER_MODE='faceless'
+          [[ "$APPROVAL_MODE" == 'faceless' ]] && OTHER_MODE='hybrid'
+          if grep -qx "generation-approved-$OTHER_MODE" /tmp/labels-after.txt; then
+            echo "Çelişkili generation approval etiketi kaldı: generation-approved-$OTHER_MODE"
+            exit 1
+          fi
+
+          gh issue comment "$ISSUE_NUMBER" --body "$(cat <<MESSAGE
+          <!-- MEDIA_GENERATION_APPROVAL_V1 mode=$APPROVAL_MODE scenario=$SCENARIO body_sha256=$BODY_SHA -->
+          ## ✅ Medya üretim onayı kaydedildi
+
+          **Mod:** $APPROVAL_MODE
+          **Senaryo:** $SCENARIO
+          **Kaynak SHA-256:** $BODY_SHA
+
+          Bu kayıt yalnız üretim onayıdır. Bu workflow herhangi bir AI/video motoru çağırmaz ve ücretli üretim başlatmaz.
+          MESSAGE
+          )"
+
+          {
+            echo '### Media Generation Owner Approval'
+            echo "- Issue: $ISSUE_URL"
+            echo "- Yetkili kullanıcı: $EXPECTED_OWNER"
+            echo "- Mod: $APPROVAL_MODE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Issue body SHA-256: $BODY_SHA"
+            echo '- Approval marker: MEDIA_GENERATION_APPROVAL_V1'
+            echo '- AI/video generation calls: 0'
+            echo '- Paid generation: 0'
+          } >> "$GITHUB_STEP_SUMMARY"
