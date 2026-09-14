@@ -25,6 +25,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
+      COMMAND_MATCHED: 'false'
 
     steps:
       - name: Kaynak kodu al
@@ -72,11 +73,13 @@ jobs:
             exit 1
           fi
 
+          echo "COMMAND_MATCHED=true" >> "$GITHUB_ENV"
           echo "EXPECTED_OWNER=$EXPECTED_OWNER" >> "$GITHUB_ENV"
           echo "APPROVAL_MODE=$MODE" >> "$GITHUB_ENV"
           echo "TEST_MODE=$TEST_MODE" >> "$GITHUB_ENV"
 
       - name: Kaynak Issue ve senaryoyu doğrula
+        if: env.COMMAND_MATCHED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -116,7 +119,7 @@ jobs:
           echo "ISSUE_URL=$ISSUE_URL" >> "$GITHUB_ENV"
 
       - name: Güvenli test özeti
-        if: env.TEST_MODE == 'true'
+        if: env.COMMAND_MATCHED == 'true' && env.TEST_MODE == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -133,7 +136,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Üretim onayını kaydet
-        if: env.TEST_MODE != 'true'
+        if: env.COMMAND_MATCHED == 'true' && env.TEST_MODE != 'true'
         shell: bash
         run: |
           set -euo pipefail
