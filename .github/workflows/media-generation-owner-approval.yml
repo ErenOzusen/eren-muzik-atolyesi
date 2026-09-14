@@ -197,3 +197,49 @@ jobs:
             echo '- AI/video generation calls: 0'
             echo '- Paid generation: 0'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: n8n continuation webhookunu tetikle
+        if: env.COMMAND_MATCHED == 'true'
+        shell: bash
+        env:
+          N8N_CONTINUATION_SECRET: ${{ secrets.N8N_OWNER_APPROVAL_CONTINUATION_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${N8N_CONTINUATION_SECRET:-}" ]]; then
+            echo 'N8N continuation secret tanımlı değil.'
+            exit 1
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg event 'media_generation_owner_approval_continuation' \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson source_issue "$ISSUE_NUMBER" \
+            --arg mode "$APPROVAL_MODE" \
+            --arg selected_scenario "$SCENARIO" \
+            --arg approved_body_sha "$BODY_SHA" \
+            --argjson test_mode "$TEST_MODE" \
+            '{
+              event: $event,
+              repository: $repository,
+              source_issue: $source_issue,
+              mode: $mode,
+              selected_scenario: $selected_scenario,
+              approved_body_sha: $approved_body_sha,
+              test_mode: $test_mode
+            }')
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header "X-Owner-Approval-Secret: ${N8N_CONTINUATION_SECRET}" \
+            --data "$PAYLOAD" \
+            'https://n8n-rmd8.onrender.com/webhook/media-generation-owner-approval-continuation'
+
+          echo
+          echo 'n8n continuation webhook başarıyla çağrıldı.'
