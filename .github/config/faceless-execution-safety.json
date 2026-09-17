@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "engine": "moneyprinterturbo",
+  "dry_run_only": true,
+  "allow_network_generation_calls": false,
+  "hard_max_cost_usd": 0.0,
+  "require_owner_authorization": true,
+  "require_owner_marker_validation": true,
+  "require_route_match": true,
+  "require_paid_generation_gate": true,
+  "require_side_effect_gate": true,
+  "require_global_dispatch_gate": true,
+  "require_idempotency_key": true
+}

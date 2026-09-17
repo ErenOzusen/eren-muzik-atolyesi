@@ -1,0 +1,56 @@
+name: Faceless Execution Contract Smoke Test
+
+"on":
+  push:
+    paths:
+      - ".github/config/faceless-execution-safety.json"
+      - ".github/scripts/faceless_execution_contract.py"
+      - ".github/scripts/test_faceless_execution_contract.py"
+      - ".github/workflows/faceless-execution-contract-smoke-test.yml"
+  pull_request:
+    paths:
+      - ".github/config/faceless-execution-safety.json"
+      - ".github/scripts/faceless_execution_contract.py"
+      - ".github/scripts/test_faceless_execution_contract.py"
+      - ".github/workflows/faceless-execution-contract-smoke-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-token-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Safety config ve Python syntax doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m json.tool .github/config/faceless-execution-safety.json >/dev/null
+          python3 -m py_compile .github/scripts/faceless_execution_contract.py
+          python3 -m py_compile .github/scripts/test_faceless_execution_contract.py
+
+      - name: Fail-closed contract testlerini çalıştır
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_faceless_execution_contract.py
+
+      - name: Güvenli test özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Faceless Execution Contract smoke testi"
+            echo "- MoneyPrinterTurbo network generation: kapalı"
+            echo "- Repository safety config: dry-run only"
+            echo "- Hard cost cap: 0 USD"
+            echo "- Owner + marker + route + paid + side-effect + global dispatch gates: zorunlu"
+            echo "- Absolute code-level safety ceiling: 1 USD"
+            echo "- AI/API/video generation calls: 0"
+            echo "- AI token harcaması: 0"
+          } >> "$GITHUB_STEP_SUMMARY"
