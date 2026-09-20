@@ -68,7 +68,7 @@ if not (2.0 <= duration <= 120.0):
     raise SystemExit(f"duration outside test QC bounds: {duration}")
 if v.get("codec_name") not in {"h264", "hevc"}:
     raise SystemExit(f"unexpected video codec: {v.get('codec_name')}")
-if (v.get("width"), v.get("height")) != (720, 1280):
+if (v.get("width"), v.get("height")) != (1080, 1920):
     raise SystemExit(f"unexpected dimensions: {v.get('width')}x{v.get('height')}")
 if v.get("pix_fmt") not in {"yuv420p", "yuvj420p"}:
     raise SystemExit(f"unexpected pixel format: {v.get('pix_fmt')}")
