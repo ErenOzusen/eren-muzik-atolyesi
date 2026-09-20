@@ -89,6 +89,10 @@ jobs:
           from pathlib import Path
           import os
           import re
+          import sys
+
+          sys.path.insert(0, str(Path(".github/scripts").resolve()))
+          from moneyprinter_payload_adapter import clean_script
 
           text = Path("/tmp/all-scripts.md").read_text(encoding="utf-8")
           scenario = os.environ["SCENARIO"]
@@ -101,12 +105,12 @@ jobs:
           start = selected[0].start()
           later = next((m for m in headings if m.start() > start), None)
           end = later.start() if later else len(text)
-          block = text[start:end].strip()
+          block = clean_script(text[start:end])
 
           if not block:
               raise SystemExit("Seçili senaryo boş")
 
-          Path("/tmp/selected-script.md").write_text(block + "\n", encoding="utf-8")
+          Path("/tmp/selected-script.md").write_text(block, encoding="utf-8")
           PY
 
           sha256sum /tmp/all-scripts.md | awk '{print $1}' > /tmp/source-body.sha256
@@ -131,14 +135,16 @@ jobs:
             --test-mode true \
             >/tmp/manifest.stdout
 
-          jq -e '
+          SCRIPT_SHA="$(cat /tmp/script.sha256)"
+          jq -e --arg script_sha "$SCRIPT_SHA" '
             .production_mode == "faceless" and
             .engine == "moneyprinterturbo" and
             .test_mode == true and
             .state == "test_ready_no_dispatch" and
             .dispatch_allowed == false and
             .paid_generation_allowed == false and
-            .network_generation_calls_allowed == false
+            .network_generation_calls_allowed == false and
+            .scenario_text_sha256 == $script_sha
           ' /tmp/faceless-manifest.json >/dev/null
 
       - name: FFmpeg ve MoneyPrinterTurbo v1.3.5 kur
