@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from moneyprinter_payload_adapter import clean_script
+
 if len(sys.argv) != 2:
     raise SystemExit("usage: faceless_mp4_qc.py <artifact-dir>")
 
@@ -12,13 +14,30 @@ root = Path(sys.argv[1]).resolve()
 video = root / "video.mp4"
 result_file = root / "worker-result.json"
 manifest_file = root / "faceless-manifest.json"
+script_file = root / "selected-script.md"
+payload_file = root / "mpt-payload.json"
 
-for path in (video, result_file, manifest_file):
+for path in (video, result_file, manifest_file, script_file, payload_file):
     if not path.is_file() or path.stat().st_size == 0:
         raise SystemExit(f"missing or empty required file: {path.name}")
 
 worker = json.loads(result_file.read_text(encoding="utf-8"))
 manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+selected_script = script_file.read_text(encoding="utf-8")
+payload = json.loads(payload_file.read_text(encoding="utf-8"))
+
+if clean_script(selected_script) != selected_script:
+    raise SystemExit("selected-script.md is not canonical")
+
+script_sha = hashlib.sha256(selected_script.encode("utf-8")).hexdigest()
+if manifest.get("scenario_text_sha256") != script_sha:
+    raise SystemExit("selected script SHA-256 does not match faceless-manifest.json")
+if worker.get("scenario_text_sha256") != script_sha:
+    raise SystemExit("selected script SHA-256 does not match worker-result.json")
+if (manifest.get("moneyprinter_payload") or {}).get("video_script") != selected_script:
+    raise SystemExit("manifest MoneyPrinter script does not match selected-script.md")
+if payload.get("video_script") != selected_script:
+    raise SystemExit("mpt-payload.json script does not match selected-script.md")
 
 required_worker = {
     "test_mode": True,
