@@ -1,0 +1,309 @@
+name: Faceless Zero-Cost Worker Test
+
+"on":
+  push:
+    branches:
+      - "feat/moneyprinter-zero-cost-mp4-smoke"
+    paths:
+      - ".github/workflows/faceless-zero-cost-worker-test.yml"
+      - ".github/scripts/moneyprinter_payload_adapter.py"
+      - ".github/scripts/faceless_production_manifest.py"
+      - ".github/config/faceless-execution-safety.json"
+      - ".github/config/video-orchestrator.json"
+  workflow_dispatch:
+    inputs:
+      source_issue:
+        description: "sistem-testi Nihai Senaryolar Issue numarası"
+        required: true
+        default: "88"
+        type: string
+      scenario:
+        description: "Senaryo"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+      test_mode:
+        description: "Bu worker yalnız test_mode=true kabul eder"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  faceless-zero-cost-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_ISSUE: ${{ inputs.source_issue || '88' }}
+      SCENARIO: ${{ inputs.scenario || '1' }}
+      TEST_MODE: ${{ inputs.test_mode == false && 'false' || 'true' }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Worker fail-closed güvenlik doğrulaması
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "$TEST_MODE" == "true" ]]
+          [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SCENARIO" =~ ^[123]$ ]]
+
+          jq -e '.generation_dispatch_enabled == false' .github/config/video-orchestrator.json >/dev/null
+          jq -e '
+            .engine == "moneyprinterturbo" and
+            .dry_run_only == true and
+            .allow_network_generation_calls == false and
+            .hard_max_cost_usd == 0 and
+            .require_owner_authorization == true and
+            .require_paid_generation_gate == true and
+            .require_global_dispatch_gate == true
+          ' .github/config/faceless-execution-safety.json >/dev/null
+
+      - name: Sistem-testi Issue ve seçili senaryoyu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh issue view "$SOURCE_ISSUE" --json title,body,labels,state > /tmp/issue.json
+
+          jq -e '.state == "OPEN"' /tmp/issue.json >/dev/null
+          jq -r '.labels[].name' /tmp/issue.json | grep -qx 'sistem-testi'
+          jq -r '.title // ""' /tmp/issue.json | grep -q '^Nihai Senaryolar'
+          jq -r '.body // ""' /tmp/issue.json | grep -q 'FACELESS_ROUTE_TEST_V1'
+
+          jq -r '.body // ""' /tmp/issue.json > /tmp/all-scripts.md
+
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          text = Path("/tmp/all-scripts.md").read_text(encoding="utf-8")
+          scenario = os.environ["SCENARIO"]
+
+          headings = list(re.finditer(r"(?mi)^##\s+SENARYO\s+([123])(?:\s*:.*|\s+.*|$)", text))
+          selected = [m for m in headings if m.group(1) == scenario]
+          if len(selected) != 1:
+              raise SystemExit(f"SENARYO {scenario} tam olarak bir kez bulunmalı")
+
+          start = selected[0].start()
+          later = next((m for m in headings if m.start() > start), None)
+          end = later.start() if later else len(text)
+          block = text[start:end].strip()
+
+          if not block:
+              raise SystemExit("Seçili senaryo boş")
+
+          Path("/tmp/selected-script.md").write_text(block + "\n", encoding="utf-8")
+          PY
+
+          sha256sum /tmp/all-scripts.md | awk '{print $1}' > /tmp/source-body.sha256
+          sha256sum /tmp/selected-script.md | awk '{print $1}' > /tmp/script.sha256
+
+      - name: Test-only faceless manifest üret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_BODY_SHA="$(cat /tmp/source-body.sha256)"
+
+          python3 .github/scripts/faceless_production_manifest.py \
+            --script-file /tmp/selected-script.md \
+            --output-file /tmp/faceless-manifest.json \
+            --source-issue "$SOURCE_ISSUE" \
+            --scenario "$SCENARIO" \
+            --source-body-sha "$SOURCE_BODY_SHA" \
+            --aspect 9:16 \
+            --generation-dispatch-enabled false \
+            --owner-generation-approved false \
+            --test-mode true \
+            >/tmp/manifest.stdout
+
+          jq -e '
+            .production_mode == "faceless" and
+            .engine == "moneyprinterturbo" and
+            .test_mode == true and
+            .state == "test_ready_no_dispatch" and
+            .dispatch_allowed == false and
+            .paid_generation_allowed == false and
+            .network_generation_calls_allowed == false
+          ' /tmp/faceless-manifest.json >/dev/null
+
+      - name: FFmpeg ve MoneyPrinterTurbo v1.3.5 kur
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+          git clone --depth 1 --branch v1.3.5 https://github.com/harry0703/MoneyPrinterTurbo.git /tmp/mpt
+          cd /tmp/mpt
+
+          python3 -m pip install --disable-pip-version-check -q uv
+          uv sync --frozen --python 3.11
+
+          cp -n config.example.toml config.toml || true
+          .venv/bin/python cli.py --help >/dev/null
+
+      - name: Tamamen yerel test medyası hazırla
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "color=c=0x101010:s=720x1280:d=5:r=30" \
+            -vf "drawtext=text='FACELESS WORKER TEST #$SOURCE_ISSUE / $SCENARIO':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -c:v libx264 -pix_fmt yuv420p \
+            /tmp/local-input.mp4
+
+          test -s /tmp/local-input.mp4
+
+          python3 .github/scripts/moneyprinter_payload_adapter.py \
+            --script-file /tmp/selected-script.md \
+            --output-file /tmp/mpt-payload.json \
+            --aspect 9:16 \
+            --local-media /tmp/local-input.mp4
+
+          jq -e '
+            .video_source == "local" and
+            (.video_materials | length) == 1 and
+            .voice_name == "no-voice" and
+            .bgm_volume == 0 and
+            .subtitle_enabled == false
+          ' /tmp/mpt-payload.json >/dev/null
+
+      - name: Ağ kapalı MoneyPrinter MP4 worker çalıştır
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/mpt
+
+          SCRIPT="$(cat /tmp/selected-script.md)"
+
+          cleanup_firewall() {
+            sudo iptables -D OUTPUT -j REJECT 2>/dev/null || true
+          }
+          trap cleanup_firewall EXIT
+
+          sudo iptables -I OUTPUT 1 -j REJECT
+
+          set +e
+          .venv/bin/python cli.py \
+            --video-script "$SCRIPT" \
+            --video-source local \
+            --video-materials "/tmp/local-input.mp4" \
+            --video-aspect 9:16 \
+            --voice-name no-voice \
+            --bgm-type none \
+            --no-subtitle-enabled \
+            --stop-at video \
+            > /tmp/mpt-worker.log 2>&1
+          RC=$?
+          set -e
+
+          cleanup_firewall
+          trap - EXIT
+
+          if [[ $RC -ne 0 ]]; then
+            tail -n 160 /tmp/mpt-worker.log
+            exit $RC
+          fi
+
+          FINAL_VIDEO="$(find /tmp/mpt -type f -name 'final-*.mp4' -size +10k -print -quit)"
+          [[ -n "$FINAL_VIDEO" ]]
+
+          mkdir -p /tmp/faceless-worker-output
+          cp "$FINAL_VIDEO" /tmp/faceless-worker-output/video.mp4
+          cp /tmp/selected-script.md /tmp/faceless-worker-output/selected-script.md
+          cp /tmp/faceless-manifest.json /tmp/faceless-worker-output/faceless-manifest.json
+          cp /tmp/mpt-payload.json /tmp/faceless-worker-output/mpt-payload.json
+
+          DURATION="$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 /tmp/faceless-worker-output/video.mp4)"
+          VIDEO_SHA="$(sha256sum /tmp/faceless-worker-output/video.mp4 | awk '{print $1}')"
+          SCRIPT_SHA="$(cat /tmp/script.sha256)"
+
+          python3 - "$SOURCE_ISSUE" "$SCENARIO" "$DURATION" "$VIDEO_SHA" "$SCRIPT_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          source_issue, scenario, duration, video_sha, script_sha = sys.argv[1:]
+          duration_value = float(duration)
+          if duration_value < 2.0:
+              raise SystemExit(f"MP4 süresi beklenenden kısa: {duration_value}")
+
+          result = {
+              "schema_version": 1,
+              "event": "faceless_zero_cost_worker_test",
+              "engine": "moneyprinterturbo",
+              "engine_version": "v1.3.5",
+              "source_issue": int(source_issue),
+              "selected_scenario": int(scenario),
+              "test_mode": True,
+              "status": "mp4_ready_for_qc",
+              "duration_seconds": duration_value,
+              "video_sha256": video_sha,
+              "scenario_text_sha256": script_sha,
+              "cost_usd": 0,
+              "network_generation_calls_allowed": False,
+              "youtube_publication_attempted": False,
+          }
+          Path("/tmp/faceless-worker-output/worker-result.json").write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(result, ensure_ascii=False))
+          PY
+
+          jq -e '
+            .test_mode == true and
+            .status == "mp4_ready_for_qc" and
+            .cost_usd == 0 and
+            .network_generation_calls_allowed == false and
+            .youtube_publication_attempted == false
+          ' /tmp/faceless-worker-output/worker-result.json >/dev/null
+
+      - name: Worker çıktısını artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: faceless-worker-test-issue-${{ env.SOURCE_ISSUE }}-scenario-${{ env.SCENARIO }}
+          path: /tmp/faceless-worker-output/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Worker sonucu
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DURATION="$(jq -r '.duration_seconds' /tmp/faceless-worker-output/worker-result.json)"
+          VIDEO_SHA="$(jq -r '.video_sha256' /tmp/faceless-worker-output/worker-result.json)"
+
+          {
+            echo "### Faceless Zero-Cost Worker Test"
+            echo "- Kaynak Issue: #$SOURCE_ISSUE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- test_mode: true"
+            echo "- Engine: MoneyPrinterTurbo v1.3.5"
+            echo "- Gerçek MP4 artifact: evet"
+            echo "- Süre: ${DURATION}s"
+            echo "- Video SHA-256: `$VIDEO_SHA`"
+            echo "- Generation provider network: kapalı"
+            echo "- LLM/TTS/stock provider: kullanılmadı"
+            echo "- Maliyet: 0 USD"
+            echo "- YouTube/publication: yapılmadı"
+            echo "- Sonraki durum: mp4_ready_for_qc"
+          } >> "$GITHUB_STEP_SUMMARY"
