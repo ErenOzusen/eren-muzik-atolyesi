@@ -1,6 +1,14 @@
 name: MoneyPrinterTurbo Zero-Cost MP4 Smoke Test
 
 "on":
+  push:
+    branches:
+      - "feat/moneyprinter-zero-cost-mp4-smoke"
+    paths:
+      - ".github/workflows/moneyprinter-zero-cost-mp4-smoke-test.yml"
+      - ".github/scripts/moneyprinter_payload_adapter.py"
+      - ".github/config/faceless-execution-safety.json"
+      - ".github/config/video-orchestrator.json"
   pull_request:
     paths:
       - ".github/workflows/moneyprinter-zero-cost-mp4-smoke-test.yml"
@@ -95,8 +103,6 @@ jobs:
           }
           trap cleanup_firewall EXIT
 
-          # Tüm bağımlılıklar kurulduktan sonra üretim aşamasında harici ağ çağrısını
-          # teknik olarak da engelle. Yerel FFmpeg/MoviePy akışı çalışmaya devam eder.
           sudo iptables -I OUTPUT 1 -j REJECT
 
           set +e
