@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "engine": "moneyprinterturbo",
+  "enabled": false,
+  "execution_class": "zero_cost_network",
+  "video_source": "pexels",
+  "require_stock_provider_key": true,
+  "voice_provider": "edge",
+  "voice_name": "tr-TR-AhmetNeural",
+  "subtitle_provider": "edge",
+  "subtitle_enabled": true,
+  "bgm_type": "none",
+  "allow_ai_video_generation": false,
+  "allow_paid_provider_calls": false,
+  "hard_max_cost_usd": 0.0,
+  "youtube_publication_enabled": false,
+  "require_owner_confirmation": true,
+  "owner_confirmation_phrase": "FACELESS SIFIR MALIYET CANLI URETIMI ONAYLIYORUM"
+}

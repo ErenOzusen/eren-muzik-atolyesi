@@ -1,0 +1,175 @@
+name: Faceless Zero-Cost Live Readiness
+
+"on":
+  workflow_dispatch:
+    inputs:
+      source_issue:
+        description: "Nihai Senaryolar Issue numarası"
+        required: true
+        default: "88"
+        type: string
+      scenario:
+        description: "Senaryo"
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "2", "3"]
+      test_mode:
+        description: "Test fixture kullan; gerçek üretime izin verme"
+        required: true
+        default: true
+        type: boolean
+      owner_generation_approved:
+        description: "Sıfır maliyet canlı faceless üretim için owner onayı"
+        required: true
+        default: false
+        type: boolean
+      owner_confirmation:
+        description: "Canlı üretim için tam onay cümlesi"
+        required: false
+        default: ""
+        type: string
+      video_terms:
+        description: "Virgülle ayrılmış 2-12 stock arama terimi"
+        required: true
+        default: "gitar,müzik,sahne"
+        type: string
+      require_ready:
+        description: "Readiness false ise workflow'u fail et"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_ISSUE: ${{ inputs.source_issue }}
+      SCENARIO: ${{ inputs.scenario }}
+      TEST_MODE: ${{ inputs.test_mode }}
+      OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
+      OWNER_CONFIRMATION: ${{ inputs.owner_confirmation }}
+      VIDEO_TERMS: ${{ inputs.video_terms }}
+      REQUIRE_READY: ${{ inputs.require_ready }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Yetkili kullanıcı ve Issue durumunu doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_OWNER=$(jq -er '.business.github_owner' .github/config/business-profile.json)
+          [[ "${{ github.actor }}" == "$EXPECTED_OWNER" ]]
+          [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SCENARIO" =~ ^[123]$ ]]
+
+          gh issue view "$SOURCE_ISSUE" --json title,state,labels > /tmp/issue.json
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          TITLE=$(jq -r '.title // ""' /tmp/issue.json)
+          STATE=$(jq -r '.state // ""' /tmp/issue.json)
+          [[ "$TITLE" == Nihai\ Senaryolar* ]]
+
+          PRODUCTION_ISSUE_VALIDATED=false
+          ROUTE_VALIDATED=false
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            grep -qx 'sistem-testi' /tmp/labels.txt
+          else
+            [[ "$STATE" == "OPEN" ]]
+            ! grep -qx 'sistem-testi' /tmp/labels.txt
+            grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
+            grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
+            grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+            ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
+            ACTUAL=$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
+              | sed -E 's/.*-([123])$/\1/' | sort -u)
+            [[ "$(printf '%s\n' "$ACTUAL" | sed '/^$/d' | wc -l)" -eq 1 ]]
+            [[ "$ACTUAL" == "$SCENARIO" ]]
+            PRODUCTION_ISSUE_VALIDATED=true
+            ROUTE_VALIDATED=true
+          fi
+
+          echo "PRODUCTION_ISSUE_VALIDATED=$PRODUCTION_ISSUE_VALIDATED" >> "$GITHUB_ENV"
+          echo "ROUTE_VALIDATED=$ROUTE_VALIDATED" >> "$GITHUB_ENV"
+
+      - name: Readiness job girdisini oluştur
+        shell: bash
+        run: |
+          set -euo pipefail
+          STOCK_KEY_PRESENT=false
+          if [[ -n "$PEXELS_API_KEY" ]]; then
+            STOCK_KEY_PRESENT=true
+          fi
+
+          jq -n \
+            --arg event "faceless_zero_cost_live_preflight" \
+            --argjson source_issue "$SOURCE_ISSUE" \
+            --arg selected_scenario "$SCENARIO" \
+            --argjson test_mode "$TEST_MODE" \
+            --argjson owner_generation_approved "$OWNER_GENERATION_APPROVED" \
+            --argjson production_issue_validated "$PRODUCTION_ISSUE_VALIDATED" \
+            --argjson approval_route_match_validated "$ROUTE_VALIDATED" \
+            --argjson stock_provider_key_present "$STOCK_KEY_PRESENT" \
+            --arg owner_confirmation "$OWNER_CONFIRMATION" \
+            --arg video_terms "$VIDEO_TERMS" \
+            '{
+              event: $event,
+              source_issue: $source_issue,
+              selected_scenario: $selected_scenario,
+              test_mode: $test_mode,
+              owner_generation_approved: $owner_generation_approved,
+              production_issue_validated: $production_issue_validated,
+              approval_route_match_validated: $approval_route_match_validated,
+              stock_provider_key_present: $stock_provider_key_present,
+              owner_confirmation: $owner_confirmation,
+              video_terms: $video_terms
+            }' > /tmp/live-preflight-job.json
+
+      - name: Sıfır maliyet canlı üretim preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/faceless_zero_cost_live_preflight.py \
+            --job-file /tmp/live-preflight-job.json \
+            --profile .github/config/faceless-zero-cost-live.json \
+            --orchestrator .github/config/video-orchestrator.json \
+            --paid-safety .github/config/faceless-execution-safety.json \
+            --output-file /tmp/live-readiness.json
+
+      - name: Güvenli readiness özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          READY=$(jq -r '.ready_for_zero_cost_live_generation' /tmp/live-readiness.json)
+          BLOCKERS=$(jq -r 'if (.blockers | length) == 0 then "none" else (.blockers | join(", ")) end' /tmp/live-readiness.json)
+          {
+            echo "### Faceless Zero-Cost Live Readiness"
+            echo "- Kaynak Issue: #$SOURCE_ISSUE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Ready: $READY"
+            echo "- Blockers: $BLOCKERS"
+            echo "- Video source: $(jq -r '.video_source' /tmp/live-readiness.json)"
+            echo "- Voice: $(jq -r '.voice_name' /tmp/live-readiness.json)"
+            echo "- Hard max cost: 0 USD"
+            echo "- Paid generation: kapalı"
+            echo "- AI video generation: kapalı"
+            echo "- YouTube publication: kapalı"
+            echo "- Bu workflow MoneyPrinterTurbo veya provider çağırmaz"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$TEST_MODE" == "true" ]]; then
+            jq -e '.ready_for_zero_cost_live_generation == false' /tmp/live-readiness.json >/dev/null
+          fi
+
+          if [[ "$REQUIRE_READY" == "true" ]]; then
+            jq -e '.ready_for_zero_cost_live_generation == true' /tmp/live-readiness.json >/dev/null
+          fi
