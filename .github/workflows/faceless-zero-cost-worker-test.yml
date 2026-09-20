@@ -44,7 +44,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SOURCE_ISSUE: ${{ inputs.source_issue || '88' }}
       SCENARIO: ${{ inputs.scenario || '1' }}
-      TEST_MODE: ${{ inputs.test_mode == false && 'false' || 'true' }}
+      TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_mode == false && 'false' || 'true' }}
 
     steps:
       - name: Kaynak kodu al
