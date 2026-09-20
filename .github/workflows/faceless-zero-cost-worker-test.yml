@@ -367,7 +367,7 @@ jobs:
             echo "### Faceless Zero-Cost QC"
             echo "- Sonuç: qc_passed"
             echo "- Süre: ${DURATION}s"
-            echo "- Çözünürlük: 720x1280"
+            echo "- Çözünürlük: 1080x1920"
             echo "- Video SHA-256: \`$VIDEO_SHA\`"
             echo "- Maliyet: 0 USD"
             echo "- Network generation: kapalı"
