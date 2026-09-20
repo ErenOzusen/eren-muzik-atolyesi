@@ -343,8 +343,8 @@ jobs:
             .cost_usd == 0 and
             .network_generation_calls_allowed == false and
             .youtube_publication_attempted == false and
-            .width == 720 and
-            .height == 1280
+            .width == 1080 and
+            .height == 1920
           ' /tmp/faceless-worker-output/qc-result.json >/dev/null
 
       - name: QC sonucu artifact olarak yükle
