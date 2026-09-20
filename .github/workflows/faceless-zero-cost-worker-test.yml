@@ -307,3 +307,69 @@ jobs:
             echo "- YouTube/publication: yapılmadı"
             echo "- Sonraki durum: mp4_ready_for_qc"
           } >> "$GITHUB_STEP_SUMMARY"
+
+
+  faceless-zero-cost-qc:
+    needs: faceless-zero-cost-worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: FFmpeg kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Worker artifact indir
+        uses: actions/download-artifact@v4
+        with:
+          name: faceless-worker-test-issue-${{ needs.faceless-zero-cost-worker.result == 'success' && (inputs.source_issue || '88') || '88' }}-scenario-${{ inputs.scenario || '1' }}
+          path: /tmp/faceless-worker-output
+
+      - name: Fail-closed MP4 QC
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .github/scripts/faceless_mp4_qc.py /tmp/faceless-worker-output
+
+          jq -e '
+            .test_mode == true and
+            .status == "qc_passed" and
+            .cost_usd == 0 and
+            .network_generation_calls_allowed == false and
+            .youtube_publication_attempted == false and
+            .width == 720 and
+            .height == 1280
+          ' /tmp/faceless-worker-output/qc-result.json >/dev/null
+
+      - name: QC sonucu artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: faceless-qc-test-issue-${{ inputs.source_issue || '88' }}-scenario-${{ inputs.scenario || '1' }}
+          path: /tmp/faceless-worker-output/qc-result.json
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: QC özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DURATION="$(jq -r '.duration_seconds' /tmp/faceless-worker-output/qc-result.json)"
+          VIDEO_SHA="$(jq -r '.video_sha256' /tmp/faceless-worker-output/qc-result.json)"
+
+          {
+            echo "### Faceless Zero-Cost QC"
+            echo "- Sonuç: qc_passed"
+            echo "- Süre: ${DURATION}s"
+            echo "- Çözünürlük: 720x1280"
+            echo "- Video SHA-256: \`$VIDEO_SHA\`"
+            echo "- Maliyet: 0 USD"
+            echo "- Network generation: kapalı"
+            echo "- YouTube/publication: yapılmadı"
+          } >> "$GITHUB_STEP_SUMMARY"
