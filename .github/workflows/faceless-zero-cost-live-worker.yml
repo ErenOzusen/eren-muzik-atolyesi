@@ -95,6 +95,9 @@ jobs:
           [[ -n "$PEXELS_API_KEY" ]]
 
           gh issue view "$SOURCE_ISSUE" --json title,body,labels,state > /tmp/issue.json
+          jq -S '{title:(.title // ""),body:(.body // ""),state:(.state // ""),labels:([.labels[].name] | sort)}' \
+            /tmp/issue.json > /tmp/issue-snapshot.json
+          sha256sum /tmp/issue-snapshot.json | awk '{print $1}' > /tmp/issue-snapshot.sha256
           jq -e '.state == "OPEN"' /tmp/issue.json >/dev/null
           jq -r '.title // ""' /tmp/issue.json | grep -q '^Nihai Senaryolar'
           jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
@@ -249,7 +252,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh issue view "$SOURCE_ISSUE" --json body | jq -r '.body // ""' > /tmp/current-body.md
+          gh issue view "$SOURCE_ISSUE" --json title,body,labels,state > /tmp/current-issue.json
+          jq -S '{title:(.title // ""),body:(.body // ""),state:(.state // ""),labels:([.labels[].name] | sort)}' \
+            /tmp/current-issue.json > /tmp/current-issue-snapshot.json
+          [[ "$(sha256sum /tmp/current-issue-snapshot.json | awk '{print $1}')" == "$(cat /tmp/issue-snapshot.sha256)" ]]
+          jq -r '.body // ""' /tmp/current-issue.json > /tmp/current-body.md
           [[ "$(sha256sum /tmp/current-body.md | awk '{print $1}')" == "$(cat /tmp/source-body.sha256)" ]]
           [[ "$(sha256sum .github/config/faceless-zero-cost-live.json | awk '{print $1}')" == "$(cat /tmp/profile.sha256)" ]]
           [[ "$(sha256sum .github/config/video-orchestrator.json | awk '{print $1}')" == "$(cat /tmp/orchestrator.sha256)" ]]
