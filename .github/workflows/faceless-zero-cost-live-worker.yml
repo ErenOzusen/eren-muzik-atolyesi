@@ -1,0 +1,409 @@
+name: Faceless Zero-Cost Live Worker
+
+"on":
+  pull_request:
+    paths:
+      - ".github/workflows/faceless-zero-cost-live-worker.yml"
+      - ".github/scripts/faceless_zero_cost_live_worker_contract.py"
+      - ".github/scripts/faceless_live_mp4_qc.py"
+      - ".github/scripts/test_faceless_zero_cost_live_worker_contract.py"
+      - ".github/scripts/test_faceless_live_mp4_qc.py"
+      - ".github/config/faceless-zero-cost-live.json"
+      - ".github/config/video-orchestrator.json"
+      - ".github/config/faceless-execution-safety.json"
+  workflow_dispatch:
+    inputs:
+      source_issue:
+        description: "Üretime seçilmiş Nihai Senaryolar Issue numarası"
+        required: true
+        type: string
+      scenario:
+        description: "Senaryo"
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "2", "3"]
+      owner_generation_approved:
+        description: "Bu tek artifact üretimi için owner onayı"
+        required: true
+        default: false
+        type: boolean
+      owner_confirmation:
+        description: "Profildeki canlı üretim onay cümlesi"
+        required: true
+        default: ""
+        type: string
+      video_terms:
+        description: "Virgülle ayrılmış 2-12 Pexels arama terimi"
+        required: true
+        default: "gitar,müzik,sahne"
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: faceless-zero-cost-live-${{ github.event_name }}-${{ inputs.source_issue || github.ref }}-${{ inputs.scenario || 'contract' }}
+  cancel-in-progress: false
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Fail-closed sözleşme ve QC testleri
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_zero_cost_live_worker_contract.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_live_mp4_qc.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_zero_cost_live_preflight.py -v
+
+  live-worker:
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_ISSUE: ${{ inputs.source_issue }}
+      SCENARIO: ${{ inputs.scenario }}
+      OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
+      OWNER_CONFIRMATION: ${{ inputs.owner_confirmation }}
+      VIDEO_TERMS: ${{ inputs.video_terms }}
+      MPT_COMMIT: 5dde46390809edba44c2e8d09760623bb846fd9d
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Yetkili kullanıcı, Issue ve seçili senaryoyu doğrula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_OWNER="$(jq -er '.business.github_owner' .github/config/business-profile.json)"
+          [[ "${{ github.actor }}" == "$EXPECTED_OWNER" ]]
+          [[ "$OWNER_GENERATION_APPROVED" == "true" ]]
+          [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SCENARIO" =~ ^[123]$ ]]
+          [[ -n "$PEXELS_API_KEY" ]]
+
+          gh issue view "$SOURCE_ISSUE" --json title,body,labels,state > /tmp/issue.json
+          jq -e '.state == "OPEN"' /tmp/issue.json >/dev/null
+          jq -r '.title // ""' /tmp/issue.json | grep -q '^Nihai Senaryolar'
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          ! grep -qx 'sistem-testi' /tmp/labels.txt
+          grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
+          grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
+          grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+          ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
+
+          ACTUAL="$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
+            | sed -E 's/.*-([123])$/\1/' | sort -u)"
+          [[ "$(printf '%s\n' "$ACTUAL" | sed '/^$/d' | wc -l)" -eq 1 ]]
+          [[ "$ACTUAL" == "$SCENARIO" ]]
+
+          jq -r '.body // ""' /tmp/issue.json > /tmp/all-scripts.md
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          import sys
+
+          sys.path.insert(0, str(Path('.github/scripts').resolve()))
+          from moneyprinter_payload_adapter import clean_script
+
+          text = Path('/tmp/all-scripts.md').read_text(encoding='utf-8')
+          scenario = os.environ['SCENARIO']
+          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123])(?:\s*:.*|\s+.*|$)', text))
+          selected = [item for item in headings if item.group(1) == scenario]
+          if len(selected) != 1:
+              raise SystemExit(f'SENARYO {scenario} tam olarak bir kez bulunmalı')
+          start = selected[0].start()
+          later = next((item for item in headings if item.start() > start), None)
+          block = clean_script(text[start:later.start() if later else len(text)])
+          if not block:
+              raise SystemExit('Seçili senaryo boş')
+          Path('/tmp/selected-script.md').write_text(block, encoding='utf-8')
+          PY
+
+          sha256sum /tmp/all-scripts.md | awk '{print $1}' > /tmp/source-body.sha256
+          sha256sum /tmp/selected-script.md | awk '{print $1}' > /tmp/script.sha256
+          sha256sum .github/config/faceless-zero-cost-live.json | awk '{print $1}' > /tmp/profile.sha256
+          sha256sum .github/config/video-orchestrator.json | awk '{print $1}' > /tmp/orchestrator.sha256
+          sha256sum .github/config/faceless-execution-safety.json | awk '{print $1}' > /tmp/paid-safety.sha256
+
+      - name: Readiness ve worker sözleşmesini kilitle
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg event faceless_zero_cost_live_preflight \
+            --argjson source_issue "$SOURCE_ISSUE" \
+            --arg selected_scenario "$SCENARIO" \
+            --argjson owner_generation_approved "$OWNER_GENERATION_APPROVED" \
+            --arg owner_confirmation "$OWNER_CONFIRMATION" \
+            --arg video_terms "$VIDEO_TERMS" \
+            '{event:$event,source_issue:$source_issue,selected_scenario:$selected_scenario,
+              test_mode:false,owner_generation_approved:$owner_generation_approved,
+              production_issue_validated:true,approval_route_match_validated:true,
+              stock_provider_key_present:true,owner_confirmation:$owner_confirmation,
+              video_terms:$video_terms}' > /tmp/live-preflight-job.json
+
+          python3 .github/scripts/faceless_zero_cost_live_preflight.py \
+            --job-file /tmp/live-preflight-job.json \
+            --profile .github/config/faceless-zero-cost-live.json \
+            --orchestrator .github/config/video-orchestrator.json \
+            --paid-safety .github/config/faceless-execution-safety.json \
+            --output-file /tmp/live-readiness.json >/dev/null
+          jq -e '.ready_for_zero_cost_live_generation == true' /tmp/live-readiness.json >/dev/null
+
+          jq -n \
+            --arg event faceless_zero_cost_live_worker \
+            --argjson source_issue "$SOURCE_ISSUE" \
+            --arg selected_scenario "$SCENARIO" \
+            --argjson owner_generation_approved "$OWNER_GENERATION_APPROVED" \
+            --arg owner_confirmation "$OWNER_CONFIRMATION" \
+            --arg video_terms "$VIDEO_TERMS" \
+            --arg source_body_sha256 "$(cat /tmp/source-body.sha256)" \
+            --arg selected_script_sha256 "$(cat /tmp/script.sha256)" \
+            --arg profile_sha256 "$(cat /tmp/profile.sha256)" \
+            --arg orchestrator_sha256 "$(cat /tmp/orchestrator.sha256)" \
+            --arg paid_safety_sha256 "$(cat /tmp/paid-safety.sha256)" \
+            '{event:$event,source_issue:$source_issue,selected_scenario:$selected_scenario,
+              actor_authorized:true,owner_generation_approved:$owner_generation_approved,
+              production_issue_validated:true,approval_route_match_validated:true,
+              stock_provider_key_present:true,readiness_validated:true,
+              owner_confirmation:$owner_confirmation,video_terms:$video_terms,
+              source_body_sha256:$source_body_sha256,selected_script_sha256:$selected_script_sha256,
+              profile_sha256:$profile_sha256,orchestrator_sha256:$orchestrator_sha256,
+              paid_safety_sha256:$paid_safety_sha256}' > /tmp/live-worker-job.json
+
+          python3 .github/scripts/faceless_zero_cost_live_worker_contract.py \
+            --job-file /tmp/live-worker-job.json \
+            --profile .github/config/faceless-zero-cost-live.json \
+            --orchestrator .github/config/video-orchestrator.json \
+            --paid-safety .github/config/faceless-execution-safety.json \
+            --output-file /tmp/live-worker-contract.json \
+            --require-ready >/dev/null
+
+      - name: Sabit uv sürümünü kur
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          enable-cache: true
+
+      - name: FFmpeg ve sabit MoneyPrinterTurbo sürümünü kur
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          git clone --filter=blob:none --no-checkout https://github.com/harry0703/MoneyPrinterTurbo.git /tmp/mpt
+          git -C /tmp/mpt fetch --depth 1 origin "$MPT_COMMIT"
+          git -C /tmp/mpt checkout --detach "$MPT_COMMIT"
+          [[ "$(git -C /tmp/mpt rev-parse HEAD)" == "$MPT_COMMIT" ]]
+          cd /tmp/mpt
+          uv sync --frozen --python 3.11
+          .venv/bin/python cli.py --help >/dev/null
+
+      - name: Geçici ve yayınsız MPT yapılandırmasını hazırla
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/mpt
+          .venv/bin/python - <<'PY'
+          from pathlib import Path
+          import os
+          import toml
+
+          key = os.environ.get('PEXELS_API_KEY', '')
+          if not key:
+              raise SystemExit('PEXELS_API_KEY eksik')
+          cfg = toml.loads(Path('config.example.toml').read_text(encoding='utf-8'))
+          app = cfg.setdefault('app', {})
+          app['pexels_api_keys'] = [key]
+          app['video_source'] = 'pexels'
+          app['subtitle_provider'] = 'edge'
+          app['upload_post_enabled'] = False
+          app['upload_post_auto_upload'] = False
+          app['upload_post_platforms'] = []
+          for name in list(app):
+              low = name.lower()
+              if ('api_key' in low or 'secret' in low or 'token' in low) and name != 'pexels_api_keys':
+                  app[name] = [] if isinstance(app[name], list) else ''
+          Path('config.toml').write_text(toml.dumps(cfg), encoding='utf-8')
+          PY
+
+      - name: Issue değişmezliğini yeniden doğrula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue view "$SOURCE_ISSUE" --json body | jq -r '.body // ""' > /tmp/current-body.md
+          [[ "$(sha256sum /tmp/current-body.md | awk '{print $1}')" == "$(cat /tmp/source-body.sha256)" ]]
+          [[ "$(sha256sum .github/config/faceless-zero-cost-live.json | awk '{print $1}')" == "$(cat /tmp/profile.sha256)" ]]
+          [[ "$(sha256sum .github/config/video-orchestrator.json | awk '{print $1}')" == "$(cat /tmp/orchestrator.sha256)" ]]
+          [[ "$(sha256sum .github/config/faceless-execution-safety.json | awk '{print $1}')" == "$(cat /tmp/paid-safety.sha256)" ]]
+
+      - name: Pexels ve Edge ile tek artifact üret
+        shell: bash
+        run: |
+          set -euo pipefail
+          TASK_ID="$(python3 - <<'PY'
+          import os
+          import uuid
+          seed = f"github:{os.environ['GITHUB_RUN_ID']}:{os.environ['GITHUB_RUN_ATTEMPT']}"
+          print(uuid.uuid5(uuid.NAMESPACE_URL, seed))
+          PY
+          )"
+          SCRIPT="$(cat /tmp/selected-script.md)"
+          VOICE_NAME="$(jq -er '.voice_name' /tmp/live-worker-contract.json)"
+          cd /tmp/mpt
+
+          set +e
+          .venv/bin/python cli.py \
+            --task-id "$TASK_ID" \
+            --video-script "$SCRIPT" \
+            --video-terms "$VIDEO_TERMS" \
+            --video-source pexels \
+            --match-materials-to-script \
+            --video-aspect 9:16 \
+            --voice-name "$VOICE_NAME" \
+            --bgm-type none \
+            --bgm-volume 0 \
+            --subtitle-enabled \
+            --stop-at video \
+            > /tmp/mpt-stdout.log 2> /tmp/mpt-stderr.log
+          RC=$?
+          set -e
+          if [[ $RC -ne 0 ]]; then
+            echo "MoneyPrinterTurbo güvenli biçimde başarısız oldu (exit=$RC)."
+            exit "$RC"
+          fi
+
+          export TASK_ID
+          .venv/bin/python - <<'PY'
+          from pathlib import Path
+          import json
+          import os
+
+          lines = [line for line in Path('/tmp/mpt-stdout.log').read_text(encoding='utf-8').splitlines() if line.strip()]
+          if not lines:
+              raise SystemExit('MPT sonucu boş')
+          payload = json.loads(lines[-1])
+          videos = payload.get('result', {}).get('videos', [])
+          if len(videos) != 1:
+              raise SystemExit('MPT tam olarak bir final video döndürmeli')
+          video = Path(videos[0])
+          if not video.is_absolute():
+              video = (Path('/tmp/mpt') / video).resolve()
+          task_dir = (Path('/tmp/mpt/storage/tasks') / os.environ['TASK_ID']).resolve()
+          if task_dir not in video.parents or not video.is_file():
+              raise SystemExit('Final video sabit task dizininde değil')
+          Path('/tmp/final-video.path').write_text(str(video), encoding='utf-8')
+          PY
+
+          TASK_DIR="/tmp/mpt/storage/tasks/$TASK_ID"
+          SUBTITLE="$(find "$TASK_DIR" -maxdepth 2 -type f -name '*.srt' -size +0c -print -quit)"
+          [[ -n "$SUBTITLE" ]]
+          [[ -s "$TASK_DIR/script.json" ]]
+          mkdir -p /tmp/faceless-live-output
+          cp "$(cat /tmp/final-video.path)" /tmp/faceless-live-output/video.mp4
+          cp "$SUBTITLE" /tmp/faceless-live-output/subtitle.srt
+          cp /tmp/selected-script.md /tmp/faceless-live-output/selected-script.md
+          cp /tmp/live-worker-contract.json /tmp/faceless-live-output/worker-contract.json
+
+          python3 - "$TASK_DIR/script.json" <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+
+          raw = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+          sources = raw.get('material_sources')
+          if not isinstance(sources, list) or not sources:
+              raise SystemExit('Pexels kaynak manifesti eksik')
+          allowed = ('provider', 'asset_id', 'source_page', 'creator', 'rendition', 'local_file')
+          sanitized = [{key: item.get(key) for key in allowed if key in item} for item in sources]
+          safe = {'schema_version': 1, 'material_sources': sanitized}
+          Path('/tmp/faceless-live-output/source-manifest.json').write_text(
+              json.dumps(safe, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          VIDEO_SHA="$(sha256sum /tmp/faceless-live-output/video.mp4 | awk '{print $1}')"
+          python3 - "$SOURCE_ISSUE" "$SCENARIO" "$VIDEO_SHA" "$(cat /tmp/script.sha256)" <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+
+          issue, scenario, video_sha, script_sha = sys.argv[1:]
+          result = {
+              'schema_version': 1,
+              'event': 'faceless_zero_cost_live_worker',
+              'engine': 'moneyprinterturbo',
+              'engine_commit': '5dde46390809edba44c2e8d09760623bb846fd9d',
+              'source_issue': int(issue),
+              'selected_scenario': scenario,
+              'scenario_text_sha256': script_sha,
+              'status': 'mp4_ready_for_qc',
+              'video_sha256': video_sha,
+              'network_scope': ['pexels_stock_media', 'edge_tts'],
+              'cost_usd': 0.0,
+              'paid_generation_allowed': False,
+              'youtube_publication_attempted': False,
+              'artifact_only': True,
+          }
+          Path('/tmp/faceless-live-output/worker-result.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: MP4, altyazı ve Pexels kaynak QC
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/faceless_live_mp4_qc.py \
+            --video /tmp/faceless-live-output/video.mp4 \
+            --subtitle /tmp/faceless-live-output/subtitle.srt \
+            --worker-result /tmp/faceless-live-output/worker-result.json \
+            --source-manifest /tmp/faceless-live-output/source-manifest.json \
+            --output-file /tmp/faceless-live-output/qc-result.json >/dev/null
+
+          if grep -R -F -- "$PEXELS_API_KEY" /tmp/faceless-live-output >/dev/null; then
+            echo "Artifact dizininde secret bulundu; yükleme engellendi."
+            exit 1
+          fi
+
+      - name: Yalnız doğrulanmış artifact yükle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: faceless-zero-cost-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/faceless-live-output/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Güvenli sonuç özeti
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Faceless Zero-Cost Live Worker"
+            echo "- Sonuç: artifact üretildi ve QC geçti"
+            echo "- Kaynak Issue: #$SOURCE_ISSUE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Ağ kapsamı: yalnız Pexels + Edge TTS"
+            echo "- Maliyet üst sınırı: 0 USD"
+            echo "- Ücretli/AI video sağlayıcıları: kapalı"
+            echo "- YouTube/yayınlama: denenmedi"
+            echo "- Artifact saklama: 3 gün"
+          } >> "$GITHUB_STEP_SUMMARY"
