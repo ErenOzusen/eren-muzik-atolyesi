@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import copy
 import unittest
+from pathlib import Path
 
 from faceless_zero_cost_live_worker_contract import ContractError, evaluate
 
 
 SHA = "a" * 64
+WORKFLOW = (
+    Path(__file__).resolve().parents[1]
+    / "workflows"
+    / "faceless-zero-cost-live-worker.yml"
+)
 
 
 def valid_fixture():
@@ -118,6 +124,25 @@ class LiveWorkerContractTests(unittest.TestCase):
         result = evaluate(job, profile, orchestrator, safety)
         self.assertNotIn("pexels_api_key", result)
         self.assertNotIn("super-secret", str(result))
+
+
+    def test_workflow_revalidates_full_issue_snapshot_before_generation(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            workflow.count('gh issue view "$SOURCE_ISSUE" --json title,body,labels,state'),
+            2,
+        )
+        self.assertIn('/tmp/issue-snapshot.sha256', workflow)
+        self.assertIn('/tmp/current-issue-snapshot.json', workflow)
+        recheck = workflow.index('- name: Issue değişmezliğini yeniden doğrula')
+        generation = workflow.index('- name: Pexels ve Edge ile tek artifact üret')
+        self.assertLess(recheck, generation)
+
+    def test_workflow_permissions_remain_read_only(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("permissions:\n  contents: read\n  issues: read\n", workflow)
+        self.assertNotIn("contents: write", workflow)
+        self.assertNotIn("issues: write", workflow)
 
 
 if __name__ == "__main__":
