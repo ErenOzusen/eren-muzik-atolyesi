@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Fail-closed sözleşme ve QC testleri
         shell: bash
@@ -69,8 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       SOURCE_ISSUE: ${{ inputs.source_issue }}
       SCENARIO: ${{ inputs.scenario }}
       OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
@@ -80,9 +78,12 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Yetkili kullanıcı, Issue ve seçili senaryoyu doğrula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -193,6 +194,11 @@ jobs:
             --output-file /tmp/live-worker-contract.json \
             --require-ready >/dev/null
 
+      - name: Sabit uv sürümünü kur
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          enable-cache: true
+
       - name: FFmpeg ve sabit MoneyPrinterTurbo sürümünü kur
         shell: bash
         run: |
@@ -203,12 +209,13 @@ jobs:
           git -C /tmp/mpt fetch --depth 1 origin "$MPT_COMMIT"
           git -C /tmp/mpt checkout --detach "$MPT_COMMIT"
           [[ "$(git -C /tmp/mpt rev-parse HEAD)" == "$MPT_COMMIT" ]]
-          python3 -m pip install --disable-pip-version-check -q uv
           cd /tmp/mpt
           uv sync --frozen --python 3.11
           .venv/bin/python cli.py --help >/dev/null
 
       - name: Geçici ve yayınsız MPT yapılandırmasını hazırla
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -237,6 +244,8 @@ jobs:
           PY
 
       - name: Issue değişmezliğini yeniden doğrula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -358,6 +367,8 @@ jobs:
           PY
 
       - name: MP4, altyazı ve Pexels kaynak QC
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -374,7 +385,7 @@ jobs:
           fi
 
       - name: Yalnız doğrulanmış artifact yükle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: faceless-zero-cost-live-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/faceless-live-output/
