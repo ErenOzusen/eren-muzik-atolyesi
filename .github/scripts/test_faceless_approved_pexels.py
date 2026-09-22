@@ -47,10 +47,13 @@ class ApprovedPexelsTests(unittest.TestCase):
             ],
         }
         self.assertIn("portrait.mp4", select_rendition(valid, "7574545")[0])
+        self.assertIn("wide.mp4", select_rendition(
+            {**valid, "video_files": valid["video_files"][:1]}, "7574545"
+        )[0])
         for change in (
             {"id": 8}, {"url": "https://other.com/video/a-7574545/"},
             {"url": "https://www.pexels.com/video/wrong-8/"},
-            {"duration": 2}, {"video_files": valid["video_files"][:1]},
+            {"duration": 2}, {"video_files": []},
             {"video_files": [{**valid["video_files"][1],
                               "link": "https://other.com/media.mp4"}]},
         ):
