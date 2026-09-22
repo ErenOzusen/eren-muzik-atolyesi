@@ -132,7 +132,7 @@ jobs:
           selected = [item for item in headings if item.group(1) == scenario]
           if len(selected) != 1:
               raise SystemExit(f'SENARYO {scenario} tam olarak bir kez bulunmalı')
-          start = selected[0].start()
+          start = selected[0].end()
           later = next((item for item in headings if item.start() > start), None)
           block = clean_script(text[start:later.start() if later else len(text)])
           if not block:
