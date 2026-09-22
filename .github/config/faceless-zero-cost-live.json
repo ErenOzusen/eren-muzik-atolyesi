@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "engine": "moneyprinterturbo",
-  "enabled": false,
+  "enabled": true,
   "execution_class": "zero_cost_network",
   "video_source": "pexels",
   "require_stock_provider_key": true,
