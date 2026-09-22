@@ -88,13 +88,23 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def fetch_json(url: str, key: str) -> dict:
-    req = urllib.request.Request(url, headers={"Authorization": key})
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": key,
+            "User-Agent": "ErenMuzikAtolyesi-FacelessWorker/1.0",
+            "Accept": "application/json",
+        },
+    )
     with urllib.request.build_opener(NoRedirect).open(req, timeout=30) as response:
         return json.load(response)
 
 
 def download_video(link: str, destination: Path) -> None:
-    req = urllib.request.Request(link)
+    req = urllib.request.Request(
+        link,
+        headers={"User-Agent": "ErenMuzikAtolyesi-FacelessWorker/1.0"},
+    )
     total = 0
     with urllib.request.build_opener(NoRedirect).open(req, timeout=60) as response:
         with destination.open("wb") as output:
