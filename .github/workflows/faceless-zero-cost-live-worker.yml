@@ -1,4 +1,5 @@
 name: Faceless Zero-Cost Live Worker
+# one-shot retry: Pexels API request-header compatibility
 
 "on":
   push:
