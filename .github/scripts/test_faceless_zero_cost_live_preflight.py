@@ -32,8 +32,10 @@ def base_job() -> dict:
     }
 
 
-def test_current_profile_is_fail_closed() -> None:
-    result = mod.evaluate(base_job(), PROFILE, ORCH, PAID)
+def test_disabled_profile_is_fail_closed() -> None:
+    profile = dict(PROFILE)
+    profile["enabled"] = False
+    result = mod.evaluate(base_job(), profile, ORCH, PAID)
     assert result["ready_for_zero_cost_live_generation"] is False
     assert "zero_cost_live_profile_disabled" in result["blockers"]
     assert result["paid_generation_allowed"] is False
@@ -41,9 +43,8 @@ def test_current_profile_is_fail_closed() -> None:
 
 
 def test_enabled_profile_can_be_ready_without_opening_paid_path() -> None:
-    profile = dict(PROFILE)
-    profile["enabled"] = True
-    result = mod.evaluate(base_job(), profile, ORCH, PAID)
+    assert PROFILE["enabled"] is True
+    result = mod.evaluate(base_job(), PROFILE, ORCH, PAID)
     assert result["ready_for_zero_cost_live_generation"] is True
     assert result["blockers"] == []
     assert result["network_scope"] == ["stock_media", "edge_tts"]
@@ -90,7 +91,7 @@ def test_paid_path_must_stay_closed() -> None:
 
 
 if __name__ == "__main__":
-    test_current_profile_is_fail_closed()
+    test_disabled_profile_is_fail_closed()
     test_enabled_profile_can_be_ready_without_opening_paid_path()
     test_missing_owner_confirmation_blocks()
     test_missing_stock_key_blocks()
