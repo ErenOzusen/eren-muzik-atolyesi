@@ -1,0 +1,30 @@
+name: Ops Pexels Renditions
+
+"on":
+  push:
+    branches:
+      - "ops/faceless-issue-100-one-shot-20260923"
+    paths:
+      - ".github/workflows/ops-pexels-renditions.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+    steps:
+      - name: Yalnız çözünürlük meta verisini yaz
+        shell: bash
+        run: |
+          set -euo pipefail
+          for id in 7574545 6670728 7508179 8472212 4706206 8103317; do
+            echo "VIDEO $id"
+            curl --fail --silent --show-error \
+              --header "Authorization: $PEXELS_API_KEY" \
+              "https://api.pexels.com/v1/videos/videos/$id" \
+              | jq -c '[.video_files[] | {width,height,file_type}] | unique_by([.width,.height,.file_type]) | sort_by(.width,.height)'
+          done
