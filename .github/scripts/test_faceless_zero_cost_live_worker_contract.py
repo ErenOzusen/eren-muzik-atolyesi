@@ -138,6 +138,22 @@ class LiveWorkerContractTests(unittest.TestCase):
         generation = workflow.index('- name: Pexels ve Edge ile tek artifact üret')
         self.assertLess(recheck, generation)
 
+    def test_workflow_rejects_non_faceless_route_before_generation(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        issue_gate = workflow.split(
+            "- name: Yetkili kullanıcı, Issue ve seçili senaryoyu doğrula", 1
+        )[1].split("- name: Readiness ve worker sözleşmesini kilitle", 1)[0]
+        self.assertIn("grep -qx 'video-route-decided' /tmp/labels.txt", issue_gate)
+        self.assertIn("grep -qx 'video-route-faceless' /tmp/labels.txt", issue_gate)
+        self.assertIn(
+            "! grep -qxE 'video-route-human|video-route-hybrid' /tmp/labels.txt",
+            issue_gate,
+        )
+        self.assertLess(
+            workflow.index("grep -qx 'video-route-faceless' /tmp/labels.txt"),
+            workflow.index("- name: Pexels ve Edge ile tek artifact üret"),
+        )
+
     def test_workflow_permissions_remain_read_only(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("permissions:\n  contents: read\n  issues: read\n", workflow)

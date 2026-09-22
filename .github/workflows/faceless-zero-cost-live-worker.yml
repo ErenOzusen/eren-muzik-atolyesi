@@ -105,6 +105,9 @@ jobs:
           grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
           grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
           grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+          grep -qx 'video-route-decided' /tmp/labels.txt
+          grep -qx 'video-route-faceless' /tmp/labels.txt
+          ! grep -qxE 'video-route-human|video-route-hybrid' /tmp/labels.txt
           ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
 
           ACTUAL="$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt \
