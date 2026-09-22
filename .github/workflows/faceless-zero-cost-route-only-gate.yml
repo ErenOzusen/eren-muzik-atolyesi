@@ -1,0 +1,136 @@
+name: Faceless Zero-Cost Route-Only Gate
+
+"on":
+  pull_request:
+    paths:
+      - ".github/workflows/faceless-zero-cost-route-only-gate.yml"
+      - ".github/scripts/test_faceless_zero_cost_route_only_gate.py"
+      - ".github/workflows/faceless-zero-cost-live-readiness.yml"
+  workflow_dispatch:
+    inputs:
+      source_issue:
+        description: "Onaylanmış Nihai Senaryolar Issue numarası"
+        required: true
+        type: string
+      scenario:
+        description: "Üretime seçilen senaryo"
+        required: true
+        type: choice
+        options: ["1", "2", "3"]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: python3 .github/scripts/test_faceless_zero_cost_route_only_gate.py
+
+  route-only:
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_ISSUE: ${{ inputs.source_issue }}
+      SCENARIO: ${{ inputs.scenario }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Owner, Issue ve seçim kaydını doğrula
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_OWNER="$(jq -er '.business.github_owner' .github/config/business-profile.json)"
+          [[ "$GITHUB_ACTOR" == "$EXPECTED_OWNER" ]]
+          [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SCENARIO" =~ ^[123]$ ]]
+
+          gh issue view "$SOURCE_ISSUE" --json title,body,state,labels,comments > /tmp/issue.json
+          jq -e '.state == "OPEN" and (.title | startswith("Nihai Senaryolar"))' /tmp/issue.json >/dev/null
+          jq -r '.labels[].name' /tmp/issue.json > /tmp/labels.txt
+          ! grep -qx 'sistem-testi' /tmp/labels.txt
+          ! grep -qx 'duzeltme-gerekiyor' /tmp/labels.txt
+          ! grep -qxE 'eren-onayi-bekliyor|owner-approval-pending' /tmp/labels.txt
+          grep -qxE 'eren-onayli|owner-approved' /tmp/labels.txt
+          grep -qxE 'cekime-hazir|production-ready' /tmp/labels.txt
+          grep -qxE 'uretime-secildi|production-selected' /tmp/labels.txt
+          ! grep -qxE 'video-route-human|video-route-hybrid' /tmp/labels.txt
+
+          ACTUAL="$(grep -E '^(uretim-senaryo|production-scenario)-[123]$' /tmp/labels.txt |
+            sed -E 's/.*-([123])$/\1/' | sort -u)"
+          [[ "$(printf '%s\n' "$ACTUAL" | sed '/^$/d' | wc -l)" -eq 1 ]]
+          [[ "$ACTUAL" == "$SCENARIO" ]]
+
+          jq -r '.body // ""' /tmp/issue.json > /tmp/body.md
+          grep -Eiq "^##[[:space:]]+SENARYO[[:space:]]+$SCENARIO([^0-9]|$)" /tmp/body.md
+          BODY_SHA="$(sha256sum /tmp/body.md | awk '{print $1}')"
+          MARKER="<!-- FILMING_HANDOFF_V1 issue=$SOURCE_ISSUE scenario=$SCENARIO body_sha256=$BODY_SHA -->"
+          jq -r '.comments[].body // ""' /tmp/issue.json | grep -Fqx "$MARKER"
+          jq -S '{title,body,state,labels:([.labels[].name] | sort),comments:[.comments[].body]}' /tmp/issue.json |
+            sha256sum | awk '{print $1}' > /tmp/issue-snapshot.sha256
+
+      - name: Seçili metnin faceless rotasını sıfır tokenla belirle
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SCENARIO
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          text = Path('/tmp/body.md').read_text(encoding='utf-8')
+          headings = list(re.finditer(r'(?mi)^##\s+SENARYO\s+([123]):.*$', text))
+          selected = [heading for heading in headings if heading.group(1) == os.environ['SCENARIO']]
+          if len(selected) != 1:
+              raise SystemExit('Seçili senaryo tam olarak bir kez bulunmalı')
+          start = selected[0].start()
+          later = next((heading for heading in headings if heading.start() > start), None)
+          block = text[start:later.start() if later else len(text)].strip()
+          if len(block) < 40:
+              raise SystemExit('Seçili senaryo çok kısa')
+          Path('/tmp/route-input.md').write_text(block, encoding='utf-8')
+          PY
+
+          python3 .github/scripts/video_orchestrator.py \
+            --config .github/config/video-orchestrator.json \
+            --input-file /tmp/route-input.md \
+            --output-file /tmp/route.json \
+            --mode auto
+          jq -e '.selected_mode == "faceless" and .paid_generation_allowed == false and .dispatch_enabled == false' \
+            /tmp/route.json >/dev/null
+
+      - name: Değişmez Issue'ya yalnız faceless rota etiketlerini kaydet
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue view "$SOURCE_ISSUE" --json title,body,state,labels,comments > /tmp/current-issue.json
+          CURRENT_SHA="$(jq -S '{title,body,state,labels:([.labels[].name] | sort),comments:[.comments[].body]}' /tmp/current-issue.json |
+            sha256sum | awk '{print $1}')"
+          [[ "$CURRENT_SHA" == "$(cat /tmp/issue-snapshot.sha256)" ]]
+
+          gh label create video-route-faceless --color 5319E7 \
+            --description "Video Orchestrator üretim rotası" --force
+          gh label create video-route-decided --color 0E8A16 \
+            --description "Video Orchestrator rota kararı hazır" --force
+          gh issue edit "$SOURCE_ISSUE" \
+            --add-label video-route-faceless \
+            --add-label video-route-decided >/dev/null
+          gh issue view "$SOURCE_ISSUE" --json labels --jq '.labels[].name' > /tmp/labels-after.txt
+          grep -qx 'video-route-faceless' /tmp/labels-after.txt
+          grep -qx 'video-route-decided' /tmp/labels-after.txt
+          ! grep -qxE 'video-route-human|video-route-hybrid' /tmp/labels-after.txt
+
+          {
+            echo "### Faceless rota doğrulandı"
+            echo "- Kaynak Issue: #$SOURCE_ISSUE"
+            echo "- Senaryo: $SCENARIO"
+            echo "- Karar: faceless"
+            echo "- AI/API/video sağlayıcı çağrısı: 0"
+            echo "- Ücretli üretim ve yayınlama: kapalı"
+          } >> "$GITHUB_STEP_SUMMARY"
