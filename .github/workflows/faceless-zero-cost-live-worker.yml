@@ -8,6 +8,8 @@ name: Faceless Zero-Cost Live Worker
       - ".github/scripts/faceless_live_mp4_qc.py"
       - ".github/scripts/test_faceless_zero_cost_live_worker_contract.py"
       - ".github/scripts/test_faceless_live_mp4_qc.py"
+      - ".github/scripts/faceless_approved_pexels.py"
+      - ".github/scripts/test_faceless_approved_pexels.py"
       - ".github/config/faceless-zero-cost-live.json"
       - ".github/config/video-orchestrator.json"
       - ".github/config/faceless-execution-safety.json"
@@ -34,9 +36,14 @@ name: Faceless Zero-Cost Live Worker
         default: ""
         type: string
       video_terms:
-        description: "Virgülle ayrılmış 2-12 Pexels arama terimi"
+        description: "Sözleşme meta verisi; klip araması yapılmaz"
         required: true
         default: "gitar,müzik,sahne"
+        type: string
+      approved_pexels_ids:
+        description: "Issue yorumunda owner tarafından onaylanmış 6-8 Pexels video ID'si"
+        required: true
+        default: ""
         type: string
 
 permissions:
@@ -62,6 +69,7 @@ jobs:
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_zero_cost_live_worker_contract.py -v
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_live_mp4_qc.py -v
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_zero_cost_live_preflight.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_approved_pexels.py -v
 
   live-worker:
     if: github.event_name == 'workflow_dispatch'
@@ -74,6 +82,7 @@ jobs:
       OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
       OWNER_CONFIRMATION: ${{ inputs.owner_confirmation }}
       VIDEO_TERMS: ${{ inputs.video_terms }}
+      APPROVED_PEXELS_IDS: ${{ inputs.approved_pexels_ids }}
       MPT_COMMIT: 5dde46390809edba44c2e8d09760623bb846fd9d
 
     steps:
@@ -146,6 +155,13 @@ jobs:
           sha256sum .github/config/video-orchestrator.json | awk '{print $1}' > /tmp/orchestrator.sha256
           sha256sum .github/config/faceless-execution-safety.json | awk '{print $1}' > /tmp/paid-safety.sha256
 
+          gh issue view "$SOURCE_ISSUE" --json comments | jq '.comments' > /tmp/media-comments.json
+          python3 .github/scripts/faceless_approved_pexels.py \
+            --issue-comments /tmp/media-comments.json \
+            --owner "$EXPECTED_OWNER" --source-issue "$SOURCE_ISSUE" \
+            --scenario "$SCENARIO" --script-sha "$(cat /tmp/script.sha256)" \
+            --ids "$APPROVED_PEXELS_IDS" --output-dir /tmp/approved-pexels
+
       - name: Readiness ve worker sözleşmesini kilitle
         shell: bash
         run: |
@@ -187,6 +203,7 @@ jobs:
               actor_authorized:true,owner_generation_approved:$owner_generation_approved,
               production_issue_validated:true,approval_route_match_validated:true,
               stock_provider_key_present:true,readiness_validated:true,
+              approved_media_validated:true,
               owner_confirmation:$owner_confirmation,video_terms:$video_terms,
               source_body_sha256:$source_body_sha256,selected_script_sha256:$selected_script_sha256,
               profile_sha256:$profile_sha256,orchestrator_sha256:$orchestrator_sha256,
@@ -218,6 +235,22 @@ jobs:
           cd /tmp/mpt
           uv sync --frozen --python 3.11
           .venv/bin/python cli.py --help >/dev/null
+
+      - name: Yalnız owner onaylı Pexels kliplerini indir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_OWNER="$(jq -er '.business.github_owner' .github/config/business-profile.json)"
+          gh issue view "$SOURCE_ISSUE" --json comments | jq '.comments' > /tmp/current-media-comments.json
+          python3 .github/scripts/faceless_approved_pexels.py \
+            --issue-comments /tmp/current-media-comments.json \
+            --owner "$EXPECTED_OWNER" --source-issue "$SOURCE_ISSUE" \
+            --scenario "$SCENARIO" --script-sha "$(cat /tmp/script.sha256)" \
+            --ids "$APPROVED_PEXELS_IDS" --output-dir /tmp/approved-pexels \
+            --download
 
       - name: Geçici ve yayınsız MPT yapılandırmasını hazırla
         env:
@@ -264,6 +297,14 @@ jobs:
           [[ "$(sha256sum .github/config/faceless-zero-cost-live.json | awk '{print $1}')" == "$(cat /tmp/profile.sha256)" ]]
           [[ "$(sha256sum .github/config/video-orchestrator.json | awk '{print $1}')" == "$(cat /tmp/orchestrator.sha256)" ]]
           [[ "$(sha256sum .github/config/faceless-execution-safety.json | awk '{print $1}')" == "$(cat /tmp/paid-safety.sha256)" ]]
+          gh issue view "$SOURCE_ISSUE" --json comments | jq '.comments' > /tmp/final-media-comments.json
+          EXPECTED_OWNER="$(jq -er '.business.github_owner' .github/config/business-profile.json)"
+          python3 .github/scripts/faceless_approved_pexels.py \
+            --issue-comments /tmp/final-media-comments.json \
+            --owner "$EXPECTED_OWNER" --source-issue "$SOURCE_ISSUE" \
+            --scenario "$SCENARIO" --script-sha "$(cat /tmp/script.sha256)" \
+            --ids "$APPROVED_PEXELS_IDS" --output-dir /tmp/final-media-approval
+          cmp /tmp/approved-pexels/approval.sha256 /tmp/final-media-approval/approval.sha256
 
       - name: Pexels ve Edge ile tek artifact üret
         shell: bash
@@ -284,10 +325,10 @@ jobs:
           .venv/bin/python cli.py \
             --task-id "$TASK_ID" \
             --video-script "$SCRIPT" \
-            --video-terms "$VIDEO_TERMS" \
-            --video-source pexels \
-            --match-materials-to-script \
+            --video-source local \
+            --video-materials "$(cat /tmp/approved-pexels/paths.txt)" \
             --video-aspect 9:16 \
+            --video-concat-mode sequential \
             --voice-name "$VOICE_NAME" \
             --bgm-type none \
             --bgm-volume 0 \
@@ -333,21 +374,8 @@ jobs:
           cp /tmp/selected-script.md /tmp/faceless-live-output/selected-script.md
           cp /tmp/live-worker-contract.json /tmp/faceless-live-output/worker-contract.json
 
-          python3 - "$TASK_DIR/script.json" <<'PY'
-          from pathlib import Path
-          import json
-          import sys
-
-          raw = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-          sources = raw.get('material_sources')
-          if not isinstance(sources, list) or not sources:
-              raise SystemExit('Pexels kaynak manifesti eksik')
-          allowed = ('provider', 'asset_id', 'source_page', 'creator', 'rendition', 'local_file')
-          sanitized = [{key: item.get(key) for key in allowed if key in item} for item in sources]
-          safe = {'schema_version': 1, 'material_sources': sanitized}
-          Path('/tmp/faceless-live-output/source-manifest.json').write_text(
-              json.dumps(safe, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          PY
+          cp /tmp/approved-pexels/source-manifest.json \
+            /tmp/faceless-live-output/source-manifest.json
 
           VIDEO_SHA="$(sha256sum /tmp/faceless-live-output/video.mp4 | awk '{print $1}')"
           python3 - "$SOURCE_ISSUE" "$SCENARIO" "$VIDEO_SHA" "$(cat /tmp/script.sha256)" <<'PY'
@@ -364,6 +392,8 @@ jobs:
               'source_issue': int(issue),
               'selected_scenario': scenario,
               'scenario_text_sha256': script_sha,
+              'approved_asset_ids': os.environ['APPROVED_PEXELS_IDS'].split(','),
+              'media_approval_sha256': Path('/tmp/approved-pexels/approval.sha256').read_text(encoding='utf-8').strip(),
               'status': 'mp4_ready_for_qc',
               'video_sha256': video_sha,
               'network_scope': ['pexels_stock_media', 'edge_tts'],
@@ -408,7 +438,7 @@ jobs:
           set -euo pipefail
           {
             echo "### Faceless Zero-Cost Live Worker"
-            echo "- Sonuç: artifact üretildi ve QC geçti"
+            echo "- Sonuç: artifact üretildi; teknik QC geçti, editoryal inceleme bekliyor"
             echo "- Kaynak Issue: #$SOURCE_ISSUE"
             echo "- Senaryo: $SCENARIO"
             echo "- Ağ kapsamı: yalnız Pexels + Edge TTS"

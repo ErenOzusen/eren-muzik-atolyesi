@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -58,6 +59,18 @@ def evaluate(
     sources = source_manifest.get("material_sources")
     if not isinstance(sources, list) or not sources:
         raise QCError("Pexels kaynak kayıtları zorunlu")
+    approved = worker_result.get("approved_asset_ids")
+    if not isinstance(approved, list) or not 6 <= len(approved) <= 8:
+        raise QCError("6-8 onaylı Pexels ID'si zorunlu")
+    if len(set(approved)) != len(approved) or any(
+        not isinstance(item, str) or not re.fullmatch(r"[1-9][0-9]*", item)
+        for item in approved
+    ):
+        raise QCError("Onaylı Pexels ID listesi geçersiz")
+    if [str(source.get("asset_id", "")) for source in sources] != approved:
+        raise QCError("Kaynaklar onaylı Pexels ID listesiyle uyuşmuyor")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(worker_result.get("media_approval_sha256", ""))):
+        raise QCError("Media onay SHA-256 eksik")
     for source in sources:
         if not isinstance(source, dict) or source.get("provider") != "pexels":
             raise QCError("yalnız Pexels kaynak kaydı kabul edilir")
@@ -67,7 +80,8 @@ def evaluate(
 
     return {
         "schema_version": 1,
-        "status": "qc_passed",
+        "status": "technical_qc_passed",
+        "editorial_review_required": True,
         "width": 1080,
         "height": 1920,
         "duration_seconds": duration,

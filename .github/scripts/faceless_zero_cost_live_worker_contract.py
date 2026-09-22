@@ -53,6 +53,7 @@ def evaluate(job: dict, profile: dict, orchestrator: dict, paid_safety: dict) ->
     route_validated = require_bool(job, "approval_route_match_validated")
     stock_key_present = require_bool(job, "stock_provider_key_present")
     readiness_validated = require_bool(job, "readiness_validated")
+    approved_media_validated = require_bool(job, "approved_media_validated")
 
     hashes = {
         "source_body_sha256": require_sha(job, "source_body_sha256"),
@@ -111,6 +112,8 @@ def evaluate(job: dict, profile: dict, orchestrator: dict, paid_safety: dict) ->
         blockers.append("stock_provider_key_missing")
     if not readiness_validated:
         blockers.append("readiness_not_validated")
+    if not approved_media_validated:
+        blockers.append("approved_media_not_validated")
 
     expected_phrase = str(profile.get("owner_confirmation_phrase", "")).strip()
     if not expected_phrase or str(job.get("owner_confirmation", "")).strip() != expected_phrase:
@@ -139,6 +142,7 @@ def evaluate(job: dict, profile: dict, orchestrator: dict, paid_safety: dict) ->
         "ai_video_generation_allowed": False,
         "youtube_publication_allowed": False,
         "artifact_only": True,
+        "approved_media_validated": approved_media_validated,
         "worker_allowed": allowed,
         "blockers": blockers,
     }

@@ -27,6 +27,7 @@ def valid_fixture():
         "approval_route_match_validated": True,
         "stock_provider_key_present": True,
         "readiness_validated": True,
+        "approved_media_validated": True,
         "owner_confirmation": "FACELESS SIFIR MALIYET CANLI URETIMI ONAYLIYORUM",
         "video_terms": "gitar,müzik,sahne",
         "source_body_sha256": SHA,
@@ -83,6 +84,7 @@ class LiveWorkerContractTests(unittest.TestCase):
             "approval_route_match_validated",
             "stock_provider_key_present",
             "readiness_validated",
+            "approved_media_validated",
         ):
             with self.subTest(key=key):
                 job, profile, orchestrator, safety = valid_fixture()
@@ -159,6 +161,18 @@ class LiveWorkerContractTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read\n  issues: read\n", workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("issues: write", workflow)
+
+    def test_workflow_uses_only_owner_approved_local_pexels_clips(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        approval = workflow.index("faceless_approved_pexels.py")
+        download = workflow.index("- name: Yalnız owner onaylı Pexels kliplerini indir")
+        generation = workflow.index("- name: Pexels ve Edge ile tek artifact üret")
+        self.assertLess(approval, download)
+        self.assertLess(download, generation)
+        self.assertIn("--video-source local", workflow)
+        self.assertIn("--video-materials", workflow)
+        self.assertIn("--video-concat-mode sequential", workflow)
+        self.assertNotIn("--match-materials-to-script", workflow)
 
 
 if __name__ == "__main__":
