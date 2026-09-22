@@ -67,12 +67,31 @@ def select_rendition(video: dict, asset_id: str) -> tuple[str, dict]:
     candidates = [
         item for item in video.get("video_files", [])
         if isinstance(item, dict)
-        and item.get("width") == 1080 and item.get("height") == 1920
+        and isinstance(item.get("width"), int) and item.get("width", 0) > 0
+        and isinstance(item.get("height"), int) and item.get("height", 0) > 0
         and item.get("file_type") == "video/mp4"
     ]
     if not candidates:
-        raise MediaApprovalError(f"{asset_id}: 1080x1920 MP4 bulunamadı")
-    selected = candidates[0]
+        raise MediaApprovalError(f"{asset_id}: MP4 rendition bulunamadı")
+    exact = [
+        item for item in candidates
+        if item["width"] == 1080 and item["height"] == 1920
+    ]
+    if exact:
+        selected = exact[0]
+    else:
+        hd = [
+            item for item in candidates
+            if min(item["width"], item["height"]) >= 1080
+        ]
+        pool = hd or candidates
+        selected = min(
+            pool,
+            key=lambda item: (
+                abs((item["width"] / item["height"]) - (9 / 16)),
+                abs((item["width"] * item["height"]) - (1080 * 1920)),
+            ),
+        )
     link = str(selected.get("link", ""))
     url = urllib.parse.urlparse(link)
     if url.scheme != "https" or url.hostname != "videos.pexels.com":
@@ -105,9 +124,10 @@ def download_video(link: str, destination: Path) -> None:
         link,
         headers={"User-Agent": "ErenMuzikAtolyesi-FacelessWorker/1.0"},
     )
+    source = destination.with_name(destination.stem + ".source.mp4")
     total = 0
     with urllib.request.build_opener(NoRedirect).open(req, timeout=60) as response:
-        with destination.open("wb") as output:
+        with source.open("wb") as output:
             while chunk := response.read(1024 * 1024):
                 total += len(chunk)
                 if total > 150 * 1024 * 1024:
@@ -115,13 +135,42 @@ def download_video(link: str, destination: Path) -> None:
                 output.write(chunk)
     if total < 1024:
         raise MediaApprovalError("Klip boş veya geçersiz")
+
     probe = json.loads(subprocess.check_output([
+        "ffprobe", "-v", "error", "-show_streams", "-of", "json", str(source),
+    ], text=True))
+    video_stream = next(
+        (stream for stream in probe.get("streams", []) if stream.get("codec_type") == "video"),
+        None,
+    )
+    if not video_stream:
+        raise MediaApprovalError("İndirilen dosyada video stream yok")
+
+    if video_stream.get("width") == 1080 and video_stream.get("height") == 1920:
+        source.replace(destination)
+    else:
+        subprocess.check_call([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(source),
+            "-map", "0:v:0", "-map", "0:a?",
+            "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
+            str(destination),
+        ])
+        source.unlink(missing_ok=True)
+
+    normalized = json.loads(subprocess.check_output([
         "ffprobe", "-v", "error", "-show_streams", "-of", "json", str(destination),
     ], text=True))
-    if not any(stream.get("codec_type") == "video" and
-               stream.get("width") == 1080 and stream.get("height") == 1920
-               for stream in probe.get("streams", [])):
-        raise MediaApprovalError("İndirilen klip 1080x1920 video değil")
+    if not any(
+        stream.get("codec_type") == "video"
+        and stream.get("width") == 1080 and stream.get("height") == 1920
+        for stream in normalized.get("streams", [])
+    ):
+        raise MediaApprovalError("Klip 1080x1920 normalize edilemedi")
 
 
 def main() -> None:
