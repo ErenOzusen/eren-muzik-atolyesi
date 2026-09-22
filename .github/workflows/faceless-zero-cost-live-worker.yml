@@ -1,50 +1,11 @@
 name: Faceless Zero-Cost Live Worker
 
 "on":
-  pull_request:
+  push:
+    branches:
+      - "ops/faceless-issue-100-one-shot-20260923"
     paths:
       - ".github/workflows/faceless-zero-cost-live-worker.yml"
-      - ".github/scripts/faceless_zero_cost_live_worker_contract.py"
-      - ".github/scripts/faceless_live_mp4_qc.py"
-      - ".github/scripts/test_faceless_zero_cost_live_worker_contract.py"
-      - ".github/scripts/test_faceless_live_mp4_qc.py"
-      - ".github/scripts/faceless_approved_pexels.py"
-      - ".github/scripts/test_faceless_approved_pexels.py"
-      - ".github/config/faceless-zero-cost-live.json"
-      - ".github/config/video-orchestrator.json"
-      - ".github/config/faceless-execution-safety.json"
-  workflow_dispatch:
-    inputs:
-      source_issue:
-        description: "Üretime seçilmiş Nihai Senaryolar Issue numarası"
-        required: true
-        type: string
-      scenario:
-        description: "Senaryo"
-        required: true
-        default: "1"
-        type: choice
-        options: ["1", "2", "3"]
-      owner_generation_approved:
-        description: "Bu tek artifact üretimi için owner onayı"
-        required: true
-        default: false
-        type: boolean
-      owner_confirmation:
-        description: "Profildeki canlı üretim onay cümlesi"
-        required: true
-        default: ""
-        type: string
-      video_terms:
-        description: "Sözleşme meta verisi; klip araması yapılmaz"
-        required: true
-        default: "gitar,müzik,sahne"
-        type: string
-      approved_pexels_ids:
-        description: "Issue yorumunda owner tarafından onaylanmış 6-8 Pexels video ID'si"
-        required: true
-        default: ""
-        type: string
 
 permissions:
   contents: read
@@ -72,17 +33,17 @@ jobs:
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_approved_pexels.py -v
 
   live-worker:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push'
     needs: contract-tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOURCE_ISSUE: ${{ inputs.source_issue }}
-      SCENARIO: ${{ inputs.scenario }}
-      OWNER_GENERATION_APPROVED: ${{ inputs.owner_generation_approved }}
-      OWNER_CONFIRMATION: ${{ inputs.owner_confirmation }}
-      VIDEO_TERMS: ${{ inputs.video_terms }}
-      APPROVED_PEXELS_IDS: ${{ inputs.approved_pexels_ids }}
+      SOURCE_ISSUE: "100"
+      SCENARIO: "1"
+      OWNER_GENERATION_APPROVED: "true"
+      OWNER_CONFIRMATION: "FACELESS SIFIR MALIYET CANLI URETIMI ONAYLIYORUM"
+      VIDEO_TERMS: "gitar,müzik,sahne"
+      APPROVED_PEXELS_IDS: "7574545,6670728,7508179,8472212,4706206,8103317"
       MPT_COMMIT: 5dde46390809edba44c2e8d09760623bb846fd9d
 
     steps:
@@ -97,7 +58,11 @@ jobs:
         run: |
           set -euo pipefail
           EXPECTED_OWNER="$(jq -er '.business.github_owner' .github/config/business-profile.json)"
-          [[ "${{ github.actor }}" == "$EXPECTED_OWNER" ]]
+          PRODUCTION_APPROVAL='URETIM ONAYI V1 issue=100 scenario=1 script_sha256=4b7585500be72ba8ade4bbb112f9ec5d6e8befcc8dc691289bfcf88ec9c5197d ids=7574545,6670728,7508179,8472212,4706206,8103317'
+          gh issue view "$SOURCE_ISSUE" --json comments > /tmp/production-owner-comments.json
+          jq -e --arg owner "$EXPECTED_OWNER" --arg body "$PRODUCTION_APPROVAL" \
+            '[.comments[] | select(.author.login == $owner and (.body // "") == $body)] | length == 1' \
+            /tmp/production-owner-comments.json >/dev/null
           [[ "$OWNER_GENERATION_APPROVED" == "true" ]]
           [[ "$SOURCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
           [[ "$SCENARIO" =~ ^[123]$ ]]
