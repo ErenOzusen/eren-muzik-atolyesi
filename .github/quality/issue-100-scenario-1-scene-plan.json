@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "event": "faceless_scene_plan_v2",
+  "source_issue": 100,
+  "selected_scenario": "1",
+  "script_sha256": "4b7585500be72ba8ade4bbb112f9ec5d6e8befcc8dc691289bfcf88ec9c5197d",
+  "aspect_ratio": "9:16",
+  "render_ready": false,
+  "timing_source": "pending_final_tts",
+  "editorial_goal": "Her cümle anlatılan eylemi ekranda doğrudan göstermeli; genel gitar B-roll'u yalnız hook ve kapanışta kullanılabilir.",
+  "scenes": [
+    {
+      "scene_id": 1,
+      "purpose": "hook",
+      "narration": "Gitara yeni başlıyorsan üç küçük alışkanlık işini kolaylaştırır.",
+      "visual_queries": [
+        "beginner guitarist hands close up practice room",
+        "acoustic guitar practice close up vertical"
+      ],
+      "must_show": [
+        "gitar",
+        "gitar çalmaya hazırlanan eller",
+        "temiz ve dikkat dağıtmayan çalışma ortamı"
+      ],
+      "must_not_show": [
+        "uyuyan kişi",
+        "yemek veya içecek",
+        "konser kalabalığı",
+        "alakasız masa ve laptop"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 3.5,
+      "timing": null
+    },
+    {
+      "scene_id": 2,
+      "purpose": "value",
+      "narration": "Bir: Çalmadan önce akordu kontrol et.",
+      "visual_queries": [
+        "guitar tuner tuning strings close up vertical",
+        "clip on tuner acoustic guitar close up"
+      ],
+      "must_show": [
+        "gitar",
+        "akort cihazı veya tuner",
+        "tel akordu yapılan yakın plan"
+      ],
+      "must_not_show": [
+        "yalnız gitar taşıyan kişi",
+        "genel performans görüntüsü",
+        "piyano",
+        "telefonla mesajlaşma"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 3.0,
+      "timing": null
+    },
+    {
+      "scene_id": 3,
+      "purpose": "value",
+      "narration": "İki: Her gün on dakika tek bir akor geçişini yavaşça tekrar et.",
+      "visual_queries": [
+        "guitar chord change fingers fretboard close up",
+        "beginner guitar chord transition hand vertical"
+      ],
+      "must_show": [
+        "gitar klavyesi",
+        "iki akor arasında değişen sol el parmakları",
+        "yakın plan teknik çalışma"
+      ],
+      "must_not_show": [
+        "hızlı solo",
+        "sahne performansı",
+        "yalnız gitar gövdesi",
+        "başka enstrüman"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 4.5,
+      "timing": null
+    },
+    {
+      "scene_id": 4,
+      "purpose": "value",
+      "narration": "Üç: Çalışmanı kısa bir ses kaydıyla dinle; ritmin nerede dağıldığını fark edersin.",
+      "visual_queries": [
+        "guitar practice phone voice recorder close up",
+        "musician recording guitar practice on smartphone vertical"
+      ],
+      "must_show": [
+        "gitar",
+        "telefon veya kayıt cihazı",
+        "ses kaydı alındığını anlaşılır biçimde gösteren ekran veya hareket"
+      ],
+      "must_not_show": [
+        "telefonla sosyal medya gezme",
+        "telefon görüşmesi",
+        "alakasız laptop ekranı",
+        "yalnız masa görüntüsü"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 5.0,
+      "timing": null
+    },
+    {
+      "scene_id": 5,
+      "purpose": "value",
+      "narration": "Hızdan önce temiz seslere odaklan.",
+      "visual_queries": [
+        "slow clean guitar picking close up fingers",
+        "guitar practice clean notes close up fretboard"
+      ],
+      "must_show": [
+        "yavaş ve kontrollü gitar çalımı",
+        "tel veya perde üzerinde yakın plan",
+        "temiz teknik çalışmayı çağrıştıran hareket"
+      ],
+      "must_not_show": [
+        "hızlı shred solo",
+        "konser",
+        "alkışlayan kalabalık",
+        "alakasız gitar pozu"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 3.0,
+      "timing": null
+    },
+    {
+      "scene_id": 6,
+      "purpose": "cta",
+      "narration": "Küçük ama düzenli adımlar, gitarla geçirdiğin zamanı daha verimli kılar.",
+      "visual_queries": [
+        "focused guitar practice at home vertical",
+        "guitar student practicing calmly close up"
+      ],
+      "must_show": [
+        "odaklanmış gitar çalışması",
+        "gitar",
+        "olumlu ve düzenli çalışma hissi"
+      ],
+      "must_not_show": [
+        "uyuyan kişi",
+        "parti veya konser",
+        "yemek",
+        "markayla ilgisiz yaşam tarzı görüntüsü"
+      ],
+      "approved_asset_ids": [],
+      "target_duration_seconds": 4.0,
+      "timing": null
+    }
+  ]
+}
