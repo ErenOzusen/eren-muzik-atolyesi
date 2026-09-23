@@ -12,6 +12,9 @@ name: Faceless Zero-Cost Live Worker
       - ".github/scripts/test_faceless_approved_pexels.py"
       - ".github/scripts/faceless_scene_plan_contract.py"
       - ".github/scripts/test_faceless_scene_plan_contract.py"
+      - ".github/scripts/test_issue_100_scene_plan.py"
+      - ".github/quality/issue-100-scenario-1-script.txt"
+      - ".github/quality/issue-100-scenario-1-scene-plan.json"
       - ".github/config/faceless-quality-v2.json"
       - ".github/config/faceless-zero-cost-live.json"
       - ".github/config/video-orchestrator.json"
@@ -74,6 +77,7 @@ jobs:
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_zero_cost_live_preflight.py -v
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_approved_pexels.py -v
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_scene_plan_contract.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_issue_100_scene_plan.py -v
 
   live-worker:
     if: github.event_name == 'workflow_dispatch'
