@@ -381,6 +381,7 @@ jobs:
           python3 - "$SOURCE_ISSUE" "$SCENARIO" "$VIDEO_SHA" "$(cat /tmp/script.sha256)" <<'PY'
           from pathlib import Path
           import json
+          import os
           import sys
 
           issue, scenario, video_sha, script_sha = sys.argv[1:]
