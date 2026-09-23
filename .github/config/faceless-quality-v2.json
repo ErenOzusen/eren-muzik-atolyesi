@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "purpose": "Quality-first social video pipeline foundation. No live final TTS or publication until explicitly enabled.",
+  "scene_planner": {
+    "required": true,
+    "min_scenes": 3,
+    "max_scenes": 10,
+    "max_scene_seconds": 5.0,
+    "require_sentence_scene_alignment": true,
+    "require_asset_per_scene_before_render": true,
+    "require_semantic_qc": true,
+    "min_semantic_score": 0.85,
+    "require_owner_editorial_approval": true
+  },
+  "tts": {
+    "draft": {
+      "provider": "edge",
+      "voice_name": "tr-TR-AhmetNeural",
+      "enabled": true
+    },
+    "final": {
+      "provider": "elevenlabs",
+      "enabled": false,
+      "voice_id": "",
+      "secret_name": "ELEVENLABS_API_KEY",
+      "requires_owner_approval": true,
+      "requires_budget_approval": true
+    }
+  },
+  "render": {
+    "aspect_ratio": "9:16",
+    "timing_source": "final_tts_alignment",
+    "sequential_stock_concat_forbidden": true,
+    "subtitle_sync_required": true,
+    "background_music_enabled": false
+  },
+  "publication": {
+    "instagram_enabled": false,
+    "youtube_enabled": false,
+    "require_owner_publish_approval": true
+  }
+}
