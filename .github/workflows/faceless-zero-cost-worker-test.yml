@@ -331,7 +331,7 @@ jobs:
           sudo apt-get install -y -qq ffmpeg
 
       - name: Worker artifact indir
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: faceless-worker-test-issue-${{ needs.faceless-zero-cost-worker.result == 'success' && (inputs.source_issue || '88') || '88' }}-scenario-${{ inputs.scenario || '1' }}
           path: /tmp/faceless-worker-output
