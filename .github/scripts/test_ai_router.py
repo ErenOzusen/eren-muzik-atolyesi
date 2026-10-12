@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -55,6 +57,109 @@ Dosyaları aç, ses ve görüntüyü kontrol et. Eksik kayıt varsa yalnız o b�
 
 
 class RouterUnitTests(unittest.TestCase):
+    def run_routed_output(self, routing: dict, *, environment: dict | None = None, primary_model: str = "", fail_response: bool = False) -> tuple[dict, dict]:
+        """Exercise main, including model selection and metadata, with no network."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = {
+                "routing": {"default_order": ["anthropic", "openai"], **routing},
+                "providers": {
+                    "anthropic": {"api_style": "anthropic_messages", "endpoint": "https://anthropic.invalid", "secret_env": "TEST_KEY", "model_env": "TEST_GLOBAL_MODEL", "default_model": "existing-model"},
+                    "openai": {"api_style": "openai_chat", "endpoint": "https://openai.invalid", "secret_env": "TEST_KEY", "default_model": "existing-fallback"},
+                },
+            }
+            (root / "config.json").write_text(json.dumps(config), encoding="utf-8")
+            (root / "prompt.txt").write_text("bounded prompt", encoding="utf-8")
+            argv = ["ai_router.py", "--config", str(root / "config.json"), "--prompt-file", str(root / "prompt.txt"), "--output-file", str(root / "task.md"), "--meta-file", str(root / "meta.json"), "--max-tokens", "100", "--primary-model", primary_model]
+            response = {"content": [{"type": "text", "text": "OK"}], "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
+            with patch.dict(os.environ, {"TEST_KEY": "dummy", **(environment or {})}, clear=True), patch.object(sys, "argv", argv), patch.object(ai_router, "request_json", return_value=(429 if fail_response else 200, response)) as request:
+                if fail_response:
+                    with self.assertRaises(SystemExit) as stopped:
+                        ai_router.main()
+                    self.assertEqual(stopped.exception.code, 1)
+                else:
+                    ai_router.main()
+                self.assertEqual(request.call_count, 1)
+                payload = request.call_args.args[2]
+            return json.loads((root / "meta.json").read_text(encoding="utf-8")), payload
+
+    def test_task_model_binding_and_token_cap_reach_real_router_payload(self) -> None:
+        meta, payload = self.run_routed_output({
+            "models_by_output": {"task.md": {"anthropic": {"model_env": "TEST_TASK_MODEL", "default_model": "configured-task-model"}}},
+            "max_tokens_by_output": {"task.md": 30},
+        }, environment={"TEST_TASK_MODEL": "task-env-model", "TEST_GLOBAL_MODEL": "global-model"})
+        self.assertEqual(payload["model"], "task-env-model")
+        self.assertEqual(payload["max_tokens"], 30)
+        self.assertEqual(meta["attempts"][0]["model"], "task-env-model")
+        self.assertEqual(meta["provider_order"], ["anthropic", "openai"])
+
+    def test_task_model_binding_unset_env_retains_existing_default(self) -> None:
+        _, payload = self.run_routed_output({"models_by_output": {"task.md": {"anthropic": {"model_env": "TEST_TASK_MODEL"}}}})
+        self.assertEqual(payload["model"], "existing-model")
+        _, payload = self.run_routed_output({"models_by_output": {"other.md": {"anthropic": {"default_model": "other-task-model"}}}})
+        self.assertEqual(payload["model"], "existing-model")
+
+    def test_real_task_bindings_are_opt_in_and_use_exact_output_names(self) -> None:
+        config = json.loads((ROUTER_PATH.parent.parent / "config" / "ai-router.json").read_text(encoding="utf-8"))
+        tasks = {
+            "weekly-report-raw.md": "RESEARCH", "scripts-raw.txt": "SCRIPT",
+            "raw-report.md": "QC", "final-scripts.md": "CORRECTION",
+            "final-check.md": "FINAL_CHECK", "filming-package.md": "FILMING",
+            "editing-package.md": "EDITING", "scene-plan.json": "SCENE_PLAN",
+        }
+        for output, task in tasks.items():
+            with self.subTest(output=output):
+                bindings = config["routing"]["models_by_output"][output]
+                self.assertEqual(bindings, {provider: {"model_env": f"{task}_{provider.upper()}_MODEL"} for provider in config["providers"]})
+                with patch.dict(os.environ, {}, clear=True):
+                    self.assertEqual(ai_router.resolve_output_models(output, config["routing"], config["providers"]), {})
+
+    def test_real_filming_route_uses_the_existing_production_budget_pin(self) -> None:
+        config = json.loads((ROUTER_PATH.parent.parent / "config" / "ai-router.json").read_text(encoding="utf-8"))
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(ai_router.resolve_budget_pin("/tmp/filming-package.md", config["routing"]), ("anthropic", "claude-sonnet-4-6"))
+
+    def test_invalid_selected_task_model_binding_fails_before_network(self) -> None:
+        for binding in ({"anthropic": {"default_model": ""}}, {"unknown": {"default_model": "configured"}}, {"anthropic": {"endpoint": "https://unexpected.invalid"}}, []):
+            with self.subTest(binding=binding), patch.object(ai_router, "request_json") as request:
+                with self.assertRaises(RuntimeError):
+                    self.run_routed_output({"models_by_output": {"task.md": binding}})
+                request.assert_not_called()
+
+    def test_budget_pin_blocks_task_and_global_overrides_and_fallback(self) -> None:
+        budget_path = ROUTER_PATH.parent.parent / "config" / "real-ai-budget.json"
+        for budget_settings, environment in (
+            ({"budget_config": str(budget_path)}, {"REAL_AI_BUDGET_CAP": "true"}),
+            ({"budget_config_by_output": {"task.md": str(budget_path)}}, {}),
+        ):
+            with self.subTest(budget_settings=budget_settings):
+                meta, payload = self.run_routed_output({
+                    **budget_settings,
+                    "provider_order_by_output": {"task.md": ["openai", "anthropic"]},
+                    "models_by_output": {"task.md": {"anthropic": {"default_model": "unreserved-model"}}},
+                }, environment={**environment, "TEST_GLOBAL_MODEL": "unreserved-global-model"}, primary_model="claude-sonnet-4-6")
+                self.assertEqual(payload["model"], "claude-sonnet-4-6")
+                self.assertEqual(meta["provider_order"], ["anthropic"])
+
+    def test_budget_pin_mismatch_fails_before_network(self) -> None:
+        budget_path = ROUTER_PATH.parent.parent / "config" / "real-ai-budget.json"
+        with patch.object(ai_router, "request_json") as request:
+            with self.assertRaisesRegex(RuntimeError, "primary model"):
+                self.run_routed_output({"budget_config": str(budget_path)}, environment={"REAL_AI_BUDGET_CAP": "true"}, primary_model="unreserved-model")
+            request.assert_not_called()
+
+    def test_failed_budget_attempt_never_calls_fallback_provider(self) -> None:
+        budget_path = ROUTER_PATH.parent.parent / "config" / "real-ai-budget.json"
+        meta, _ = self.run_routed_output({"budget_config": str(budget_path)}, environment={"REAL_AI_BUDGET_CAP": "true"}, fail_response=True)
+        self.assertEqual(meta["provider_order"], ["anthropic"])
+        self.assertEqual(len(meta["attempts"]), 1)
+        self.assertEqual(meta["attempts"][0]["status"], "failed")
+
+    def test_budget_mode_without_config_fails_closed(self) -> None:
+        with patch.dict(os.environ, {"REAL_AI_BUDGET_CAP": "true"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "budget_config"):
+                ai_router.resolve_budget_pin("task.md", {})
+
     def test_resolve_model_prefers_env_then_primary_then_default(self) -> None:
         provider = {
             "model_env": "TEST_MODEL",

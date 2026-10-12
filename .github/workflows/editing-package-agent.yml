@@ -42,6 +42,10 @@ jobs:
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      EDITING_ANTHROPIC_MODEL: ${{ vars.EDITING_ANTHROPIC_MODEL }}
+      EDITING_OPENAI_MODEL: ${{ vars.EDITING_OPENAI_MODEL }}
+      EDITING_DEEPSEEK_MODEL: ${{ vars.EDITING_DEEPSEEK_MODEL }}
+      EDITING_QWEN_MODEL: ${{ vars.EDITING_QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       RUN_ACTOR: ${{ github.actor }}
       TEST_MODE: ${{ inputs.test_mode }}

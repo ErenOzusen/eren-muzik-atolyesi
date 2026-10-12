@@ -9,6 +9,7 @@ from pathlib import Path
 from faceless_scene_plan_contract import (
     ScenePlanError,
     evaluate,
+    scene_plan_sha256,
     script_sha256,
     validate_quality_config,
 )
@@ -74,7 +75,7 @@ def valid_plan(*, render_ready: bool = False) -> dict:
             "timing": {"start_seconds": 10.4, "end_seconds": 15.2} if render_ready else None,
         },
     ]
-    return {
+    plan = {
         "schema_version": 1,
         "event": "faceless_scene_plan_v2",
         "script_sha256": script_sha256(SCRIPT),
@@ -82,6 +83,25 @@ def valid_plan(*, render_ready: bool = False) -> dict:
         "render_ready": render_ready,
         "timing_source": "final_tts_alignment" if render_ready else "pending_final_tts",
         "scenes": scenes,
+    }
+    if render_ready:
+        for scene in scenes:
+            scene["semantic_qc"] = [{
+                "asset_id": scene["approved_asset_ids"][0],
+                "approved": True,
+                "score": 0.9,
+                "observed_must_show": scene["must_show"].copy(),
+                "absent_must_not_show": scene["must_not_show"].copy(),
+            }]
+        approve_plan(plan)
+    return plan
+
+
+def approve_plan(plan: dict) -> None:
+    plan["owner_editorial_approval"] = {
+        "approved": True,
+        "script_sha256": plan["script_sha256"],
+        "scene_plan_sha256": scene_plan_sha256(plan),
     }
 
 
@@ -135,14 +155,112 @@ class ScenePlanContractTests(unittest.TestCase):
 
         missing_asset = valid_plan(render_ready=True)
         missing_asset["scenes"][2]["approved_asset_ids"] = []
+        approve_plan(missing_asset)
         with self.assertRaises(ScenePlanError):
             evaluate(missing_asset, SCRIPT, load_config())
 
     def test_render_ready_timing_cannot_overlap_backwards(self):
         plan = valid_plan(render_ready=True)
         plan["scenes"][2]["timing"] = {"start_seconds": 5.0, "end_seconds": 8.0}
+        approve_plan(plan)
         with self.assertRaises(ScenePlanError):
             evaluate(plan, SCRIPT, load_config())
+
+    def test_valid_render_preserves_tts_timing(self):
+        plan = valid_plan(render_ready=True)
+        result = evaluate(plan, SCRIPT, load_config())
+        self.assertEqual(result["scenes"][2]["timing"], plan["scenes"][2]["timing"])
+
+    def test_render_flag_requires_boolean(self):
+        for value in ("false", "true", 0, 1, None, []):
+            with self.subTest(value=value):
+                plan = valid_plan()
+                plan["render_ready"] = value
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_render_requires_current_editorial_approval(self):
+        for approval in (None, {}, {"approved": "true"}, {"approved": True}):
+            with self.subTest(approval=approval):
+                plan = valid_plan(render_ready=True)
+                plan["owner_editorial_approval"] = approval
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_editorial_approval_invalidated_by_plan_changes(self):
+        for key, value in (("approved_asset_ids", ["other"]),
+                           ("must_show", ["other intent"]),
+                           ("timing", {"start_seconds": 0, "end_seconds": 3.5})):
+            with self.subTest(key=key):
+                plan = valid_plan(render_ready=True)
+                plan["scenes"][0][key] = value
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_semantic_review_requires_every_asset_and_visual_constraint(self):
+        mutations = (
+            lambda scene: scene.pop("semantic_qc"),
+            lambda scene: scene["semantic_qc"][0].update(asset_id="other"),
+            lambda scene: scene["semantic_qc"][0].update(score=0.84),
+            lambda scene: scene["semantic_qc"][0].update(score=1.01),
+            lambda scene: scene["semantic_qc"][0].update(score=True),
+            lambda scene: scene["semantic_qc"][0].update(approved=False),
+            lambda scene: scene["semantic_qc"][0].update(observed_must_show=[]),
+            lambda scene: scene["semantic_qc"][0].update(absent_must_not_show=[]),
+            lambda scene: scene["approved_asset_ids"].append("second"),
+        )
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                plan = valid_plan(render_ready=True)
+                mutate(plan["scenes"][0])
+                approve_plan(plan)
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_duplicate_reviews_cannot_replace_review_of_another_asset(self):
+        plan = valid_plan(render_ready=True)
+        scene = plan["scenes"][0]
+        scene["approved_asset_ids"].append("second")
+        scene["semantic_qc"].append(copy.deepcopy(scene["semantic_qc"][0]))
+        approve_plan(plan)
+        with self.assertRaises(ScenePlanError):
+            evaluate(plan, SCRIPT, load_config())
+
+    def test_numeric_values_must_be_finite_and_not_boolean(self):
+        for value in (float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(value=value):
+                plan = valid_plan()
+                plan["scenes"][0]["target_duration_seconds"] = value
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+                config = load_config()
+                config["scene_planner"]["min_semantic_score"] = value
+                with self.assertRaises(ScenePlanError):
+                    validate_quality_config(config)
+
+    def test_render_timing_rejects_boolean_and_nonfinite_values(self):
+        for value in (True, False, float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                plan = valid_plan(render_ready=True)
+                plan["scenes"][0]["timing"]["end_seconds"] = value
+                if isinstance(value, bool):
+                    approve_plan(plan)
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_asset_ids_cannot_be_coerced_or_duplicated(self):
+        for ids in ([None], [True], [101], ["101", "101"]):
+            with self.subTest(ids=ids):
+                plan = valid_plan()
+                plan["scenes"][0]["approved_asset_ids"] = ids
+                with self.assertRaises(ScenePlanError):
+                    evaluate(plan, SCRIPT, load_config())
+
+    def test_plan_fingerprint_is_independent_of_key_order_and_approval(self):
+        plan = valid_plan(render_ready=True)
+        reordered = dict(reversed(list(plan.items())))
+        reordered["owner_editorial_approval"] = {"approved": False}
+        self.assertEqual(scene_plan_sha256(plan), scene_plan_sha256(reordered))
 
 
 if __name__ == "__main__":

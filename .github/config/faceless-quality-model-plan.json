@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "purpose": "Proposed text-task allocation for one quality reference video; not a live router config or permission to spend.",
+  "verified_on": "2026-10-12",
+  "estimated_text_budget_usd": 0.03,
+  "max_attempts_per_task": 1,
+  "tasks": {
+    "scene_planner": {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "max_input_tokens": 2000,
+      "max_output_tokens": 2000,
+      "input_per_million_usd": 0.10,
+      "output_per_million_usd": 0.50
+    },
+    "editing_plan": {
+      "provider": "anthropic",
+      "model": "claude-haiku-5-5",
+      "max_input_tokens": 1500,
+      "max_output_tokens": 1200,
+      "input_per_million_usd": 0.10,
+      "output_per_million_usd": 0.50
+    },
+    "editorial_text_qc": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "max_input_tokens": 3000,
+      "max_output_tokens": 1200,
+      "input_per_million_usd": 3.00,
+      "output_per_million_usd": 15.00
+    }
+  },
+  "no_model_tasks": ["script_hash", "approval_checks", "alignment_normalization", "ffprobe", "subtitle_timing", "ffmpeg_render"],
+  "exclusions": ["ElevenLabs credits", "image tokens", "tools or web search", "retries", "tax", "new script generation"],
+  "sources": [
+    "https://www.anthropic.com/claude/haiku",
+    "https://platform.claude.com/docs/en/about-claude/pricing"
+  ]
+}
