@@ -1,0 +1,103 @@
+name: ElevenLabs One Short Speech Test
+
+"on":
+  pull_request:
+    paths:
+      - ".github/scripts/elevenlabs_short_probe.py"
+      - ".github/scripts/test_elevenlabs_short_probe.py"
+      - ".github/workflows/elevenlabs-short-speech-test.yml"
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Default dry-run; no network or speech generation"
+        type: boolean
+        required: true
+        default: true
+      owner_test_approved:
+        description: "Approve one 64-character Hasan Yasin test and its declared credit estimate"
+        type: boolean
+        required: true
+        default: false
+      expected_credits:
+        description: "Confirmed estimate including any voice multiplier; unset blocks live generation"
+        type: number
+        required: true
+        default: 0
+      voice_multiplier:
+        description: "Confirmed voice credit multiplier; 0 means unknown and blocks live generation"
+        type: number
+        required: true
+        default: 0
+      approved_max_credits:
+        description: "Approval ceiling for the estimate; not a provider-enforced billing ceiling"
+        type: number
+        required: true
+        default: 100
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elevenlabs-one-short-test
+  cancel-in-progress: false
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: PYTHONPATH=.github/scripts python3 .github/scripts/test_elevenlabs_short_probe.py -v
+
+  short-test:
+    if: github.event_name == 'workflow_dispatch'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate owner and original script fingerprint
+        env:
+          REQUEST_ACTOR: ${{ github.actor }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          profile = json.loads(Path('.github/config/business-profile.json').read_text())
+          if os.environ['REQUEST_ACTOR'] != profile['business']['github_owner']:
+              raise SystemExit('owner required')
+          plan = json.loads(Path('.github/quality/issue-100-scenario-1-scene-plan.json').read_text())
+          script = Path('.github/quality/issue-100-scenario-1-script.txt').read_text(encoding='utf-8').strip()
+          digest = hashlib.sha256(script.encode('utf-8')).hexdigest()
+          if digest != plan['script_sha256']:
+              raise SystemExit('approved script fingerprint mismatch')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write('APPROVED_SCRIPT_SHA=' + digest + '\n')
+          PY
+      - name: Dry-run only
+        if: inputs.test_mode == true
+        run: PYTHONPATH=.github/scripts python3 .github/scripts/elevenlabs_short_probe.py
+      - name: One explicitly approved speech request
+        if: inputs.test_mode == false
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          OWNER_TEST_APPROVED: ${{ inputs.owner_test_approved }}
+          EXPECTED_CREDITS: ${{ inputs.expected_credits }}
+          VOICE_MULTIPLIER: ${{ inputs.voice_multiplier }}
+          APPROVED_MAX_CREDITS: ${{ inputs.approved_max_credits }}
+        run: |
+          [[ "$OWNER_TEST_APPROVED" == "true" ]]
+          PYTHONPATH=.github/scripts python3 .github/scripts/elevenlabs_short_probe.py \
+            --generate --owner-approved --script-sha256 "$APPROVED_SCRIPT_SHA" \
+            --expected-credits "$EXPECTED_CREDITS" --voice-multiplier "$VOICE_MULTIPLIER" \
+            --approved-max-credits "$APPROVED_MAX_CREDITS" --out-dir /tmp/short-speech-test
+      - name: Save only the short audio and alignment
+        if: inputs.test_mode == false
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: elevenlabs-short-speech-${{ github.run_id }}
+          path: |
+            /tmp/short-speech-test/elevenlabs-short-probe.mp3
+            /tmp/short-speech-test/elevenlabs-short-probe-alignment.json
+          if-no-files-found: error
+          retention-days: 7
