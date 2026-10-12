@@ -182,3 +182,25 @@ passed, including 13 ElevenLabs adapter tests and four render-planning tests
 (one with real FFmpeg on synthetic media). Model-proposal arithmetic, workflow
 YAML syntax and `git diff --check` passed. No actual reference clip, voice API,
 provider generation or publication was used in these tests.
+
+## Selected voice and GET-only readiness
+
+The owner selected **Hasan Yasin – Warm Turkish Narrator** and supplied voice ID
+`tILIOdKERNNbBHVEXk7I`. It is now recorded in the existing final-TTS config;
+final speech generation remains disabled. The owner reports adding
+`ELEVENLABS_API_KEY` to GitHub repository secrets. The key's validity, permissions,
+and actual credit cap have not yet been verified by a live request.
+
+`ElevenLabs Read-Only Readiness` is a manual workflow with `read_live_metadata`
+defaulting to false. Pull requests only run mocked offline tests. If an owner
+explicitly dispatches the metadata check, it makes two GET requests: the selected
+voice and `/v1/user/subscription`. No text, audio, or generation request is sent.
+Redirects are disabled; credentials and raw error payloads are not printed.
+Output contains only selected voice ID, remaining subscription quota, and
+readiness flags. It does not claim that TTS permission or the API key's separate
+credit ceiling has been verified, and never authorizes paid generation.
+
+Sources: [voice metadata](https://elevenlabs.io/docs/api-reference/voices/get),
+[subscription metadata](https://elevenlabs.io/docs/api-reference/user/subscription/get).
+Four new mocked readiness tests plus 19 scene and one Issue #100 test passed.
+Workflow YAML syntax and diff checks passed. No live metadata check was run.

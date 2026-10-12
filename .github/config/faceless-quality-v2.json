@@ -22,7 +22,7 @@
     "final": {
       "provider": "elevenlabs",
       "enabled": false,
-      "voice_id": "",
+      "voice_id": "tILIOdKERNNbBHVEXk7I",
       "secret_name": "ELEVENLABS_API_KEY",
       "requires_owner_approval": true,
       "requires_budget_approval": true

@@ -1,0 +1,52 @@
+name: ElevenLabs Read-Only Readiness
+
+"on":
+  pull_request:
+    paths:
+      - ".github/config/faceless-quality-v2.json"
+      - ".github/scripts/elevenlabs_readiness.py"
+      - ".github/scripts/test_elevenlabs_readiness.py"
+      - ".github/workflows/elevenlabs-readiness.yml"
+  workflow_dispatch:
+    inputs:
+      read_live_metadata:
+        description: "GET-only voice/quota check using stored API key; no speech generation"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: PYTHONPATH=.github/scripts python3 .github/scripts/test_elevenlabs_readiness.py -v
+
+  metadata-only:
+    if: github.event_name == 'workflow_dispatch' && inputs.read_live_metadata == true
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify owner
+        env:
+          REQUEST_ACTOR: ${{ github.actor }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          profile = json.loads(Path('.github/config/business-profile.json').read_text())
+          if os.environ['REQUEST_ACTOR'] != profile['business']['github_owner']:
+              raise SystemExit('owner required for credentialed metadata check')
+          PY
+      - name: Read selected voice and subscription quota
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          PYTHONPATH=.github/scripts python3 .github/scripts/elevenlabs_readiness.py \
+            --config .github/config/faceless-quality-v2.json --read-live-metadata
