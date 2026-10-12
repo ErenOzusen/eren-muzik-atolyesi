@@ -88,3 +88,97 @@ claim that a generated video has passed visual or acoustic quality review.
 All generation/provider responses in these checks are mocked; no paid generation
 or publication was run. Frontend lint/build were not run because no frontend or
 backend files changed. GitHub CI has not run these local changes yet.
+
+## Follow-up: allocation and local rendering preparation
+
+The initial PR #113 passed GitHub checks, including automation, worker contracts,
+router smoke test, frontend, backend, repository safety and CodeQL. Its live-worker
+job was skipped. The following additions extend preparation; PR #113 remains draft.
+
+### Proposed task allocation
+
+`.github/config/faceless-quality-model-plan.json` stores an **inactive proposal**.
+It is not loaded by the live router, does not modify repository variables, and
+does not authorize spending. Official prices were checked on 12 October 2026:
+
+| Text task | Model | Input/output limit | Estimated maximum for one request |
+| --- | --- | --- | --- |
+| Scene planning | claude-haiku-5-5 | 2,000 / 2,000 | $0.00120 |
+| Editing plan | claude-haiku-5-5 | 1,500 / 1,200 | $0.00075 |
+| Editorial text QC | claude-sonnet-4-6 | 3,000 / 1,200 | $0.02700 |
+
+Total hypothetical text-only estimate: **$0.02895**, with a proposed $0.03 budget
+and one attempt per task. It excludes voice credits, image tokens, tools/search,
+retries and tax; it is not a total-video quote or a runtime-enforced ledger.
+Haiku prices apply to these prompts below 100K input tokens. The existing
+historical budgets and model pins remain intact. For the current Issue #100
+reference, reuse its approved script and existing scene plan first: no new text
+model request is needed merely to compile alignment, subtitles or render commands.
+
+Source prices: [Anthropic Haiku](https://www.anthropic.com/claude/haiku) and
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+
+### ElevenLabs saved-response adapter
+
+`faceless_elevenlabs_alignment.py` accepts saved `/with-timestamps` response
+JSON and local audio bytes, plus an independently measured duration. It validates
+original character alignment (or normalized alignment only if original is absent),
+exact script text except whitespace, finite ordered timestamps, and optional
+base64 audio identity. Number/text expansions that change the script fail closed.
+Scene cuts bisect inter-scene silence and span the measured audio duration.
+
+It returns `alignment` and `updated_plan`. The updated plan stores proposed
+timing in `pending_final_tts_alignment`, removes editorial approval and restores
+draft status. It never generates speech, obtains credentials, or approves clips.
+API shape source: [ElevenLabs timing API](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps).
+
+### Reviewed local render planning
+
+`faceless_reviewed_render_plan.prepare_render` consumes a fully reviewed plan,
+normalized alignment, local narration and one explicit local clip binding per
+scene. It reads local bytes and probes streams/durations with FFprobe. Each
+binding includes `scene_id`, `asset_id`, `path`, `sha256`, and optional
+`trim_start_seconds`. The selected file's SHA must also appear as `asset_sha256`
+in that asset's fingerprint-bound semantic review. A substituted, missing,
+unreviewed, or too-short clip blocks preparation; it never loops or substitutes.
+
+The returned object contains FFmpeg argument arrays and `subtitle_text` for
+`final-captions.srt`. Write those captions into an isolated working directory
+before running the prepared command there. FFmpeg produces `final-video.mp4`
+without overwriting existing files, using only selected footage and narration,
+1080×1920 video and burned scene captions. Scaling preserves full source frames
+and pads narrower material; actual composition still needs visual review.
+The preparation function does not execute the command or wire the live worker.
+
+A real, local FFmpeg regression test renders four seconds of synthetic blue
+footage and silent audio in a temporary directory and verifies dimensions,
+duration and audio stream. This is test media, not a quality reference video.
+
+### Actual reference-video inputs still required
+
+Issue #100 recorded six approved candidate IDs:
+`7574545,6670728,7508179,8472212,4706206,8103317`.
+These candidate-list approvals are not per-scene semantic evidence. No mapping
+was invented when public clip pages could not be retrieved in this session.
+
+| Scene | Actual visual review must confirm |
+| --- | --- |
+| 1 | Guitar practice preparation, hands and calm workspace |
+| 2 | Tuner visible and a string actually being tuned |
+| 3 | Fretting fingers changing between chords |
+| 4 | Guitar practice being recorded on a phone/recorder |
+| 5 | Slow, controlled picking or fretting close-up |
+| 6 | Focused guitar practice |
+
+ElevenLabs API key, voice ID, API quota and audio credit estimate have not been
+verified. No provider key is available in the local process. Credentials should
+be stored in GitHub Secrets, never source files or chat. A subscription alone
+does not confirm available API credits. Actual paid speech still requires the
+existing owner/budget approvals, and authenticated clip review must bind the
+reviewed local file hashes before a production render.
+
+Follow-up local verification: 73 faceless tests and the Issue #100 fixture test
+passed, including 13 ElevenLabs adapter tests and four render-planning tests
+(one with real FFmpeg on synthetic media). Model-proposal arithmetic, workflow
+YAML syntax and `git diff --check` passed. No actual reference clip, voice API,
+provider generation or publication was used in these tests.
