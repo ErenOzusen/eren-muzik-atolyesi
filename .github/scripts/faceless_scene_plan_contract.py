@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 
@@ -32,6 +33,21 @@ def normalize_text(value: str) -> str:
 
 def script_sha256(script_text: str) -> str:
     return hashlib.sha256(script_text.encode("utf-8")).hexdigest()
+
+
+def scene_plan_sha256(plan: dict) -> str:
+    """Bind editorial evidence to all plan content, excluding that evidence itself."""
+    reviewed = {key: value for key, value in plan.items() if key != "owner_editorial_approval"}
+    try:
+        payload = json.dumps(reviewed, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ScenePlanError("scene plan geçerli sonlu JSON olmalı") from exc
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _finite_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _require_nonempty_list(scene: dict, key: str, *, max_items: int) -> list[str]:
@@ -68,6 +84,9 @@ def validate_quality_config(config: dict) -> None:
         raise ScenePlanError("semantic QC zorunlu olmalı")
     if planner.get("require_owner_editorial_approval") is not True:
         raise ScenePlanError("owner editoryal onayı zorunlu olmalı")
+    score = planner.get("min_semantic_score")
+    if not _finite_number(score) or not 0 < score <= 1:
+        raise ScenePlanError("min_semantic_score 0-1 arasında sonlu sayı olmalı")
 
     render = config.get("render")
     if not isinstance(render, dict):
@@ -111,6 +130,13 @@ def validate_quality_config(config: dict) -> None:
 
 
 def evaluate(plan: dict, script_text: str, config: dict) -> dict:
+    """Validate supplied review evidence; owner identity and pixels need external review.
+
+    A render-ready plan carries one semantic_qc entry per approved asset with
+    observed_must_show and absent_must_not_show covering the scene constraints.
+    owner_editorial_approval must bind the script and complete reviewed plan.
+    These declarations do not replace the authenticated workflow approval gate.
+    """
     validate_quality_config(config)
 
     if plan.get("schema_version") != 1:
@@ -135,7 +161,15 @@ def evaluate(plan: dict, script_text: str, config: dict) -> dict:
 
     purposes = {"hook", "value", "proof", "transition", "cta"}
     narration_parts: list[str] = []
-    render_ready = bool(plan.get("render_ready", False))
+    render_ready = plan.get("render_ready", False)
+    if not isinstance(render_ready, bool):
+        raise ScenePlanError("render_ready boolean olmalı")
+    if render_ready:
+        approval = plan.get("owner_editorial_approval")
+        if (not isinstance(approval, dict) or approval.get("approved") is not True
+                or approval.get("script_sha256") != expected_sha
+                or approval.get("scene_plan_sha256") != scene_plan_sha256(plan)):
+            raise ScenePlanError("render-ready plan güncel plan ve senaryoya bağlı owner editoryal onayı istemeli")
     previous_end = 0.0
 
     normalized_scenes = []
@@ -159,7 +193,7 @@ def evaluate(plan: dict, script_text: str, config: dict) -> dict:
         must_not_show = _require_forbidden_list(scene)
 
         duration = scene.get("target_duration_seconds")
-        if not isinstance(duration, (int, float)) or isinstance(duration, bool):
+        if not _finite_number(duration):
             raise ScenePlanError("target_duration_seconds sayı olmalı")
         if not 1.0 <= float(duration) <= float(planner.get("max_scene_seconds", 5.0)):
             raise ScenePlanError("scene hedef süresi kalite sınırının dışında")
@@ -167,19 +201,45 @@ def evaluate(plan: dict, script_text: str, config: dict) -> dict:
         asset_ids = scene.get("approved_asset_ids", [])
         if not isinstance(asset_ids, list):
             raise ScenePlanError("approved_asset_ids liste olmalı")
-        clean_asset_ids = [str(item).strip() for item in asset_ids if str(item).strip()]
+        clean_asset_ids = [item.strip() for item in asset_ids if isinstance(item, str) and item.strip()]
         if len(clean_asset_ids) != len(asset_ids) or len(clean_asset_ids) > 3:
             raise ScenePlanError("approved_asset_ids en fazla 3 temiz id içermeli")
+        if len(set(clean_asset_ids)) != len(clean_asset_ids):
+            raise ScenePlanError("approved_asset_ids tekrarsız olmalı")
 
         timing = scene.get("timing")
         if render_ready:
             if not clean_asset_ids:
                 raise ScenePlanError("render-ready planda her sahnenin onaylı asset'i olmalı")
+            reviews = scene.get("semantic_qc")
+            if not isinstance(reviews, list) or len(reviews) != len(clean_asset_ids):
+                raise ScenePlanError("her onaylı asset için semantic QC kanıtı zorunlu")
+            reviewed_ids = []
+            for review in reviews:
+                if not isinstance(review, dict):
+                    raise ScenePlanError("semantic QC object olmalı")
+                asset_id = review.get("asset_id")
+                score = review.get("score")
+                if (not isinstance(asset_id, str) or asset_id not in clean_asset_ids
+                        or review.get("approved") is not True
+                        or not _finite_number(score)
+                        or not planner["min_semantic_score"] <= score <= 1):
+                    raise ScenePlanError("semantic QC asset onayı veya skoru geçersiz")
+                for evidence_key, required_items in (("observed_must_show", must_show),
+                                                      ("absent_must_not_show", must_not_show)):
+                    evidence = review.get(evidence_key)
+                    if (not isinstance(evidence, list)
+                            or any(not isinstance(item, str) for item in evidence)
+                            or set(evidence) != set(required_items)):
+                        raise ScenePlanError("semantic QC görsel niyet kontrol kanıtı eksik")
+                reviewed_ids.append(asset_id)
+            if set(reviewed_ids) != set(clean_asset_ids):
+                raise ScenePlanError("semantic QC tüm onaylı asset'leri tek tek kapsamalı")
             if not isinstance(timing, dict):
                 raise ScenePlanError("render-ready planda timing zorunlu")
             start = timing.get("start_seconds")
             end = timing.get("end_seconds")
-            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+            if not _finite_number(start) or not _finite_number(end):
                 raise ScenePlanError("timing start/end sayı olmalı")
             start = float(start)
             end = float(end)
@@ -201,6 +261,7 @@ def evaluate(plan: dict, script_text: str, config: dict) -> dict:
                 "must_not_show": must_not_show,
                 "approved_asset_ids": clean_asset_ids,
                 "target_duration_seconds": float(duration),
+                "timing": {"start_seconds": start, "end_seconds": end} if render_ready else None,
             }
         )
 

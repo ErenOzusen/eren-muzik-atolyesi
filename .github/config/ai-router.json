@@ -8,6 +8,124 @@
       "qwen"
     ],
     "timeout_seconds": 120,
+    "models_by_output": {
+      "weekly-report-raw.md": {
+        "anthropic": {
+          "model_env": "RESEARCH_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "RESEARCH_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "RESEARCH_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "RESEARCH_QWEN_MODEL"
+        }
+      },
+      "scripts-raw.txt": {
+        "anthropic": {
+          "model_env": "SCRIPT_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "SCRIPT_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "SCRIPT_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "SCRIPT_QWEN_MODEL"
+        }
+      },
+      "raw-report.md": {
+        "anthropic": {
+          "model_env": "QC_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "QC_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "QC_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "QC_QWEN_MODEL"
+        }
+      },
+      "final-scripts.md": {
+        "anthropic": {
+          "model_env": "CORRECTION_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "CORRECTION_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "CORRECTION_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "CORRECTION_QWEN_MODEL"
+        }
+      },
+      "final-check.md": {
+        "anthropic": {
+          "model_env": "FINAL_CHECK_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "FINAL_CHECK_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "FINAL_CHECK_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "FINAL_CHECK_QWEN_MODEL"
+        }
+      },
+      "filming-package.md": {
+        "anthropic": {
+          "model_env": "FILMING_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "FILMING_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "FILMING_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "FILMING_QWEN_MODEL"
+        }
+      },
+      "editing-package.md": {
+        "anthropic": {
+          "model_env": "EDITING_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "EDITING_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "EDITING_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "EDITING_QWEN_MODEL"
+        }
+      },
+      "scene-plan.json": {
+        "anthropic": {
+          "model_env": "SCENE_PLAN_ANTHROPIC_MODEL"
+        },
+        "openai": {
+          "model_env": "SCENE_PLAN_OPENAI_MODEL"
+        },
+        "deepseek": {
+          "model_env": "SCENE_PLAN_DEEPSEEK_MODEL"
+        },
+        "qwen": {
+          "model_env": "SCENE_PLAN_QWEN_MODEL"
+        }
+      }
+    },
+    "budget_config": ".github/config/real-ai-budget.json",
+    "budget_config_by_output": {
+      "filming-package.md": ".github/config/mvp-production-budget.json"
+    },
     "retry_http_statuses": [
       408,
       409,

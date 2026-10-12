@@ -52,6 +52,58 @@ def resolve_model(name: str, provider: dict[str, Any], primary_model: str) -> st
     return default_model.strip() if isinstance(default_model, str) else ""
 
 
+def resolve_output_models(output_file: str, routing: dict[str, Any], providers: dict[str, Any]) -> dict[str, str]:
+    """Opt-in task bindings; unset task environment values retain provider defaults.
+
+    models_by_output maps output basenames to provider -> {model_env, default_model}.
+    It changes neither credentials/endpoints nor the number of provider attempts.
+    Validate the entire selected task before any request or budget reservation.
+    """
+    mappings = routing.get("models_by_output", {})
+    if not isinstance(mappings, dict):
+        raise RuntimeError("models_by_output must be an object")
+    bindings = mappings.get(Path(output_file).name, {})
+    if not isinstance(bindings, dict):
+        raise RuntimeError(f"invalid models_by_output value for {Path(output_file).name}")
+    models: dict[str, str] = {}
+    for name, binding in bindings.items():
+        if name not in providers or not isinstance(binding, dict) or not binding:
+            raise RuntimeError(f"invalid output model binding for {name}")
+        if set(binding) - {"model_env", "default_model"}:
+            raise RuntimeError(f"unknown output model binding keys for {name}")
+        for key, value in binding.items():
+            if not isinstance(value, str) or not value.strip():
+                raise RuntimeError(f"invalid output model {key} for {name}")
+        env_name = binding.get("model_env", "").strip()
+        model = os.getenv(env_name, "").strip() if env_name else ""
+        model = model or binding.get("default_model", "").strip()
+        if model:
+            models[name] = model
+    return models
+
+
+def resolve_budget_pin(output_file: str, routing: dict[str, Any]) -> tuple[str, str] | None:
+    """Use existing budgets as the authority for routes reserved before calls."""
+    if os.getenv("REAL_AI_BUDGET_CAP", "").lower() == "true":
+        path = routing.get("budget_config", "")
+        if not isinstance(path, str) or not path.strip():
+            raise RuntimeError("budget_config is required in real-AI budget mode")
+    else:
+        mappings = routing.get("budget_config_by_output", {})
+        if not isinstance(mappings, dict):
+            raise RuntimeError("budget_config_by_output must be an object")
+        path = mappings.get(Path(output_file).name)
+        if path is None:
+            return None
+        if not isinstance(path, str) or not path.strip():
+            raise RuntimeError("invalid output budget config")
+    budget = load_json(path.strip())
+    provider, model = budget.get("allowed_provider"), budget.get("allowed_model")
+    if not isinstance(provider, str) or not provider.strip() or not isinstance(model, str) or not model.strip():
+        raise RuntimeError("budget must pin a provider and model")
+    return provider.strip(), model.strip()
+
+
 def resolve_quality_contract(
     explicit_path: str,
     output_file: str,
@@ -360,6 +412,16 @@ def main() -> None:
     output_order = resolve_output_provider_order(args.output_file, routing)
     if output_order:
         order = output_order
+    output_models = resolve_output_models(args.output_file, routing, providers)
+    budget_pin = resolve_budget_pin(args.output_file, routing)
+    if budget_pin is not None:
+        pinned_provider, pinned_model = budget_pin
+        if pinned_provider not in providers:
+            raise RuntimeError("budget provider is not configured")
+        if args.primary_model.strip() and args.primary_model.strip() != pinned_model:
+            raise RuntimeError("primary model does not match the budget model")
+        order = [pinned_provider]
+        output_models = {pinned_provider: pinned_model}
     args.max_tokens = resolve_output_max_tokens(args.max_tokens, args.output_file, routing)
     timeout = int(routing.get("timeout_seconds") or 120)
     retry_statuses = resolve_retry_statuses(routing)
@@ -412,7 +474,7 @@ def main() -> None:
 
         secret_env = provider.get("secret_env")
         api_key = os.getenv(secret_env, "") if isinstance(secret_env, str) else ""
-        model = resolve_model(provider_name, provider, args.primary_model)
+        model = output_models.get(provider_name) or resolve_model(provider_name, provider, args.primary_model)
         endpoint = resolve_endpoint(provider)
 
         if not api_key:

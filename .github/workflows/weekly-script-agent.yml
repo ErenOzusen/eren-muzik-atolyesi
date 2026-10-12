@@ -34,6 +34,10 @@ jobs:
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
       DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
       QWEN_MODEL: ${{ vars.QWEN_MODEL }}
+      SCRIPT_ANTHROPIC_MODEL: ${{ vars.SCRIPT_ANTHROPIC_MODEL }}
+      SCRIPT_OPENAI_MODEL: ${{ vars.SCRIPT_OPENAI_MODEL }}
+      SCRIPT_DEEPSEEK_MODEL: ${{ vars.SCRIPT_DEEPSEEK_MODEL }}
+      SCRIPT_QWEN_MODEL: ${{ vars.SCRIPT_QWEN_MODEL }}
       QWEN_CHAT_ENDPOINT: ${{ vars.QWEN_CHAT_ENDPOINT }}
       TEST_MODE: ${{ inputs.test_mode || 'false' }}
       REAL_AI_BUDGET_CAP: ${{ inputs.real_ai_budget_cap || 'false' }}
