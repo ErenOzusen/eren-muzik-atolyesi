@@ -204,3 +204,42 @@ Sources: [voice metadata](https://elevenlabs.io/docs/api-reference/voices/get),
 [subscription metadata](https://elevenlabs.io/docs/api-reference/user/subscription/get).
 Four new mocked readiness tests plus 19 scene and one Issue #100 test passed.
 Workflow YAML syntax and diff checks passed. No live metadata check was run.
+
+## Live readiness result and short speech proposal
+
+PR #113 merged at `bfd7d5dfc024f6f629cfa165fe1a337011e1bc81` after successful
+GitHub checks. Readiness run #2 failed with HTTP 400. The diagnostic branch now
+reports only documented provider identifiers, without raw error messages or
+credentials; run #4 identified `voice_not_found`. After the owner added Hasan
+Yasin to My Voices, the failed job was re-run and passed, with 240,880 remaining
+subscription credits reported at that check. TTS permission and the separate
+API-key credit ceiling are still unverified.
+
+The new `ElevenLabs One Short Speech Test` workflow is a **proposal pending
+merge and explicit paid-generation approval**. It sends only the approved
+opening sentence, not the entire script:
+
+> Gitara yeni başlıyorsan üç küçük alışkanlık işini kolaylaştırır.
+
+This is 64 characters. Expected duration is roughly 5–8 seconds and remains
+unmeasured until generated. It uses `eleven_multilingual_v2` with MP3 and
+character timestamps, stores only the short MP3 and alignment JSON, and never
+dispatches video or publication. Global final TTS and publishing settings remain
+disabled. Default `test_mode:true` is network-free; only an explicit owner run
+with `test_mode:false`, approval, a confirmed estimate and declared voice credit
+multiplier can make one POST. Failed/uncertain calls are not retried, GitHub
+reruns are blocked, and existing output files block a duplicate local request.
+
+64 base credits is a conservative standard-rate estimate for 64 characters.
+Actual API pricing can be discounted and legacy voice-specific credit multipliers
+can increase it. The multiplier is not inferred from the account balance; it
+must be confirmed separately. `approved_max_credits` bounds the declared estimate,
+**not actual provider billing**. No provider-enforced credit ceiling is claimed.
+No new subscription or pay-as-you-go balance is purchased by this workflow.
+
+Sources: [API pricing](https://elevenlabs.io/pricing/api),
+[voice credit multipliers](https://elevenlabs.io/docs/help-center/product/voices/voice-library/what-are-custom-rates-and-credit-multipliers),
+[speech with timestamps](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps).
+Seven mocked short-probe tests passed; a default dry-run returned
+`generation_attempted:false`. Workflow syntax/default-gate and diff checks passed.
+The actual short speech has not yet been generated.

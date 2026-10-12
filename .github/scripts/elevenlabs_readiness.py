@@ -24,7 +24,23 @@ def get_metadata(path, api_key):
         with urllib.request.build_opener(NoRedirect).open(request, timeout=20) as response:
             payload = json.load(response)
     except urllib.error.HTTPError as exc:
-        raise ValueError(f"metadata access failed: HTTP {exc.code}; check key permissions") from None
+        # Log only documented identifiers, never provider message/raw payload.
+        safe_codes = {"invalid_api_key", "missing_permissions", "voice_not_found",
+                      "quota_exceeded", "authentication_error", "authorization_error",
+                      "invalid_request", "invalid_voice_id", "permission_denied"}
+        code = "unclassified"
+        try:
+            error = json.load(exc)
+            detail = error.get("detail", {})
+            candidate = detail.get("status") if isinstance(detail, dict) else None
+            if candidate is None and isinstance(error.get("error"), dict):
+                candidate = error["error"].get("code")
+            if candidate in safe_codes and candidate != api_key:
+                code = candidate
+        except (ValueError, TypeError, AttributeError):
+            pass
+        endpoint = "selected_voice" if path.startswith("/v1/voices/") else "subscription"
+        raise ValueError(f"{endpoint} metadata access failed: HTTP {exc.code}; provider_code={code}") from None
     except (urllib.error.URLError, OSError, ValueError):
         raise ValueError("metadata access failed; no generation attempted") from None
     if not isinstance(payload, dict):
