@@ -1,7 +1,10 @@
+import io
+import json
 import unittest
+import urllib.error
 from unittest.mock import patch
 
-from elevenlabs_readiness import check_readiness
+from elevenlabs_readiness import check_readiness, get_metadata
 from test_faceless_scene_plan_contract import load_config
 
 
@@ -9,6 +12,20 @@ VOICE = "tILIOdKERNNbBHVEXk7I"
 
 
 class ReadinessTests(unittest.TestCase):
+    @patch("elevenlabs_readiness.urllib.request.build_opener")
+    def test_error_only_reports_documented_code_not_secret_or_raw_message(self, opener):
+        for code in ("voice_not_found", "synthetic-key"):
+            payload = json.dumps({"detail": {"status": code, "message": "sensitive synthetic-key"}}).encode()
+            opener.return_value.open.side_effect = urllib.error.HTTPError(
+                "https://api.elevenlabs.io/v1/voices/" + VOICE, 400, "Bad request", {}, io.BytesIO(payload))
+            with self.assertRaises(ValueError) as caught:
+                get_metadata("/v1/voices/" + VOICE, "synthetic-key")
+            message = str(caught.exception)
+            self.assertIn("selected_voice", message)
+            self.assertIn("voice_not_found" if code == "voice_not_found" else "unclassified", message)
+            self.assertNotIn("synthetic-key", message)
+            self.assertNotIn("sensitive", message)
+
     @patch("elevenlabs_readiness.get_metadata")
     def test_default_makes_no_requests_even_with_a_key(self, get):
         result = check_readiness(load_config(), api_key="synthetic-key")
