@@ -4,6 +4,8 @@ name: Faceless Visual Sampling (Offline Tests)
   pull_request:
     paths:
       - ".github/scripts/faceless_visual_sampling.py"
+      - ".github/scripts/faceless_visual_review_contract.py"
+      - ".github/scripts/test_faceless_visual_review_contract.py"
       - ".github/scripts/test_faceless_visual_sampling.py"
       - ".github/workflows/faceless-visual-sampling-tests.yml"
       - ".github/scripts/faceless_scene_plan_contract.py"
@@ -30,9 +32,10 @@ jobs:
           ffmpeg -version >/dev/null
           ffprobe -version >/dev/null
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_visual_sampling.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_visual_review_contract.py -v
           PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_scene_plan_contract.py -v
       - name: Confirm offline-only adapter
         run: |
           set -euo pipefail
-          python3 -m py_compile .github/scripts/faceless_visual_sampling.py
-          ! grep -Eq 'urllib\.request|requests\.|httpx|youtube.*insert|ELEVENLABS_API_KEY' .github/scripts/faceless_visual_sampling.py
+          python3 -m py_compile .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
+          ! grep -Eq 'urllib\.request|requests\.|httpx|youtube.*insert|ELEVENLABS_API_KEY' .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
