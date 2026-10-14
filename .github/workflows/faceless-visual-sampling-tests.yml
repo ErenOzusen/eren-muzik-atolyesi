@@ -1,0 +1,41 @@
+name: Faceless Visual Sampling (Offline Tests)
+
+"on":
+  pull_request:
+    paths:
+      - ".github/scripts/faceless_visual_sampling.py"
+      - ".github/scripts/faceless_visual_review_contract.py"
+      - ".github/scripts/test_faceless_visual_review_contract.py"
+      - ".github/scripts/test_faceless_visual_sampling.py"
+      - ".github/workflows/faceless-visual-sampling-tests.yml"
+      - ".github/scripts/faceless_scene_plan_contract.py"
+      - ".github/scripts/test_faceless_scene_plan_contract.py"
+      - ".github/config/faceless-quality-v2.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-visual-sampling-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install local media tooling (no provider/API access)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Offline deterministic and actual local FFmpeg tests
+        run: |
+          set -euo pipefail
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_visual_sampling.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_visual_review_contract.py -v
+          PYTHONPATH=.github/scripts python3 .github/scripts/test_faceless_scene_plan_contract.py -v
+      - name: Confirm offline-only adapter
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
+          ! grep -Eq '^[[:space:]]*(from[[:space:]]+(urllib[.]request|requests|httpx|aiohttp|socket|http[.]client)|import[[:space:]]+(urllib[.]request|requests|httpx|aiohttp|socket|http[.]client))|ELEVENLABS_API_KEY' .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
