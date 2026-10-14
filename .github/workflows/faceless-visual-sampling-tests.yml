@@ -38,4 +38,4 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
-          ! grep -Eq '^[[:space:]]*(import|from)[[:space:]]+(urllib|requests|httpx|aiohttp)|ELEVENLABS_API_KEY' .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
+          ! grep -Eq '^[[:space:]]*(from[[:space:]]+(urllib[.]request|requests|httpx|aiohttp|socket|http[.]client)|import[[:space:]]+(urllib[.]request|requests|httpx|aiohttp|socket|http[.]client))|ELEVENLABS_API_KEY' .github/scripts/faceless_visual_sampling.py .github/scripts/faceless_visual_review_contract.py
