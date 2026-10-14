@@ -148,6 +148,8 @@ def collect(plan: dict, script_text: str, quality_config: dict,
                 extract_frame(selection["path"], offset, destination)
                 frames.append({"time_seconds": round(offset, 6), "path": relative,
                                "sha256": sha256_file(destination)})
+            if sha256_file(selection["path"]) != digest:
+                raise SamplingError("source video changed during frame extraction")
             rows.append({"scene_id": selection["scene_id"], "asset_id": selection["asset_id"],
                          "source_page": selection["source_page"],
                          "video_sha256": digest, **inspected, "frames": frames,
