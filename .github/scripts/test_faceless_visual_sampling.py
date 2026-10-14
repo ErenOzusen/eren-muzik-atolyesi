@@ -2,7 +2,6 @@
 """Offline-only tests. No provider, API, or YouTube operations."""
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import shutil
@@ -12,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from faceless_visual_sampling import SamplingError, collect, validate_candidates
+from faceless_visual_sampling import SamplingError, collect
 from test_faceless_scene_plan_contract import SCRIPT, load_config, valid_plan
 
 
@@ -93,7 +92,6 @@ class VisualSamplingTests(unittest.TestCase):
     @patch("faceless_visual_sampling.probe_video")
     def test_failure_removes_unfinished_output(self, probe, frame):
         probe.side_effect = self.fake_probe
-        frame.side_effect = [None, SamplingError("missing frame")]
         def make_frame(*args):
             raise SamplingError("interrupted")
         frame.side_effect = make_frame
@@ -101,6 +99,18 @@ class VisualSamplingTests(unittest.TestCase):
             self.sample()
         self.assertFalse(self.out.exists())
         self.assertFalse(list(self.root.glob(".visual-sampling-*")))
+
+    @patch("faceless_visual_sampling.extract_frame")
+    @patch("faceless_visual_sampling.probe_video")
+    def test_source_change_mid_extraction_blocks_provenance(self, probe, frame):
+        probe.side_effect = self.fake_probe
+        def mutate(video, seconds, destination):
+            destination.write_bytes(b"valid fake png" * 12)
+            video.write_bytes(video.read_bytes() + b"tampered")
+        frame.side_effect = mutate
+        with self.assertRaisesRegex(SamplingError, "changed during"):
+            self.sample()
+        self.assertFalse(self.out.exists())
 
     @patch("faceless_visual_sampling.extract_frame")
     @patch("faceless_visual_sampling.probe_video")
