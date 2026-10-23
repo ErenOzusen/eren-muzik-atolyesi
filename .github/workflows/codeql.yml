@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: CodeQL başlat
         uses: github/codeql-action/init@v3

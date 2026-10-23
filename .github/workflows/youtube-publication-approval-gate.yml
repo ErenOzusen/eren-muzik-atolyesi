@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Kaynak kodu al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: İşletme sahibinin son yayın onayını doğrula ve kaydet
         shell: bash
